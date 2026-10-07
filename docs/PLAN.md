@@ -12,7 +12,7 @@ Goal: replace assumptions in the spec with checked facts before building on them
 - [ ] Pricing of image and video generation models
 - [ ] Publishing intermediaries (options, pricing, supported networks)
 - [ ] Reels insights/statistics limits
-- [ ] Remotion license terms
+- [x] Remotion license terms — checked on the official site on 2026-10-07 (confirm prices before budgeting): free for individuals and for-profit organizations of up to 3 people; 4 or more people across the companies involved need a company license, bought by the entity that owns the project's IP; automation pricing is USD 0.01 per render with a USD 100 monthly minimum. **Pending:** NovaCiel's headcount and whether it will pay the license. Remotion is only needed in Step 7c; Steps 7a and 7b do not use it.
 - [ ] Cost of describing video (vision models)
 - [ ] Terms of free music libraries
 - [ ] Test bench: sample client, sample media, sample briefs
@@ -28,24 +28,24 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 
 **Acceptance criteria for Phase 1:** zero pieces published without approval, zero false data, cost within the ceiling.
 
-### Step 0 — PostgreSQL and connection
-- `docker-compose.yml` with PostgreSQL 16 and MinIO, volumes, dev credentials from variables.
-- Connection pool with `pg`.
-- **Done when:** `docker compose up -d` starts everything and the app connects.
+### Step 0 — PostgreSQL and connection ✅ (commit `cc3d91f`)
+- Connection pool with `pg`; `docker-compose.yml` written.
+- Deviation: no Docker on the dev machine (virtualization cannot be enabled), so local **PostgreSQL 18** on Windows is used instead of PostgreSQL 16 in Docker. Database `novaciel_db`.
+- `docker-compose.yml` was written but never run.
 
-### Step 1 — Technical foundation
-- `src/config`: zod validation of env vars; fails at startup if any is missing. Only place that reads `process.env`. Vars: `NODE_ENV`, `PORT`, `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `LOG_LEVEL`. `.env.example` without real values.
-- `src/db`: node-pg-migrate with SQL migrations (up and down); example `healthcheck` migration.
-- `src/lib/logger`: pino with redaction (password, token, authorization, secret, api_key).
-- pg-boss queue: init, example `ping` job and worker.
-- `src/lib/media/storage`: `Storage` interface (put, get, delete, getSignedUrl), S3/MinIO implementation, in-memory `FakeStorage`.
-- `src/index.ts`: Fastify, `GET /health` checking database and queue, graceful shutdown.
-- vitest: config test, database test, fake storage test.
-- Scripts: dev, build, typecheck, test, migrate:up, migrate:down.
-- **Done when:** migrations run, `/health` returns ok, a ping job runs, tests and typecheck pass. No domain tables yet.
+### Step 1 — Technical foundation ✅ (commit `cc3d91f`)
+- Done: zod config, `pg` pool, node-pg-migrate with `healthcheck` migration (up and down), pino with redaction, pg-boss with `ping` job, `Storage` interface with `S3Storage` and `FakeStorage`, Fastify with `GET /health`, vitest (16 tests), `.env.example`.
+- `S3Storage` was never tested against a real server.
+- No domain tables yet.
+
+### Step 1b — LocalFileStorage and storage selection
+- `LocalFileStorage` implementing `Storage`, folder from `LOCAL_STORAGE_DIR`, path traversal protection (allowlist of key characters, Windows-safe), HMAC-signed dev URLs served by a local-only route; `PUBLIC_BASE_URL` for the URL origin.
+- `STORAGE_DRIVER` (`local` | `s3`), `local` by default in development and test, never allowed in production. S3 variables required only when the driver is `s3`.
+- MinIO removed from `docker-compose.yml` and `.env.example` (project discontinued; repository archived April 2026).
+- **Done when:** tests and typecheck pass, `/health` still ok, a stored file is reachable through its signed URL.
 
 ### Step 2 — Clients, roles and Brand Profile
-- Decide table naming (Spanish vs English) **before starting**.
+- Table and column names in Spanish, as in the spec (decided by the Senior on 2026-10-07).
 - Tables: clients, users and roles, Brand Profile (tone, audience, content language per client, do's and don'ts), `hechos_verificados` with validity dates.
 - Every client table has `cliente_id`; repository layer enforces the filter.
 - Encrypted storage for client credentials.
@@ -59,8 +59,10 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 - **Done when:** a call without budget authorization is rejected; a valid call records its cost; invalid output triggers retry and alert (tested with the fake).
 
 ### Step 4 — Media library
-- Upload and catalog the client's real media (photos, video) in storage, with metadata, tags and usage rights.
+- Upload and catalog the client's real media (photos, video) in storage, with metadata, tags and usage rights. `LocalFileStorage` in development, `FakeStorage` in tests.
+- Link to `autorizaciones_imagen` for people who appear; consent data is not duplicated in the library.
 - Optional description of media through a vision adapter (with fake).
+- FFmpeg (`ffprobe`) installed natively on Windows from this step.
 - **Done when:** media can be uploaded, listed and searched per client.
 
 ### Step 5 — Planner and piece states
@@ -75,9 +77,10 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 - **Done when:** briefs are generated with the fake and contain no untraceable facts.
 
 ### Step 7 — Production with real media (carousels first)
-- 7a: carousels from library media plus text overlays.
-- 7b–7c: further formats as defined in the spec.
-- 7d: video (FFmpeg/Remotion), voice provider decided before this sub-step.
+- 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash (SHA-256 over the ordered list of file hashes).
+- 7b: video cuts and assembly with FFmpeg (native).
+- 7c: animated templates and word-level subtitles with Remotion. **Blocked until the license is confirmed.**
+- 7d: voice. Provider chosen before this sub-step.
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
 
@@ -86,15 +89,15 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 - **Done when:** a failing piece is blocked with clear reasons.
 
 ### Step 9 — Two-level approval
-- Internal review, then client approval, recorded against the exact file (hash).
-- Any change to the file invalidates the approval.
-- **Done when:** a piece cannot move to scheduled without both approvals of the exact file.
+- Internal review, then client approval, recorded against the exact piece (piece-level hash).
+- Any change to the files invalidates the approval.
+- **Done when:** a piece cannot move to scheduled without both approvals of the exact files.
 
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
-- Publishes only approved files; verifies the hash before sending.
+- Publishes only approved pieces; verifies the piece-level hash before sending.
 - Metrics collection after publishing.
-- **Done when:** a piece publishes through the fake, and an unapproved or modified file is refused.
+- **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.
 
 ### Step 11 — Basic dashboard and alerts
 - Views: plan, pieces by state, pending approvals, spend vs budget, results.
@@ -111,8 +114,13 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 ## Open questions for NovaCiel
 - Who creates the system's Anthropic API key, and what is the test budget (before Step 3)?
 - Is the shared Claude Pro account allowed, or should we use a team plan?
-- Where will PostgreSQL and storage be hosted in production?
-- Table names in Spanish or English (before Step 2)?
-- Content language per client: English, Spanish or both?
+- Production PostgreSQL version and operating system (to align with local 18 and the compose file's 16).
+- Production S3-compatible storage service (AWS S3, Cloudflare R2, Backblaze B2…).
+- NovaCiel's headcount and whether it will pay the Remotion license (before Step 7c).
+- Does "the system in Spanish" also cover code, comments and commits, or only domain names and interface? (Today: code in English.)
+- Content language per client: will any client need English? (before onboarding the first client)
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
+
+## Decided
+- Table and column names in Spanish (Senior, 2026-10-07).
