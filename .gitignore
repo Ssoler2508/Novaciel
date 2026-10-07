@@ -63,3 +63,6 @@ pnpm-debug.log*
 
 *.tmp
 .docker/
+
+# Local file storage (development)
+.data/

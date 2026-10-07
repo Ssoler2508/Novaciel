@@ -8,7 +8,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Storage } from './types.js';
 
 export interface S3StorageOptions {
-  endpoint: string;
+  /** Omit for AWS S3; set for other S3-compatible services (R2, B2, ...). */
+  endpoint?: string;
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
@@ -24,7 +25,7 @@ export class S3Storage implements Storage {
     this.client = new S3Client({
       endpoint: opts.endpoint,
       region: opts.region ?? 'us-east-1',
-      forcePathStyle: true, // required by MinIO
+      forcePathStyle: true, // path-style URLs work with S3-compatible services
       credentials: { accessKeyId: opts.accessKeyId, secretAccessKey: opts.secretAccessKey },
     });
   }

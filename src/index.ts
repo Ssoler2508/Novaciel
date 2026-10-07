@@ -3,9 +3,19 @@ import { config } from './config/index.js';
 import { closePool, pool } from './db/pool.js';
 import { logger } from './lib/logger/index.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
+import {
+  createStorage,
+  LocalFileStorage,
+  registerLocalFileRoute,
+} from './lib/media/storage/index.js';
 
 const app = Fastify({ loggerInstance: logger });
 const boss = createQueue();
+export const storage = createStorage(config.storage);
+
+if (storage instanceof LocalFileStorage) {
+  registerLocalFileRoute(app, storage);
+}
 
 app.get('/health', async (_req, reply) => {
   try {
