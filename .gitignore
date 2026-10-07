@@ -1,0 +1,65 @@
+# 1. Environment Variables & Secrets
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+
+# 2. Local Obsidian Vault & Workspace
+
+brain/
+docs/workspace.json
+.obsidian/
+
+
+# 3. IDEs, Editors & OS Files
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+
+# 4. Backend (Go)
+
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.txt
+
+
+# 5. Frontend & Node Ecosystem (Astro / TS / JS)
+
+# Dependencies and build outputs
+node_modules/
+.astro/
+dist/
+build/
+
+# Cache files and logs
+.npm
+.eslintcache
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# 6. Docker & Temporary Files
+
+*.tmp
+.docker/
