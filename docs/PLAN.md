@@ -1,7 +1,7 @@
 # PLAN.md — novaciel-core development plan
 
 Source of truth for scope: `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (v1.0, Spanish).
-Rule of thumb: one step per Claude Code session, plan mode first, `/clear` after each step, one commit per step.
+Rule of thumb: one branch per step (`step-XX`), one commit per checkpoint, plan mode first, `/clear` after each checkpoint or step. Step prompts live in `docs/prompts/`.
 
 ---
 
@@ -38,18 +38,31 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 - `S3Storage` was never tested against a real server.
 - No domain tables yet.
 
-### Step 1b — LocalFileStorage and storage selection
+### Step 1b — LocalFileStorage and storage selection ✅ (commit `4aa9052`)
 - `LocalFileStorage` implementing `Storage`, folder from `LOCAL_STORAGE_DIR`, path traversal protection (allowlist of key characters, Windows-safe), HMAC-signed dev URLs served by a local-only route; `PUBLIC_BASE_URL` for the URL origin.
 - `STORAGE_DRIVER` (`local` | `s3`), `local` by default in development and test, never allowed in production. S3 variables required only when the driver is `s3`.
 - MinIO removed from `docker-compose.yml` and `.env.example` (project discontinued; repository archived April 2026).
 - **Done when:** tests and typecheck pass, `/health` still ok, a stored file is reachable through its signed URL.
 
 ### Step 2 — Clients, roles and Brand Profile
+Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section only states the scope.
 - Table and column names in Spanish, as in the spec (decided by the Senior on 2026-10-07).
-- Tables: clients, users and roles, Brand Profile (tone, audience, content language per client, do's and don'ts), `hechos_verificados` with validity dates.
-- Every client table has `cliente_id`; repository layer enforces the filter.
-- Encrypted storage for client credentials.
-- **Done when:** a fictional client with profile and verified facts can be created and read; tests prove one client cannot read another's data.
+- Tables: `clientes`, `usuarios`, `roles` (global catalog seeded by the migration with the 5 roles of spec section 14), user-role assignments, `perfil_marca` (versioned; one JSONB column per profile block plus `idioma_contenido`), `hechos_verificados`, `reglas_prohibidas`, `autorizaciones_imagen`, `auditoria` (append-only).
+- Every client table has `cliente_id`; the repository layer enforces the filter. Exceptions: the global `roles` catalog, `usuarios` and `auditoria`.
+- Expired facts and expired authorizations are never returned as valid.
+- Profile completeness per block and `puedePlanificar`.
+- Seed script for one fictional client.
+- Not in this step: HTTP API, authentication, encrypted credentials (see Step 2b).
+- **Done when:** a fictional client with profile and verified facts can be created and read; tests prove one client cannot read another's data; the seed runs twice without duplicates.
+
+### Step 2b — Authentication and secret encryption
+- [ ] User authentication: login and logout, sessions, passwords with secure hashing
+- [ ] Role-based permissions enforced on endpoints
+- [ ] Secret encryption utility (for network credentials in Step 10), with the encryption key stored in configuration
+- [ ] No secrets or passwords appear in logs or responses
+
+**Done when:** a user without the required role is rejected on every protected endpoint, and there is a test proving that secrets are stored encrypted.
+**Must be completed before Step 9.**
 
 ### Step 3 — Budget and LLM adapter
 - Budget model: ceilings per client and period, authorization before any paid call, recorded spend.
@@ -67,7 +80,7 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 
 ### Step 5 — Planner and piece states
 - Weekly plan generation per client from Brand Profile and verified facts.
-- Piece state machine (e.g. planned → in production → in review → approved → scheduled → published → measured, plus rejected).
+- Piece state machine with the states and transitions of spec section 15 (planeada → plan_aprobado → guion_listo → en_produccion → …); `pausada` is reachable from any state.
 - Invalid transitions are impossible.
 - **Done when:** a weekly plan is created for the fictional client and state transitions are tested.
 

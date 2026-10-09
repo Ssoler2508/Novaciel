@@ -66,3 +66,4 @@ pnpm-debug.log*
 
 # Local file storage (development)
 .data/
+.claude/settings.local.json
