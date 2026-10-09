@@ -6,7 +6,7 @@ import { assertTestDatabase } from './guard.js';
  * Never add: auditoria (append-only), roles (seeded by a migration), the migrations table
  * or the pg-boss schema.
  */
-export const DOMAIN_TABLES: readonly string[] = [];
+export const DOMAIN_TABLES: readonly string[] = ['usuario_roles', 'usuarios', 'clientes'];
 
 /**
  * For tests that cannot run inside one transaction (code that commits on its own).

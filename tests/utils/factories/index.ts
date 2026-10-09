@@ -3,3 +3,6 @@
 // - signature: (db: Db, overrides?: Partial<Row>) => Promise<Row>;
 // - generate unique values with uniqueSuffix(); return the inserted row.
 export { uniqueSuffix } from './unique.js';
+export { createCliente } from './clientes.js';
+export { createUsuario } from './usuarios.js';
+export { assignRole } from './roles.js';
