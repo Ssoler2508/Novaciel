@@ -13,5 +13,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "tests", "vitest.config.ts"]
 }
