@@ -3,7 +3,7 @@ import { withTestTransaction } from '../../../tests/utils/transaction.js';
 import { auditRowsFor } from '../../../tests/utils/auditRows.js';
 import { createUsuario as createUsuarioRow } from '../../../tests/utils/factories/index.js';
 import { asClienteId } from '../shared/clienteId.js';
-import { createCliente, getClienteById, updateClienteEstado } from './clientesRepository.js';
+import { createCliente, findClienteByNombreComercial, getClienteById, updateClienteEstado } from './clientesRepository.js';
 import {
   createUsuario,
   getUsuarioByEmail,
@@ -91,6 +91,20 @@ describe('usuariosRepository', () => {
       const unknown = '00000000-0000-4000-8000-000000000000';
       expect(await setUsuarioActivo(db, unknown, false, SISTEMA)).toBeNull();
       expect(await auditRowsFor(db, 'usuarios', unknown)).toHaveLength(0);
+    });
+  });
+});
+
+describe('findClienteByNombreComercial', () => {
+  it('finds the oldest match by exact name and returns null otherwise', async () => {
+    await withTestTransaction(async (db) => {
+      const first = await createCliente(db, { nombreComercial: 'Nombre Repetido Ficticio' }, SISTEMA);
+      const second = await createCliente(db, { nombreComercial: 'Nombre Repetido Ficticio' }, SISTEMA);
+      // now() is constant inside a transaction, so make "second" explicitly newer.
+      await db.query(`UPDATE clientes SET creado_en = $2 WHERE id = $1`, [second.id, new Date(Date.now() + 5000)]);
+      expect((await findClienteByNombreComercial(db, 'Nombre Repetido Ficticio'))?.id).toBe(first.id);
+      expect(await findClienteByNombreComercial(db, 'nombre repetido ficticio')).toBeNull();
+      expect(await findClienteByNombreComercial(db, 'Otro Nombre')).toBeNull();
     });
   });
 });

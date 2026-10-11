@@ -68,3 +68,12 @@ export async function updateClienteEstado(
     return after;
   });
 }
+
+/** Names are not unique by design, so this returns the oldest match. Used by the seed to find its client again. */
+export async function findClienteByNombreComercial(db: Db, nombreComercial: string): Promise<ClienteRow | null> {
+  const { rows } = await db.query(
+    'SELECT * FROM clientes WHERE nombre_comercial = $1 ORDER BY creado_en, id LIMIT 1',
+    [nombreComercial],
+  );
+  return rows[0] ? toRow(rows[0]) : null;
+}

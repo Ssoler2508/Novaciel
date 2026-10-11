@@ -157,3 +157,13 @@ export async function listClientUsers(db: Db, clienteId: ClienteId): Promise<Cli
   }
   return [...byUser.values()];
 }
+
+/** True when the user has that NovaCiel role (the assignment has no client). */
+export async function hasNovaCielRole(db: Db, usuarioId: string, rolCodigo: string): Promise<boolean> {
+  const { rows } = await db.query(
+    `SELECT 1 FROM usuario_roles ur JOIN roles r ON r.id = ur.rol_id
+     WHERE ur.usuario_id = $1 AND r.codigo = $2 AND r.ambito = 'novaciel' AND ur.cliente_id IS NULL`,
+    [usuarioId, rolCodigo],
+  );
+  return rows.length > 0;
+}

@@ -7,6 +7,7 @@ import { getRoleByCodigo, listRoles } from './rolesRepository.js';
 import {
   assignClientRole,
   assignNovaCielRole,
+  hasNovaCielRole,
   listClientUsers,
   revokeClientRole,
   revokeNovaCielRole,
@@ -159,5 +160,21 @@ describe('ClienteId typing', () => {
       await listClientUsers(db, '11111111-1111-4111-8111-111111111111');
     };
     expect(typeof typeChecks).toBe('function');
+  });
+});
+
+describe('hasNovaCielRole', () => {
+  it('is true only for that user and that NovaCiel role', async () => {
+    await withTestTransaction(async (db) => {
+      const cliente = asClienteId((await createCliente(db)).id);
+      const admin = await createUsuario(db);
+      const other = await createUsuario(db);
+      await assignNovaCielRole(db, { usuarioId: admin.id, rolCodigo: 'administrador_novaciel' }, SISTEMA);
+      await assignClientRole(db, cliente, { usuarioId: other.id, rolCodigo: 'dueno_cliente' }, SISTEMA);
+      expect(await hasNovaCielRole(db, admin.id, 'administrador_novaciel')).toBe(true);
+      expect(await hasNovaCielRole(db, admin.id, 'operador_novaciel')).toBe(false);
+      expect(await hasNovaCielRole(db, other.id, 'administrador_novaciel')).toBe(false);
+      expect(await hasNovaCielRole(db, other.id, 'dueno_cliente')).toBe(false);
+    });
   });
 });
