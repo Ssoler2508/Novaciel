@@ -1,10 +1,7 @@
-import { afterAll, describe, expect, it } from 'vitest';
-import { closePool, pool } from './pool.js';
+import { describe, expect, it } from 'vitest';
+import { pool } from './pool.js';
 
-afterAll(async () => {
-  await closePool();
-});
-
+// The global pool is closed by tests/utils/workerGuard.ts after each test file.
 describe('database', () => {
   it('connects and answers a query', async () => {
     const { rows } = await pool.query('SELECT 1 AS ok');

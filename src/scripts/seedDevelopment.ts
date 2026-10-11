@@ -1,0 +1,164 @@
+import type { Db } from '../db/types.js';
+import type { AuditActor } from '../modules/auditoria/recordAudit.js';
+import { createAutorizacion, listAutorizaciones } from '../modules/autorizaciones/autorizacionesRepository.js';
+import {
+  createCliente,
+  findClienteByNombreComercial,
+  getClienteById,
+  updateClienteEstado,
+} from '../modules/clientes/clientesRepository.js';
+import { createHecho, listHechos, type NewHecho } from '../modules/hechos/hechosRepository.js';
+import type { CompletenessResult } from '../modules/perfilMarca/completeness.js';
+import { createNewVersion, getCurrentPerfilMarca } from '../modules/perfilMarca/perfilMarcaRepository.js';
+import { getCompleteness } from '../modules/perfilMarca/puedePlanificar.js';
+import { createRegla, listReglas, type ReglaTipo } from '../modules/reglasProhibidas/reglasRepository.js';
+import {
+  assignClientRole,
+  assignNovaCielRole,
+  hasNovaCielRole,
+  listClientUsers,
+} from '../modules/roles/usuarioRolesRepository.js';
+import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
+import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
+
+// Every value below is fictional.
+export const SEED_ADMIN_EMAIL = 'admin.novaciel@example.test';
+export const SEED_OWNER_EMAIL = 'dueno.aurora@example.test';
+export const SEED_CLIENT_NAME = 'Cafetería Aurora (ficticia)';
+const SEED_AUTHORIZATION_KEY = 'autorizaciones/seed-persona-ficticia.pdf';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SISTEMA: AuditActor = { tipo: 'sistema' };
+
+export interface SeedResult {
+  created: string[];
+  existing: string[];
+  completeness: CompletenessResult | null;
+  puedePlanificar: boolean;
+}
+
+/**
+ * Creates the fictional development data. Idempotent by lookup: every item is looked up first, so a
+ * second run writes no rows and no audit rows, and never overwrites edits made by hand.
+ * Goes through the repositories (never the test factories). Callers run it inside a transaction.
+ */
+export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<SeedResult> {
+  const result: SeedResult = { created: [], existing: [], completeness: null, puedePlanificar: false };
+  const note = (created: boolean, what: string) => (created ? result.created : result.existing).push(what);
+
+  // NovaCiel administrator.
+  let admin = await getUsuarioByEmail(db, SEED_ADMIN_EMAIL);
+  note(!admin, 'usuario administrador NovaCiel');
+  admin ??= await createUsuario(db, { email: SEED_ADMIN_EMAIL, nombre: 'Admin NovaCiel Ficticio' }, SISTEMA);
+  const adminHasRole = await hasNovaCielRole(db, admin.id, 'administrador_novaciel');
+  note(!adminHasRole, 'rol administrador_novaciel');
+  if (!adminHasRole) await assignNovaCielRole(db, { usuarioId: admin.id, rolCodigo: 'administrador_novaciel' }, SISTEMA);
+
+  // Fictional client. Left in en_onboarding: it is activated once it can be planned.
+  let cliente = await findClienteByNombreComercial(db, SEED_CLIENT_NAME);
+  note(!cliente, 'cliente ficticio');
+  cliente ??= await createCliente(
+    db,
+    { nombreComercial: SEED_CLIENT_NAME, razonSocial: 'Cafetería Aurora Ficticia SAS' },
+    SISTEMA,
+  );
+  const clienteId = cliente.id;
+
+  // Client owner.
+  let owner = await getUsuarioByEmail(db, SEED_OWNER_EMAIL);
+  note(!owner, 'usuario dueño del cliente');
+  owner ??= await createUsuario(db, { email: SEED_OWNER_EMAIL, nombre: 'Dueña Aurora Ficticia' }, SISTEMA);
+  const ownerId = owner.id;
+  const clientUsers = await listClientUsers(db, clienteId);
+  const ownerHasRole = clientUsers.some((u) => u.usuario_id === ownerId && u.roles.includes('dueno_cliente'));
+  note(!ownerHasRole, 'rol dueno_cliente');
+  if (!ownerHasRole) await assignClientRole(db, clienteId, { usuarioId: ownerId, rolCodigo: 'dueno_cliente' }, SISTEMA);
+
+  // Brand profile. A new version fills only the required fields that are missing, so hand edits are
+  // kept and history keeps the older version. A complete profile is left alone (no new version).
+  const perfil = await getCurrentPerfilMarca(db, clienteId);
+  const missingBlocks = fillMissingProfileBlocks(perfil ?? {});
+  const needsIdioma = !perfil?.idioma_contenido;
+  const profileChanged = !perfil || needsIdioma || Object.keys(missingBlocks).length > 0;
+  note(!perfil, 'perfil_marca');
+  if (perfil && profileChanged) result.created.push('perfil_marca: new version completing missing fields');
+  if (profileChanged) {
+    await createNewVersion(db, clienteId, {
+      creadoPor: ownerId,
+      ...(needsIdioma ? { idiomaContenido: SEED_IDIOMA } : {}),
+      ...missingBlocks,
+    });
+  }
+
+  // Verified facts: 4 valid (one is a promotion with an end date) and 1 expired promotion.
+  const hechos: NewHecho[] = [
+    { tipo: 'precio', enunciado: 'El café americano cuesta $6.000 COP.', fuente: 'Carta de precios ficticia', verificadoPor: ownerId },
+    { tipo: 'horario', enunciado: 'Abrimos de lunes a sábado de 7:00 a 19:00.', fuente: 'Dueña (ficticia)', verificadoPor: ownerId },
+    { tipo: 'cifra', enunciado: 'Llevamos 8 años sirviendo café de origen colombiano.', fuente: 'Dueña (ficticia)', verificadoPor: ownerId },
+    {
+      tipo: 'promocion',
+      enunciado: '2x1 en capuchinos los martes de este mes.',
+      fuente: 'Dueña (ficticia)',
+      verificadoPor: ownerId,
+      vigenteHasta: new Date(now.getTime() + 30 * DAY_MS),
+    },
+    {
+      tipo: 'promocion',
+      enunciado: 'Descuento de apertura del 20%.',
+      fuente: 'Dueña (ficticia)',
+      verificadoPor: ownerId,
+      vigenteDesde: new Date(now.getTime() - 60 * DAY_MS),
+      vigenteHasta: new Date(now.getTime() - 30 * DAY_MS),
+    },
+  ];
+  const existingHechos = new Set((await listHechos(db, clienteId)).map((h) => h.enunciado));
+  for (const hecho of hechos) {
+    const exists = existingHechos.has(hecho.enunciado);
+    note(!exists, `hecho: ${hecho.enunciado}`);
+    if (!exists) await createHecho(db, clienteId, hecho, SISTEMA);
+  }
+
+  // Banned rules.
+  const reglas: { tipo: ReglaTipo; texto: string; motivo: string }[] = [
+    { tipo: 'palabra', texto: 'garantizado', motivo: 'Publicidad veraz: no se promete lo que no se puede garantizar.' },
+    { tipo: 'promesa', texto: 'El mejor café de la ciudad', motivo: 'Afirmación que no se puede demostrar.' },
+    { tipo: 'tema', texto: 'Política', motivo: 'El negocio no toma posición.' },
+  ];
+  const existingReglas = new Set((await listReglas(db, clienteId)).map((r) => `${r.tipo}|${r.texto.toLowerCase()}`));
+  for (const regla of reglas) {
+    const exists = existingReglas.has(`${regla.tipo}|${regla.texto.toLowerCase()}`);
+    note(!exists, `regla: ${regla.tipo} ${regla.texto}`);
+    if (!exists) await createRegla(db, clienteId, regla, SISTEMA);
+  }
+
+  // One image authorization (not a minor). Only the storage key is recorded; no file is uploaded.
+  const hasAutorizacion = (await listAutorizaciones(db, clienteId)).some((a) => a.documento_clave === SEED_AUTHORIZATION_KEY);
+  note(!hasAutorizacion, 'autorizacion_imagen');
+  if (!hasAutorizacion) {
+    await createAutorizacion(
+      db,
+      clienteId,
+      {
+        personaNombre: 'Persona Ficticia (barista)',
+        alcance: 'Fotos y videos en las redes sociales del negocio',
+        vigenteHasta: new Date(now.getTime() + 365 * DAY_MS),
+        documentoClave: SEED_AUTHORIZATION_KEY,
+        esMenor: false,
+      },
+      SISTEMA,
+    );
+  }
+
+  // Completeness. Once the client can be planned it is activated, but only from en_onboarding, so a
+  // state set by hand (for example en_pausa) is never overridden.
+  const completeness = await getCompleteness(db, clienteId);
+  result.completeness = completeness;
+  result.puedePlanificar = completeness?.mandatoryComplete ?? false;
+  const current = await getClienteById(db, clienteId);
+  if (result.puedePlanificar && current?.estado === 'en_onboarding') {
+    await updateClienteEstado(db, clienteId, 'activo', SISTEMA);
+    result.created.push('cliente: estado activo');
+  }
+
+  return result;
+}
