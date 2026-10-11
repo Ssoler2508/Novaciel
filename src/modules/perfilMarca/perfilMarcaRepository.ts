@@ -50,6 +50,13 @@ export async function getCurrentPerfilMarca(db: Db, clienteId: ClienteId): Promi
  * rejects it. There is no update function for perfil_marca.
  */
 export async function createNewVersion(db: Db, clienteId: ClienteId, params: NewVersionParams): Promise<PerfilMarcaRow> {
+  // A block is never NULL (the database requires an object). Clear one by passing {}; null would
+  // otherwise be carried over silently, which is not what the caller meant.
+  for (const name of PERFIL_BLOCKS) {
+    if ((params as Record<string, unknown>)[name] === null) {
+      throw new Error(`Block "${name}" cannot be null; pass {} to clear it`);
+    }
+  }
   return runInTransaction(db, async (tx) => {
     // Serializes concurrent new versions for the same client.
     const locked = await tx.query('SELECT id FROM clientes WHERE id = $1 FOR UPDATE', [clienteId]);

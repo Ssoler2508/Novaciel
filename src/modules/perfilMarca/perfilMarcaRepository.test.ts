@@ -4,7 +4,7 @@ import { auditRowsFor } from '../../../tests/utils/auditRows.js';
 import { createCliente, createUsuario } from '../../../tests/utils/factories/index.js';
 import { asClienteId } from '../shared/clienteId.js';
 import * as repo from './perfilMarcaRepository.js';
-import { createNewVersion, getCurrentPerfilMarca } from './perfilMarcaRepository.js';
+import { PERFIL_BLOCKS, createNewVersion, getCurrentPerfilMarca } from './perfilMarcaRepository.js';
 
 describe('perfilMarcaRepository', () => {
   it('has no update or delete function', () => {
@@ -82,6 +82,59 @@ describe('perfilMarcaRepository', () => {
       expect(audit[0]?.datos_despues).toMatchObject({ id: v2.id, version: 2 });
       const unset = await createNewVersion(db, clienteId, { creadoPor: autor.id, idiomaContenido: null });
       expect(unset.idioma_contenido).toBeNull();
+    });
+  });
+
+  it('a partial change copies every other block and idiomaContenido from the current version', async () => {
+    await withTestTransaction(async (db) => {
+      const clienteId = asClienteId((await createCliente(db)).id);
+      const autor = await createUsuario(db);
+      const full = Object.fromEntries(PERFIL_BLOCKS.map((name) => [name, { campo: name }]));
+      await createNewVersion(db, clienteId, { creadoPor: autor.id, idiomaContenido: 'ambos', ...full });
+      const v2 = await createNewVersion(db, clienteId, { creadoPor: autor.id, voz: { campo: 'nuevo' } });
+      for (const name of PERFIL_BLOCKS) {
+        expect(v2[name]).toEqual(name === 'voz' ? { campo: 'nuevo' } : { campo: name });
+      }
+      expect(v2.idioma_contenido).toBe('ambos');
+    });
+  });
+
+  it('an explicit null idiomaContenido clears it, while omitting it keeps it', async () => {
+    await withTestTransaction(async (db) => {
+      const clienteId = asClienteId((await createCliente(db)).id);
+      const autor = await createUsuario(db);
+      await createNewVersion(db, clienteId, { creadoPor: autor.id, idiomaContenido: 'es' });
+      const kept = await createNewVersion(db, clienteId, { creadoPor: autor.id });
+      expect(kept.idioma_contenido).toBe('es');
+      const cleared = await createNewVersion(db, clienteId, { creadoPor: autor.id, idiomaContenido: null });
+      expect(cleared.idioma_contenido).toBeNull();
+    });
+  });
+
+  it('an explicit empty object clears a block, leaving the others untouched', async () => {
+    await withTestTransaction(async (db) => {
+      const clienteId = asClienteId((await createCliente(db)).id);
+      const autor = await createUsuario(db);
+      await createNewVersion(db, clienteId, {
+        creadoPor: autor.id,
+        identidad: { nombre: 'Uno' },
+        voz: { trato: 'tu' },
+      });
+      const v2 = await createNewVersion(db, clienteId, { creadoPor: autor.id, voz: {} });
+      expect(v2.voz).toEqual({});
+      expect(v2.identidad).toEqual({ nombre: 'Uno' });
+    });
+  });
+
+  it('an explicit null block is rejected instead of silently carried over', async () => {
+    await withTestTransaction(async (db) => {
+      const clienteId = asClienteId((await createCliente(db)).id);
+      const autor = await createUsuario(db);
+      const v1 = await createNewVersion(db, clienteId, { creadoPor: autor.id, voz: { trato: 'tu' } });
+      await expect(
+        createNewVersion(db, clienteId, { creadoPor: autor.id, voz: null as never }),
+      ).rejects.toThrow(/Block "voz" cannot be null/);
+      expect((await getCurrentPerfilMarca(db, clienteId))?.id).toBe(v1.id);
     });
   });
 
