@@ -21,6 +21,20 @@ async function main(): Promise<void> {
   for (const item of result.created) console.log(`  + ${item}`);
   console.log(`Already present: ${result.existing.length}`);
   for (const item of result.existing) console.log(`  = ${item}`);
+
+  console.log('Completeness per block:');
+  if (result.completeness) {
+    for (const [block, info] of Object.entries(result.completeness.blocks)) {
+      const flag = info.mandatory ? '' : ' (not mandatory)';
+      const missing = info.missing.length > 0 ? ` missing: ${info.missing.join(', ')}` : '';
+      console.log(`  ${block.padEnd(22)} ${String(info.percent).padStart(3)}%${flag}${missing}`);
+    }
+  } else {
+    console.log('  (no current profile)');
+  }
+  console.log(`puedePlanificar: ${result.puedePlanificar}`);
+  // The fictional client must be complete after seeding.
+  if (!result.puedePlanificar) process.exitCode = 1;
 }
 
 main()

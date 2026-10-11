@@ -1,9 +1,16 @@
 import type { Db } from '../db/types.js';
 import type { AuditActor } from '../modules/auditoria/recordAudit.js';
 import { createAutorizacion, listAutorizaciones } from '../modules/autorizaciones/autorizacionesRepository.js';
-import { createCliente, findClienteByNombreComercial } from '../modules/clientes/clientesRepository.js';
+import {
+  createCliente,
+  findClienteByNombreComercial,
+  getClienteById,
+  updateClienteEstado,
+} from '../modules/clientes/clientesRepository.js';
 import { createHecho, listHechos, type NewHecho } from '../modules/hechos/hechosRepository.js';
+import type { CompletenessResult } from '../modules/perfilMarca/completeness.js';
 import { createNewVersion, getCurrentPerfilMarca } from '../modules/perfilMarca/perfilMarcaRepository.js';
+import { getCompleteness } from '../modules/perfilMarca/puedePlanificar.js';
 import { createRegla, listReglas, type ReglaTipo } from '../modules/reglasProhibidas/reglasRepository.js';
 import {
   assignClientRole,
@@ -12,6 +19,7 @@ import {
   listClientUsers,
 } from '../modules/roles/usuarioRolesRepository.js';
 import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
+import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
 
 // Every value below is fictional.
 export const SEED_ADMIN_EMAIL = 'admin.novaciel@example.test';
@@ -25,6 +33,8 @@ const SISTEMA: AuditActor = { tipo: 'sistema' };
 export interface SeedResult {
   created: string[];
   existing: string[];
+  completeness: CompletenessResult | null;
+  puedePlanificar: boolean;
 }
 
 /**
@@ -33,7 +43,7 @@ export interface SeedResult {
  * Goes through the repositories (never the test factories). Callers run it inside a transaction.
  */
 export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<SeedResult> {
-  const result: SeedResult = { created: [], existing: [] };
+  const result: SeedResult = { created: [], existing: [], completeness: null, puedePlanificar: false };
   const note = (created: boolean, what: string) => (created ? result.created : result.existing).push(what);
 
   // NovaCiel administrator.
@@ -64,14 +74,19 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
   note(!ownerHasRole, 'rol dueno_cliente');
   if (!ownerHasRole) await assignClientRole(db, clienteId, { usuarioId: ownerId, rolCodigo: 'dueno_cliente' }, SISTEMA);
 
-  // Brand profile, only when the client has none.
+  // Brand profile. A new version fills only the required fields that are missing, so hand edits are
+  // kept and history keeps the older version. A complete profile is left alone (no new version).
   const perfil = await getCurrentPerfilMarca(db, clienteId);
+  const missingBlocks = fillMissingProfileBlocks(perfil ?? {});
+  const needsIdioma = !perfil?.idioma_contenido;
+  const profileChanged = !perfil || needsIdioma || Object.keys(missingBlocks).length > 0;
   note(!perfil, 'perfil_marca');
-  if (!perfil) {
+  if (perfil && profileChanged) result.created.push('perfil_marca: new version completing missing fields');
+  if (profileChanged) {
     await createNewVersion(db, clienteId, {
       creadoPor: ownerId,
-      idiomaContenido: 'es',
-      identidad: { nombre: SEED_CLIENT_NAME },
+      ...(needsIdioma ? { idiomaContenido: SEED_IDIOMA } : {}),
+      ...missingBlocks,
     });
   }
 
@@ -132,6 +147,19 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
       },
       SISTEMA,
     );
+  }
+
+  // Completeness. Once the client can be planned it is activated, but only from en_onboarding, so a
+  // state set by hand (for example en_pausa) is never overridden.
+  // Evaluated at the current time, not at `now` from the start of the run: rows created above get
+  // vigente_desde = the database's now(), which is slightly later than that earlier JS timestamp.
+  const completeness = await getCompleteness(db, clienteId);
+  result.completeness = completeness;
+  result.puedePlanificar = completeness?.mandatoryComplete ?? false;
+  const current = await getClienteById(db, clienteId);
+  if (result.puedePlanificar && current?.estado === 'en_onboarding') {
+    await updateClienteEstado(db, clienteId, 'activo', SISTEMA);
+    result.created.push('cliente: estado activo');
   }
 
   return result;
