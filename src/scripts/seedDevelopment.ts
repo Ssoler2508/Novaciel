@@ -151,8 +151,6 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
 
   // Completeness. Once the client can be planned it is activated, but only from en_onboarding, so a
   // state set by hand (for example en_pausa) is never overridden.
-  // Evaluated at the current time, not at `now` from the start of the run: rows created above get
-  // vigente_desde = the database's now(), which is slightly later than that earlier JS timestamp.
   const completeness = await getCompleteness(db, clienteId);
   result.completeness = completeness;
   result.puedePlanificar = completeness?.mandatoryComplete ?? false;

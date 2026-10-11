@@ -14,7 +14,12 @@ import { createNewVersion } from './perfilMarcaRepository.js';
 import { PERFIL_JSON_BLOCKS, type PerfilJsonBlock } from './completeness.js';
 import { getCompleteness, loadProfileSnapshot, puedePlanificar } from './puedePlanificar.js';
 
+import { createAutorizacion, getValidAutorizaciones } from '../autorizaciones/autorizacionesRepository.js';
+import { createHecho, getValidHechos } from '../hechos/hechosRepository.js';
+import { createRegla } from '../reglasProhibidas/reglasRepository.js';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SISTEMA = { tipo: 'sistema' } as const;
 
 async function newClient(db: Db): Promise<{ clienteId: ClienteId; autor: string }> {
   return { clienteId: asClienteId((await createCliente(db)).id), autor: (await createUsuario(db)).id };
@@ -83,6 +88,51 @@ describe('puedePlanificar', () => {
       const completeness = await getCompleteness(db, clienteId);
       expect(completeness?.mandatoryComplete).toBe(true);
       for (const info of Object.values(completeness!.blocks)) expect(info.percent).toBe(100);
+    });
+  });
+});
+
+describe('database clock when `at` is not given', () => {
+  it('rows created with the default vigente_desde count immediately, in the same transaction', async () => {
+    await withTestTransaction(async (db) => {
+      const { clienteId, autor } = await newClient(db);
+      await createNewVersion(db, clienteId, {
+        creadoPor: autor,
+        idiomaContenido: 'es',
+        ...Object.fromEntries(PERFIL_JSON_BLOCKS.map((b) => [b, completeBlock(b)])),
+      });
+      // Created through the repositories without vigenteDesde: the database sets vigente_desde = now().
+      const verificadoPor = autor;
+      const precio = await createHecho(db, clienteId, { tipo: 'precio', enunciado: 'Precio ficticio', fuente: 'Carta', verificadoPor }, SISTEMA);
+      await createHecho(db, clienteId, { tipo: 'horario', enunciado: 'Horario ficticio', fuente: 'Dueña', verificadoPor }, SISTEMA);
+      await createRegla(db, clienteId, { tipo: 'palabra', texto: 'garantizado' }, SISTEMA);
+      const autorizacion = await createAutorizacion(
+        db,
+        clienteId,
+        {
+          personaNombre: 'Persona Ficticia',
+          alcance: 'Redes',
+          vigenteHasta: new Date(Date.now() + 365 * DAY_MS),
+          documentoClave: 'autorizaciones/ficticia.pdf',
+          esMenor: false,
+        },
+        SISTEMA,
+      );
+
+      expect((await getValidHechos(db, clienteId)).map((h) => h.id)).toContain(precio.id);
+      expect((await getValidHechos(db, clienteId)).length).toBe(2);
+      expect((await getValidAutorizaciones(db, clienteId)).map((a) => a.id)).toEqual([autorizacion.id]);
+      expect(await puedePlanificar(db, clienteId)).toBe(true);
+    });
+  });
+
+  it('an explicit `at` is still honoured (before the rows existed they are not valid)', async () => {
+    await withTestTransaction(async (db) => {
+      const { clienteId, autor } = await newClient(db);
+      await createHecho(db, clienteId, { tipo: 'precio', enunciado: 'Precio ficticio', fuente: 'Carta', verificadoPor: autor }, SISTEMA);
+      const before = new Date(Date.now() - 365 * DAY_MS);
+      expect(await getValidHechos(db, clienteId, before)).toEqual([]);
+      expect((await getValidHechos(db, clienteId)).length).toBe(1);
     });
   });
 });

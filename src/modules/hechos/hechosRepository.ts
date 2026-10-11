@@ -97,13 +97,18 @@ export function deleteHecho(db: Db, clienteId: ClienteId, id: string, actor: Aud
   return deleteClientRow(db, { tabla: 'hechos_verificados', clienteId, id, actor });
 }
 
-/** Facts valid at `at` (default now): vigente_desde <= at and (no end or at < vigente_hasta). */
-export async function getValidHechos(db: Db, clienteId: ClienteId, at: Date = new Date()): Promise<HechoRow[]> {
+/**
+ * Facts valid at `at`: vigente_desde <= at and (no end or at < vigente_hasta).
+ * Without `at` it uses the database clock (SQL now()), the same clock that sets the default
+ * vigente_desde, so a fact created a moment ago is valid. An explicit `at` is sent as a parameter.
+ */
+export async function getValidHechos(db: Db, clienteId: ClienteId, at?: Date): Promise<HechoRow[]> {
+  const atSql = at ? '$2' : 'now()';
   const { rows } = await db.query<HechoRow>(
     `SELECT * FROM hechos_verificados
-     WHERE cliente_id = $1 AND vigente_desde <= $2 AND (vigente_hasta IS NULL OR vigente_hasta > $2)
+     WHERE cliente_id = $1 AND vigente_desde <= ${atSql} AND (vigente_hasta IS NULL OR vigente_hasta > ${atSql})
      ORDER BY vigente_desde, id`,
-    [clienteId, at],
+    at ? [clienteId, at] : [clienteId],
   );
   return rows;
 }

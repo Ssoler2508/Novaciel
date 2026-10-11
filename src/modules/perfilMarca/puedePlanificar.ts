@@ -10,7 +10,7 @@ import { getCurrentPerfilMarca } from './perfilMarcaRepository.js';
  * Loads the completeness inputs of one client through the repositories (always filtered by cliente_id).
  * Returns null when the client has no current perfil_marca.
  */
-export async function loadProfileSnapshot(db: Db, clienteId: ClienteId, at: Date = new Date()): Promise<ProfileSnapshot | null> {
+export async function loadProfileSnapshot(db: Db, clienteId: ClienteId, at?: Date): Promise<ProfileSnapshot | null> {
   const perfil = await getCurrentPerfilMarca(db, clienteId);
   if (!perfil) return null;
 
@@ -37,13 +37,13 @@ export async function loadProfileSnapshot(db: Db, clienteId: ClienteId, at: Date
 }
 
 /** Completeness per block for a client, or null when it has no current profile. */
-export async function getCompleteness(db: Db, clienteId: ClienteId, at: Date = new Date()): Promise<CompletenessResult | null> {
+export async function getCompleteness(db: Db, clienteId: ClienteId, at?: Date): Promise<CompletenessResult | null> {
   const snapshot = await loadProfileSnapshot(db, clienteId, at);
   return snapshot ? computeCompleteness(snapshot) : null;
 }
 
 /** True only when every block marked (O) in spec section 4.2 is at 100%. False without a current profile. */
-export async function puedePlanificar(db: Db, clienteId: ClienteId, at: Date = new Date()): Promise<boolean> {
+export async function puedePlanificar(db: Db, clienteId: ClienteId, at?: Date): Promise<boolean> {
   const result = await getCompleteness(db, clienteId, at);
   return result?.mandatoryComplete ?? false;
 }

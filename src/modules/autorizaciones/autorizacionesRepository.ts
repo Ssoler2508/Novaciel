@@ -139,22 +139,21 @@ export async function revokeAutorizacion(
 }
 
 /**
- * Authorizations usable at `at` (default now). Always excludes minors, expired and revoked rows.
+ * Authorizations usable at `at`. Always excludes minors, expired and revoked rows.
  * There is deliberately no flag to include minors; a later step may add one, explicitly.
+ * Without `at` it uses the database clock (SQL now()), the same clock that sets the default
+ * vigente_desde; an explicit `at` is sent as a parameter.
  */
-export async function getValidAutorizaciones(
-  db: Db,
-  clienteId: ClienteId,
-  at: Date = new Date(),
-): Promise<AutorizacionRow[]> {
+export async function getValidAutorizaciones(db: Db, clienteId: ClienteId, at?: Date): Promise<AutorizacionRow[]> {
+  const atSql = at ? '$2' : 'now()';
   const { rows } = await db.query<AutorizacionRow>(
     `SELECT * FROM autorizaciones_imagen
      WHERE cliente_id = $1
        AND es_menor = false
-       AND vigente_desde <= $2 AND vigente_hasta > $2
-       AND (revocada_en IS NULL OR revocada_en > $2)
+       AND vigente_desde <= ${atSql} AND vigente_hasta > ${atSql}
+       AND (revocada_en IS NULL OR revocada_en > ${atSql})
      ORDER BY vigente_desde, id`,
-    [clienteId, at],
+    at ? [clienteId, at] : [clienteId],
   );
   return rows;
 }
