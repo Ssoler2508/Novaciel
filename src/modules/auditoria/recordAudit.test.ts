@@ -4,6 +4,7 @@ import { DOMAIN_TABLES } from '../../../tests/utils/cleanup.js';
 import { getTestPool } from '../../../tests/utils/testPool.js';
 import { createCliente, createUsuario } from '../../../tests/utils/factories/index.js';
 import { recordAudit, type AuditEntry } from './recordAudit.js';
+import { asClienteId } from '../shared/clienteId.js';
 
 const UNKNOWN_ID = '00000000-0000-0000-0000-000000000000';
 const base: AuditEntry = { actor: { tipo: 'sistema' }, accion: 'insert', tabla: 'clientes', filaId: 'x' };
@@ -21,7 +22,7 @@ describe('recordAudit', () => {
         accion: 'update',
         tabla: 'clientes',
         filaId: cliente.id,
-        clienteId: cliente.id,
+        clienteId: asClienteId(cliente.id),
         antes: { estado: 'en_onboarding' },
         despues: { estado: 'activo' },
       });
@@ -59,7 +60,7 @@ describe('recordAudit', () => {
         recordAudit(db, {
           ...base,
           actor: { tipo: 'usuario', usuarioId: UNKNOWN_ID },
-          clienteId: UNKNOWN_ID,
+          clienteId: asClienteId(UNKNOWN_ID),
         }),
       ).resolves.toBeUndefined();
     });

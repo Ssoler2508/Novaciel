@@ -1,12 +1,15 @@
 import type { Db } from '../../db/types.js';
+import type { ClienteId } from '../shared/clienteId.js';
+
+export type AuditActor = { tipo: 'sistema' } | { tipo: 'usuario'; usuarioId: string };
 
 export interface AuditEntry {
-  actor: { tipo: 'sistema' } | { tipo: 'usuario'; usuarioId: string };
+  actor: AuditActor;
   accion: string;
   tabla: string;
   filaId: string;
   /** NULL for global events (for example a NovaCiel role assignment). */
-  clienteId?: string | null;
+  clienteId?: ClienteId | null;
   antes?: Record<string, unknown> | null;
   despues?: Record<string, unknown> | null;
 }
