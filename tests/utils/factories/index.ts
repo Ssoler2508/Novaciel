@@ -6,3 +6,4 @@ export { uniqueSuffix } from './unique.js';
 export { createCliente } from './clientes.js';
 export { createUsuario } from './usuarios.js';
 export { assignRole } from './roles.js';
+export { createPerfilMarca, PERFIL_BLOCKS } from './perfilMarca.js';
