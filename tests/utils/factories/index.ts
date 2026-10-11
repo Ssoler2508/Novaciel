@@ -7,3 +7,6 @@ export { createCliente } from './clientes.js';
 export { createUsuario } from './usuarios.js';
 export { assignRole } from './roles.js';
 export { createPerfilMarca, PERFIL_BLOCKS } from './perfilMarca.js';
+export { createHechoVerificado } from './hechosVerificados.js';
+export { createReglaProhibida } from './reglasProhibidas.js';
+export { createAutorizacionImagen } from './autorizacionesImagen.js';
