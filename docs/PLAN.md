@@ -44,25 +44,31 @@ Output: notes in `brain/` and updates to the relevant ADRs.
 - MinIO removed from `docker-compose.yml` and `.env.example` (project discontinued; repository archived April 2026).
 - **Done when:** tests and typecheck pass, `/health` still ok, a stored file is reachable through its signed URL.
 
-### Step 2 — Clients, roles and Brand Profile
+### Step 2 — Clients, roles and Brand Profile ✅ (merge `e84893c`)
 Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section only states the scope.
 - Table and column names in Spanish, as in the spec (decided by the Senior on 2026-10-07).
 - Tables: `clientes`, `usuarios`, `roles` (global catalog seeded by the migration with the 5 roles of spec section 14), user-role assignments, `perfil_marca` (versioned; one JSONB column per profile block plus `idioma_contenido`), `hechos_verificados`, `reglas_prohibidas`, `autorizaciones_imagen`, `auditoria` (append-only).
-- Every client table has `cliente_id`; the repository layer enforces the filter. Exceptions: the global `roles` catalog, `usuarios` and `auditoria`.
+- Every client table has `cliente_id`; the repository layer enforces the filter. Exceptions: the global `roles` catalog, `usuarios`, `auditoria` (nullable, no FK) and the user-role assignments (`cliente_id` NULL only for the two NovaCiel roles).
 - Expired facts and expired authorizations are never returned as valid.
 - Profile completeness per block and `puedePlanificar`.
 - Seed script for one fictional client.
 - Not in this step: HTTP API, authentication, encrypted credentials (see Step 2b).
 - **Done when:** a fictional client with profile and verified facts can be created and read; tests prove one client cannot read another's data; the seed runs twice without duplicates.
+- Result: 303 tests green; the seed's fictional client is complete (`puedePlanificar` true) and `activo`. Design decisions in `brain/` ADR-04 (JSON keys and required fields pending confirmation by the Senior).
 
-### Step 2b — Authentication and secret encryption
-- [ ] User authentication: login and logout, sessions, passwords with secure hashing
-- [ ] Role-based permissions enforced on endpoints
-- [ ] Secret encryption utility (for network credentials in Step 10), with the encryption key stored in configuration
-- [ ] No secrets or passwords appear in logs or responses
+### Step 2b — Authentication, sessions and secret encryption
+Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section only states the scope.
+- [ ] Secret encryption utility (AES-256-GCM, `node:crypto`), keys in configuration with versions so they can be rotated
+- [ ] `conexiones_redes`: encrypted network credentials per client (used later by Step 10), never deleted, only revoked
+- [ ] Passwords with secure hashing (scrypt), account lockout after repeated failures
+- [ ] Server-side sessions (only the token hash is stored), login, logout and current user endpoints
+- [ ] Role-based permissions (matrix from spec section 14) enforced on endpoints
+- [ ] `npm run create-admin` to create the first NovaCiel administrator
+- [ ] No secrets, passwords or tokens in logs, responses or `auditoria`
+- Not in this step: password reset by email, 2FA, per-IP rate limiting, re-encryption script for key rotation (known debt).
 
 **Done when:** a user without the required role is rejected on every protected endpoint, and there is a test proving that secrets are stored encrypted.
-**Must be completed before Step 9.**
+**Must be completed before Steps 9, 10 and 11** (approval endpoints, network credentials and the dashboard all need it).
 
 ### Step 3 — Budget and LLM adapter
 - Budget model: ceilings per client and period, authorization before any paid call, recorded spend.
@@ -90,7 +96,7 @@ Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section on
 - **Done when:** briefs are generated with the fake and contain no untraceable facts.
 
 ### Step 7 — Production with real media (carousels first)
-- 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash (SHA-256 over the ordered list of file hashes).
+- 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
 - 7b: video cuts and assembly with FFmpeg (native).
 - 7c: animated templates and word-level subtitles with Remotion. **Blocked until the license is confirmed.**
 - 7d: voice. Provider chosen before this sub-step.
@@ -103,17 +109,19 @@ Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section on
 
 ### Step 9 — Two-level approval
 - Internal review, then client approval, recorded against the exact piece (piece-level hash).
-- Any change to the files invalidates the approval.
-- **Done when:** a piece cannot move to scheduled without both approvals of the exact files.
+- Any change to the files, their order, caption, hashtags, alt text or network invalidates the approval.
+- Requires Step 2b (sessions and role checks).
+- **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
 
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
-- Publishes only approved pieces; verifies the piece-level hash before sending.
+- Publishes only approved pieces; recomputes and verifies the piece-level hash before sending.
+- Network credentials come from `conexiones_redes` (Step 2b), decrypted only at the moment of use.
 - Metrics collection after publishing.
 - **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.
 
 ### Step 11 — Basic dashboard and alerts
-- Views: plan, pieces by state, pending approvals, spend vs budget, results.
+- Views: plan, pieces by state, pending approvals, spend vs budget, results. Protected by Step 2b sessions and permissions.
 - Alerts: budget thresholds, failed jobs, schema failures, pending approvals.
 - **Done when:** the fictional client's week is visible and alerts fire in tests.
 
@@ -132,8 +140,14 @@ Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section on
 - NovaCiel's headcount and whether it will pay the Remotion license (before Step 7c).
 - Does "the system in Spanish" also cover code, comments and commits, or only domain names and interface? (Today: code in English.)
 - Content language per client: will any client need English? (before onboarding the first client)
+- Confirm the `clientes` and `usuarios` columns, the JSON keys of the profile blocks and the required fields per block (proposed in Step 2, see ADR-04).
+- Should the fictional test client use USD prices and US data?
+- Image consent in the US: is "end date required + revocation" enough legally?
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
 
 ## Decided
 - Table and column names in Spanish (Senior, 2026-10-07).
+- MinIO discarded; `LocalFileStorage` in development, `FakeStorage` in tests, managed S3 in production (2026-10-07).
+- No Docker on the development machine; local PostgreSQL 18 (2026-10-07).
+- Piece-level hash covers everything that gets published, not only the files (2026-10-08).
