@@ -19,6 +19,7 @@ import {
   listClientUsers,
 } from '../modules/roles/usuarioRolesRepository.js';
 import { hasAnyPrice, setModelPrice } from '../modules/precios/preciosRepository.js';
+import { createSpendConfig, getSpendConfig } from '../modules/presupuesto/gastoConfigRepository.js';
 import { usdToMicro } from '../modules/presupuesto/money.js';
 import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
 import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
@@ -86,6 +87,14 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
     SISTEMA,
   );
   const clienteId = cliente.id;
+
+  // Small spending ceiling: a default monthly ceiling of USD 1, so the budget service creates each
+  // month's ceiling from it and the seed never has to be re-run when the month changes.
+  const hasSpendConfig = (await getSpendConfig(db, clienteId)) !== null;
+  note(!hasSpendConfig, 'configuración de gasto: techo mensual USD 1');
+  if (!hasSpendConfig) {
+    await createSpendConfig(db, clienteId, { techoMensualDefecto: usdToMicro('1') }, SISTEMA);
+  }
 
   // Client owner.
   let owner = await getUsuarioByEmail(db, SEED_OWNER_EMAIL);
