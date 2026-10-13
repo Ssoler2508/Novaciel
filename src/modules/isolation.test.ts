@@ -5,6 +5,7 @@ import {
   assignRole,
   createAutorizacionImagen,
   createCliente,
+  createConexionRed,
   createHechoVerificado,
   createPerfilMarca,
   createReglaProhibida,
@@ -21,12 +22,19 @@ import {
   revokeAutorizacion,
   updateAutorizacion,
 } from './autorizaciones/autorizacionesRepository.js';
+import {
+  ConexionNotFoundError,
+  getSecretForUse,
+  listConexiones,
+  revokeConexion,
+  rotateConexion,
+} from './conexionesRedes/conexionesRedesRepository.js';
 import { listClientUsers, revokeClientRole } from './roles/usuarioRolesRepository.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -39,6 +47,7 @@ interface World {
   autorizacionValidaId: string;
   autorizacionRevocadaId: string;
   autorizacionMenorId: string;
+  conexionId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -56,6 +65,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   const valida = await createAutorizacionImagen(db, { clienteId: cliente.id });
   const revocada = await createAutorizacionImagen(db, { clienteId: cliente.id, revoked: true });
   const menor = await createAutorizacionImagen(db, { clienteId: cliente.id, esMenor: true });
+  const conexion = await createConexionRed(db, { clienteId: cliente.id, creadoPor });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -69,6 +79,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     autorizacionValidaId: valida.id,
     autorizacionRevocadaId: revocada.id,
     autorizacionMenorId: menor.id,
+    conexionId: conexion.id,
   };
 }
 
@@ -185,6 +196,24 @@ describe('isolation: autorizaciones_imagen', () => {
       expect(await revokeAutorizacion(db, a.clienteId, b.autorizacionValidaId, SISTEMA)).toBeNull();
       const { rows } = await db.query('SELECT revocada_en FROM autorizaciones_imagen WHERE id = $1', [b.autorizacionValidaId]);
       expect(rows[0].revocada_en).toBeNull();
+    });
+  });
+});
+
+describe('isolation: conexiones_redes', () => {
+  it("A never lists or decrypts B's connections", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect((await listConexiones(db, a.clienteId)).map((c) => c.id)).toEqual([a.conexionId]);
+      await expect(getSecretForUse(db, a.clienteId, b.conexionId)).rejects.toThrow(ConexionNotFoundError);
+    });
+  });
+
+  it("A cannot rotate or revoke B's connections: B stays active and unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      await expect(rotateConexion(db, a.clienteId, b.conexionId, 'alterado por A', SISTEMA)).rejects.toThrow(ConexionNotFoundError);
+      expect(await revokeConexion(db, a.clienteId, b.conexionId, SISTEMA)).toBeNull();
+      const { rows } = await db.query('SELECT revocada_en, rotada_en FROM conexiones_redes WHERE id = $1', [b.conexionId]);
+      expect(rows[0]).toEqual({ revocada_en: null, rotada_en: null });
     });
   });
 });

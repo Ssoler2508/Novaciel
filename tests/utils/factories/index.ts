@@ -10,3 +10,4 @@ export { createPerfilMarca, PERFIL_BLOCKS } from './perfilMarca.js';
 export { createHechoVerificado } from './hechosVerificados.js';
 export { createReglaProhibida } from './reglasProhibidas.js';
 export { createAutorizacionImagen } from './autorizacionesImagen.js';
+export { createConexionRed } from './conexionesRedes.js';
