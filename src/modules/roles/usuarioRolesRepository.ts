@@ -167,3 +167,19 @@ export async function hasNovaCielRole(db: Db, usuarioId: string, rolCodigo: stri
   );
   return rows.length > 0;
 }
+
+export interface UserRole {
+  rol: string;
+  /** NULL for the two NovaCiel roles. */
+  clienteId: ClienteId | null;
+}
+
+/** All role assignments of a user, NovaCiel roles first. */
+export async function getUserRoles(db: Db, usuarioId: string): Promise<UserRole[]> {
+  const { rows } = await db.query<{ codigo: string; cliente_id: ClienteId | null }>(
+    `SELECT r.codigo, ur.cliente_id FROM usuario_roles ur JOIN roles r ON r.id = ur.rol_id
+     WHERE ur.usuario_id = $1 ORDER BY r.ambito, r.codigo, ur.cliente_id`,
+    [usuarioId],
+  );
+  return rows.map((row) => ({ rol: row.codigo, clienteId: row.cliente_id }));
+}
