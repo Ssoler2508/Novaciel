@@ -8,6 +8,7 @@ import { assertTestDatabase } from './guard.js';
  */
 export const DOMAIN_TABLES: readonly string[] = [
   'sesiones',
+  'precios_modelos',
   'configuracion_gasto_cliente',
   'autorizaciones_gasto',
   'topes',

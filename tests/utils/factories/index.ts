@@ -19,3 +19,4 @@ export {
   createConfiguracionGastoCliente,
   currentPeriodo,
 } from './presupuesto.js';
+export { createPrecioModelo } from './precios.js';
