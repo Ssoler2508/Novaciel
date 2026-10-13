@@ -212,7 +212,7 @@ describe('llm config', () => {
 
   it('defaults to the fake provider and model in development and test', () => {
     for (const NODE_ENV of ['development', 'test']) {
-      expect(loadConfig({ ...valid, NODE_ENV }).llm).toEqual({ provider: 'fake', model: 'fake-model' });
+      expect(loadConfig({ ...valid, NODE_ENV }).llm).toEqual({ provider: 'fake', model: 'fake-model', timeoutMs: 60_000 });
     }
   });
 
@@ -223,10 +223,9 @@ describe('llm config', () => {
 
   it('requires LLM_MODEL with the claude provider and passes it through', () => {
     expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'claude' })).toThrow(/LLM_MODEL/);
-    expect(loadConfig({ ...valid, LLM_PROVIDER: 'claude', LLM_MODEL: 'some-model' }).llm).toEqual({
-      provider: 'claude',
-      model: 'some-model',
-    });
+    const llm = loadConfig({ ...valid, LLM_PROVIDER: 'claude', LLM_MODEL: 'some-model', NOVACIEL_ANTHROPIC_API_KEY: 'sk-fake-key' }).llm;
+    expect(llm).toMatchObject({ provider: 'claude', model: 'some-model', timeoutMs: 60_000 });
+    expect(llm.apiKey?.reveal()).toBe('sk-fake-key');
   });
 
   it('rejects an unknown provider', () => {

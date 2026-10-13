@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { inspect } from 'node:util';
 import { z } from 'zod';
+import { SecretValue } from './secretValue.js';
 
 const KEY_BYTES = 32;
 const MIN_SCRYPT_LOG_N = 15;
@@ -90,6 +91,9 @@ const schema = z
     S3_SECRET_KEY: z.string().min(1).optional(),
     LLM_PROVIDER: z.enum(['fake', 'claude']).optional(),
     LLM_MODEL: z.string().min(1).optional(),
+    LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
+    // Our own key. Never ANTHROPIC_API_KEY: Claude Code reads that one for its own login.
+    NOVACIEL_ANTHROPIC_API_KEY: z.string().min(1).optional(),
     SECRETS_KEYS: z.string().min(1),
     SECRETS_ACTIVE_KEY_VERSION: z.string().min(1),
     // scrypt cost is 2^N; 15 is the production minimum, tests may go lower.
@@ -106,6 +110,7 @@ const schema = z
     }
     if (resolveLlmProvider(env) === 'claude') {
       require('LLM_MODEL', 'required when LLM_PROVIDER is "claude"');
+      require('NOVACIEL_ANTHROPIC_API_KEY', 'required when LLM_PROVIDER is "claude"');
     }
     const driver = resolveDriver(env);
     if (driver === undefined) {
@@ -150,9 +155,13 @@ export type StorageConfig =
 export interface LlmConfig {
   provider: 'fake' | 'claude';
   model: string;
+  timeoutMs: number;
+  /** Only with provider "claude". Printing it shows a placeholder; use reveal() at the point of use. */
+  apiKey?: SecretValue;
 }
 
-export type Config = Env & { storage: StorageConfig; secrets: SecretsConfig; llm: LlmConfig };
+// The raw key is not part of the plain config object; it lives in config.llm.apiKey.
+export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & { storage: StorageConfig; secrets: SecretsConfig; llm: LlmConfig };
 
 /** "fake" by default outside production; in production there is no default. */
 function resolveLlmProvider(env: Pick<Env, 'NODE_ENV' | 'LLM_PROVIDER'>): 'fake' | 'claude' | undefined {
@@ -166,9 +175,10 @@ const FAKE_MODEL = 'fake-model';
 function buildLlmConfig(env: Env): LlmConfig {
   const provider = resolveLlmProvider(env);
   if (!provider) throw new Error('Invalid LLM configuration');
-  if (provider === 'fake') return { provider, model: env.LLM_MODEL ?? FAKE_MODEL };
-  if (!env.LLM_MODEL) throw new Error('Invalid LLM configuration');
-  return { provider, model: env.LLM_MODEL };
+  const timeoutMs = env.LLM_TIMEOUT_MS;
+  if (provider === 'fake') return { provider, model: env.LLM_MODEL ?? FAKE_MODEL, timeoutMs };
+  if (!env.LLM_MODEL || !env.NOVACIEL_ANTHROPIC_API_KEY) throw new Error('Invalid LLM configuration');
+  return { provider, model: env.LLM_MODEL, timeoutMs, apiKey: new SecretValue(env.NOVACIEL_ANTHROPIC_API_KEY) };
 }
 
 /** "local" by default outside production; in production there is no default. */
@@ -213,8 +223,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const { keys, active } = parseSecrets(result.data.SECRETS_KEYS, result.data.SECRETS_ACTIVE_KEY_VERSION);
   if (active === undefined) throw new Error('Invalid secrets configuration');
+  const { NOVACIEL_ANTHROPIC_API_KEY: _apiKey, ...publicEnv } = result.data;
   return {
-    ...result.data,
+    ...publicEnv,
     storage: buildStorageConfig(result.data),
     secrets: new SecretsConfig(keys, active),
     llm: buildLlmConfig(result.data),
