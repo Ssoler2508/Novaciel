@@ -56,7 +56,7 @@ Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section on
 - **Done when:** a fictional client with profile and verified facts can be created and read; tests prove one client cannot read another's data; the seed runs twice without duplicates.
 - Result: 303 tests green; the seed's fictional client is complete (`puedePlanificar` true) and `activo`. Design decisions in `brain/` ADR-04 (JSON keys and required fields pending confirmation by the Senior).
 
-### Step 2b — Authentication, sessions and secret encryption
+### Step 2b — Authentication, sessions and secret encryption ✅ (merge ` `)
 Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section only states the scope.
 - [ ] Secret encryption utility (AES-256-GCM, `node:crypto`), keys in configuration with versions so they can be rotated
 - [ ] `conexiones_redes`: encrypted network credentials per client (used later by Step 10), never deleted, only revoked
