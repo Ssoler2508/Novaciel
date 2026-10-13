@@ -23,6 +23,8 @@ export default defineConfig({
       // Tests must not depend on the developer's storage settings in .env.
       STORAGE_DRIVER: 'local',
       LOCAL_STORAGE_SIGNING_SECRET: 'test-only-signing-secret-0123456789abcdef',
+      // Tests must not depend on the developer's PORT in .env (config requires 1-65535).
+      PORT: '3999',
       // Fixed test-only key (32 bytes of 0x01); never a real one.
       SECRETS_KEYS: '1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=',
       SECRETS_ACTIVE_KEY_VERSION: '1',
