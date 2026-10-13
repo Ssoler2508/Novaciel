@@ -3,6 +3,7 @@ import { inspect } from 'node:util';
 import { z } from 'zod';
 
 const KEY_BYTES = 32;
+const MIN_SCRYPT_LOG_N = 15;
 // Standard alphabet with mandatory padding. Buffer.from(x, 'base64') silently skips invalid
 // characters, so the format is checked before decoding.
 const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -89,6 +90,8 @@ const schema = z
     S3_SECRET_KEY: z.string().min(1).optional(),
     SECRETS_KEYS: z.string().min(1),
     SECRETS_ACTIVE_KEY_VERSION: z.string().min(1),
+    // scrypt cost is 2^N; 15 is the production minimum, tests may go lower.
+    PASSWORD_SCRYPT_LOG_N: z.coerce.number().int().min(4).max(18).default(MIN_SCRYPT_LOG_N),
   })
   .superRefine((env, ctx) => {
     const require = (name: keyof typeof env, message: string) => {
@@ -110,6 +113,13 @@ const schema = z
       require('S3_BUCKET', 'required when STORAGE_DRIVER is "s3"');
       require('S3_ACCESS_KEY', 'required when STORAGE_DRIVER is "s3"');
       require('S3_SECRET_KEY', 'required when STORAGE_DRIVER is "s3"');
+    }
+    if (env.NODE_ENV !== 'test' && env.PASSWORD_SCRYPT_LOG_N < MIN_SCRYPT_LOG_N) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PASSWORD_SCRYPT_LOG_N'],
+        message: `must be at least ${MIN_SCRYPT_LOG_N} outside NODE_ENV=test`,
+      });
     }
     const parsed = parseSecrets(env.SECRETS_KEYS, env.SECRETS_ACTIVE_KEY_VERSION);
     for (const [path, message] of parsed.issues) ctx.addIssue({ code: 'custom', path: [path], message });

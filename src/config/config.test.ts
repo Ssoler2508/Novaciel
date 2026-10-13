@@ -170,3 +170,23 @@ describe('secrets config', () => {
     expect(JSON.parse(lines[0] ?? '{}').secrets).toEqual(expected);
   });
 });
+
+describe('password scrypt cost', () => {
+  it('defaults to 15', () => {
+    expect(loadConfig(valid).PASSWORD_SCRYPT_LOG_N).toBe(15);
+  });
+
+  it('rejects values below 15 outside NODE_ENV=test', () => {
+    for (const NODE_ENV of ['development', 'production']) {
+      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', ...s3Vars };
+      expect(() => loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '14' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+      expect(loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '15' }).PASSWORD_SCRYPT_LOG_N).toBe(15);
+    }
+  });
+
+  it('allows lower values when NODE_ENV=test, but not absurd ones', () => {
+    expect(loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '10' }).PASSWORD_SCRYPT_LOG_N).toBe(10);
+    expect(() => loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '3' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+    expect(() => loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '25' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+  });
+});
