@@ -7,6 +7,8 @@ import { assertTestDatabase } from './guard.js';
  * or the pg-boss schema.
  */
 export const DOMAIN_TABLES: readonly string[] = [
+  'sesiones',
+  'conexiones_redes',
   'autorizaciones_imagen',
   'reglas_prohibidas',
   'hechos_verificados',

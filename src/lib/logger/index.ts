@@ -1,7 +1,18 @@
 import { pino } from 'pino';
 import { config } from '../../config/index.js';
 
-const sensitive = ['password', 'token', 'authorization', 'secret', 'api_key'];
+const sensitive = [
+  'password',
+  'contrasena',
+  'password_hash',
+  'token',
+  'session',
+  'cookie',
+  'authorization',
+  'secret',
+  'ciphertext',
+  'api_key',
+];
 
 export const redactPaths = sensitive.flatMap((k) => [k, `*.${k}`, `*.*.${k}`]);
 

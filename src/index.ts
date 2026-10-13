@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { config } from './config/index.js';
 import { closePool, pool } from './db/pool.js';
 import { logger } from './lib/logger/index.js';
+import { registerAuth } from './modules/auth/authRoutes.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
 import {
   createStorage,
@@ -47,6 +48,8 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 async function main(): Promise<void> {
+  // Before any other state-changing route, so the CSRF guard covers them.
+  await registerAuth(app, { db: pool });
   await startQueue(boss);
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');

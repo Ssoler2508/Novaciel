@@ -1,5 +1,78 @@
 import 'dotenv/config';
+import { inspect } from 'node:util';
 import { z } from 'zod';
+
+const KEY_BYTES = 32;
+const MIN_SCRYPT_LOG_N = 15;
+// Standard alphabet with mandatory padding. Buffer.from(x, 'base64') silently skips invalid
+// characters, so the format is checked before decoding.
+const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * Encryption keyring. Key bytes are private and never serialized: JSON.stringify,
+ * pino and util.inspect only show the versions.
+ */
+export class SecretsConfig {
+  readonly #keys: ReadonlyMap<number, Buffer>;
+  readonly activeVersion: number;
+  // Public data only: toJSON must not touch private state, because pino's redaction calls it
+  // on a copy of the object.
+  readonly versions: readonly number[];
+
+  constructor(keys: ReadonlyMap<number, Buffer>, activeVersion: number) {
+    this.#keys = keys;
+    this.activeVersion = activeVersion;
+    this.versions = [...keys.keys()].sort((a, b) => a - b);
+  }
+
+  getKey(version: number): Buffer | undefined {
+    return this.#keys.get(version);
+  }
+
+  toJSON() {
+    return { activeVersion: this.activeVersion, versions: this.versions };
+  }
+
+  [inspect.custom]() {
+    return this.toJSON();
+  }
+}
+
+type SecretsParse = { issues: [string, string][]; keys: Map<number, Buffer>; active?: number };
+
+/** Messages name the variable and the entry position, never the key material. */
+function parseSecrets(rawKeys: string | undefined, rawActive: string | undefined): SecretsParse {
+  const out: SecretsParse = { issues: [], keys: new Map() };
+  if (rawKeys === undefined || rawActive === undefined) return out; // zod reports the missing variable
+  rawKeys.split(',').forEach((entry, i) => {
+    const n = i + 1;
+    const sep = entry.trim().indexOf(':');
+    const version = entry.trim().slice(0, sep);
+    const key = entry.trim().slice(sep + 1);
+    if (sep < 1 || !/^[1-9]\d*$/.test(version)) {
+      out.issues.push(['SECRETS_KEYS', `entry ${n} must have the form version:base64key`]);
+    } else if (out.keys.has(Number(version))) {
+      out.issues.push(['SECRETS_KEYS', `version ${version} is listed more than once`]);
+    } else if (!STRICT_BASE64.test(key)) {
+      out.issues.push(['SECRETS_KEYS', `key of version ${version} is not valid base64`]);
+    } else {
+      const bytes = Buffer.from(key, 'base64');
+      if (bytes.length !== KEY_BYTES) {
+        out.issues.push(['SECRETS_KEYS', `key of version ${version} must decode to exactly ${KEY_BYTES} bytes`]);
+      } else {
+        out.keys.set(Number(version), bytes);
+      }
+    }
+  });
+  if (!/^[1-9]\d*$/.test(rawActive)) {
+    out.issues.push(['SECRETS_ACTIVE_KEY_VERSION', 'must be a positive integer']);
+  } else if (out.issues.length === 0 && !out.keys.has(Number(rawActive))) {
+    out.issues.push(['SECRETS_ACTIVE_KEY_VERSION', `version ${rawActive} is not present in SECRETS_KEYS`]);
+  } else {
+    out.active = Number(rawActive);
+  }
+  return out;
+}
 
 const schema = z
   .object({
@@ -15,6 +88,12 @@ const schema = z
     S3_BUCKET: z.string().min(1).optional(),
     S3_ACCESS_KEY: z.string().min(1).optional(),
     S3_SECRET_KEY: z.string().min(1).optional(),
+    SECRETS_KEYS: z.string().min(1),
+    SECRETS_ACTIVE_KEY_VERSION: z.string().min(1),
+    // scrypt cost is 2^N; 15 is the production minimum, tests may go lower.
+    SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
+    SESSION_IDLE_MINUTES: z.coerce.number().int().min(1).max(60 * 24 * 30).default(120),
+    PASSWORD_SCRYPT_LOG_N: z.coerce.number().int().min(4).max(18).default(MIN_SCRYPT_LOG_N),
   })
   .superRefine((env, ctx) => {
     const require = (name: keyof typeof env, message: string) => {
@@ -37,6 +116,15 @@ const schema = z
       require('S3_ACCESS_KEY', 'required when STORAGE_DRIVER is "s3"');
       require('S3_SECRET_KEY', 'required when STORAGE_DRIVER is "s3"');
     }
+    if (env.NODE_ENV !== 'test' && env.PASSWORD_SCRYPT_LOG_N < MIN_SCRYPT_LOG_N) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PASSWORD_SCRYPT_LOG_N'],
+        message: `must be at least ${MIN_SCRYPT_LOG_N} outside NODE_ENV=test`,
+      });
+    }
+    const parsed = parseSecrets(env.SECRETS_KEYS, env.SECRETS_ACTIVE_KEY_VERSION);
+    for (const [path, message] of parsed.issues) ctx.addIssue({ code: 'custom', path: [path], message });
   });
 
 type Env = z.infer<typeof schema>;
@@ -51,7 +139,7 @@ export type StorageConfig =
       secretAccessKey: string;
     };
 
-export type Config = Env & { storage: StorageConfig };
+export type Config = Env & { storage: StorageConfig; secrets: SecretsConfig };
 
 /** "local" by default outside production; in production there is no default. */
 function resolveDriver(env: Pick<Env, 'NODE_ENV' | 'STORAGE_DRIVER'>): 'local' | 's3' | undefined {
@@ -93,7 +181,13 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       .join('; ');
     throw new Error(`Invalid environment configuration: ${details}`);
   }
-  return { ...result.data, storage: buildStorageConfig(result.data) };
+  const { keys, active } = parseSecrets(result.data.SECRETS_KEYS, result.data.SECRETS_ACTIVE_KEY_VERSION);
+  if (active === undefined) throw new Error('Invalid secrets configuration');
+  return {
+    ...result.data,
+    storage: buildStorageConfig(result.data),
+    secrets: new SecretsConfig(keys, active),
+  };
 }
 
 function loadOrExit(): Config {

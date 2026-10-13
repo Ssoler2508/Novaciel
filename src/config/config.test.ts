@@ -1,7 +1,11 @@
+import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import { createLogger } from '../lib/logger/index.js';
 import { loadConfig } from './index.js';
 
 const secret = 'x'.repeat(32);
+const key1 = Buffer.alloc(32, 1).toString('base64');
+const key2 = Buffer.alloc(32, 2).toString('base64');
 
 const valid = {
   NODE_ENV: 'test',
@@ -9,6 +13,8 @@ const valid = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
   LOG_LEVEL: 'info',
   LOCAL_STORAGE_SIGNING_SECRET: secret,
+  SECRETS_KEYS: `1:${key1}`,
+  SECRETS_ACTIVE_KEY_VERSION: '1',
 };
 
 const s3Vars = {
@@ -91,5 +97,112 @@ describe('storage config', () => {
     expect(() =>
       loadConfig({ ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', ...s3Vars }),
     ).not.toThrow();
+  });
+});
+
+describe('secrets config', () => {
+  const withSecrets = (SECRETS_KEYS: string, SECRETS_ACTIVE_KEY_VERSION = '1') =>
+    loadConfig({ ...valid, SECRETS_KEYS, SECRETS_ACTIVE_KEY_VERSION });
+
+  it('parses several versions and the active one', () => {
+    const cfg = withSecrets(`1:${key1},2:${key2}`, '2');
+    expect(cfg.secrets.activeVersion).toBe(2);
+    expect(cfg.secrets.versions).toEqual([1, 2]);
+    expect(cfg.secrets.getKey(1)).toEqual(Buffer.alloc(32, 1));
+  });
+
+  it('is required in every environment', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      expect(() => loadConfig({ ...valid, NODE_ENV, SECRETS_KEYS: undefined })).toThrow(/SECRETS_KEYS/);
+      expect(() =>
+        loadConfig({ ...valid, NODE_ENV, SECRETS_ACTIVE_KEY_VERSION: undefined }),
+      ).toThrow(/SECRETS_ACTIVE_KEY_VERSION/);
+    }
+  });
+
+  it('rejects a short key without printing it', () => {
+    const short = Buffer.alloc(16, 7).toString('base64');
+    expect(() => withSecrets(`1:${short}`)).toThrow(/exactly 32 bytes/);
+    try {
+      withSecrets(`1:${short}`);
+    } catch (err) {
+      expect((err as Error).message).not.toContain(short);
+    }
+  });
+
+  it.each(['nocolon', ':abc', `x:${key1}`, `0:${key1}`, `1:${key1},`])(
+    'rejects the malformed list %j',
+    (list) => {
+      expect(() => withSecrets(list)).toThrow(/SECRETS_KEYS/);
+    },
+  );
+
+  it('rejects a duplicate version', () => {
+    expect(() => withSecrets(`1:${key1},1:${key2}`)).toThrow(/more than once/);
+  });
+
+  it('rejects an active version that is missing from the list', () => {
+    expect(() => withSecrets(`1:${key1}`, '2')).toThrow(/not present in SECRETS_KEYS/);
+    expect(() => withSecrets(`1:${key1}`, 'abc')).toThrow(/positive integer/);
+  });
+
+  it('validates base64 strictly: invalid characters that Buffer would skip are rejected', () => {
+    const bad = `${key1.slice(0, 10)}!!${key1.slice(10)}`;
+    // Premise: lenient decoding would have accepted this key as 32 bytes.
+    expect(Buffer.from(bad, 'base64').length).toBe(32);
+    expect(() => withSecrets(`1:${bad}`)).toThrow(/not valid base64/);
+    expect(() => withSecrets(`1:${key1.replace(/=+$/, '')}`)).toThrow(/not valid base64/);
+  });
+
+  it('never exposes key bytes through JSON, util.inspect or pino', () => {
+    const { secrets } = withSecrets(`1:${key1},2:${key2}`, '2');
+    const expected = { activeVersion: 2, versions: [1, 2] };
+    expect(JSON.parse(JSON.stringify(secrets))).toEqual(expected);
+
+    const lines: string[] = [];
+    const log = createLogger('info', { write: (line: string) => void lines.push(line) });
+    log.info({ secrets }, 'config loaded');
+    const outputs = [JSON.stringify(secrets), inspect(secrets, { showHidden: true }), lines.join('')];
+    for (const out of outputs) {
+      expect(out).not.toContain(key1);
+      expect(out).not.toContain(key2);
+    }
+    expect(JSON.parse(lines[0] ?? '{}').secrets).toEqual(expected);
+  });
+});
+
+describe('password scrypt cost', () => {
+  it('defaults to 15', () => {
+    expect(loadConfig(valid).PASSWORD_SCRYPT_LOG_N).toBe(15);
+  });
+
+  it('rejects values below 15 outside NODE_ENV=test', () => {
+    for (const NODE_ENV of ['development', 'production']) {
+      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', ...s3Vars };
+      expect(() => loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '14' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+      expect(loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '15' }).PASSWORD_SCRYPT_LOG_N).toBe(15);
+    }
+  });
+
+  it('allows lower values when NODE_ENV=test, but not absurd ones', () => {
+    expect(loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '10' }).PASSWORD_SCRYPT_LOG_N).toBe(10);
+    expect(() => loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '3' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+    expect(() => loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '25' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
+  });
+});
+
+describe('session config', () => {
+  it('defaults to 12 hours and 120 idle minutes', () => {
+    const cfg = loadConfig(valid);
+    expect([cfg.SESSION_TTL_HOURS, cfg.SESSION_IDLE_MINUTES]).toEqual([12, 120]);
+  });
+
+  it('accepts overrides and rejects invalid values', () => {
+    const cfg = loadConfig({ ...valid, SESSION_TTL_HOURS: '8', SESSION_IDLE_MINUTES: '30' });
+    expect([cfg.SESSION_TTL_HOURS, cfg.SESSION_IDLE_MINUTES]).toEqual([8, 30]);
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(() => loadConfig({ ...valid, SESSION_TTL_HOURS: bad })).toThrow(/SESSION_TTL_HOURS/);
+      expect(() => loadConfig({ ...valid, SESSION_IDLE_MINUTES: bad })).toThrow(/SESSION_IDLE_MINUTES/);
+    }
   });
 });
