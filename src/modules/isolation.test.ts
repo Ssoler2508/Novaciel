@@ -5,10 +5,14 @@ import {
   assignRole,
   createAutorizacionImagen,
   createCliente,
+  createAutorizacionGasto,
   createConexionRed,
+  createConfiguracionGastoCliente,
   createHechoVerificado,
+  createLibroGasto,
   createPerfilMarca,
   createReglaProhibida,
+  createTope,
   createUsuario,
 } from '../../tests/utils/factories/index.js';
 import { asClienteId, type ClienteId } from './shared/clienteId.js';
@@ -34,7 +38,7 @@ import { listClientUsers, revokeClientRole } from './roles/usuarioRolesRepositor
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -66,6 +70,10 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   const revocada = await createAutorizacionImagen(db, { clienteId: cliente.id, revoked: true });
   const menor = await createAutorizacionImagen(db, { clienteId: cliente.id, esMenor: true });
   const conexion = await createConexionRed(db, { clienteId: cliente.id, creadoPor });
+  await createTope(db, { clienteId: cliente.id, creadoPor });
+  await createAutorizacionGasto(db, { clienteId: cliente.id });
+  await createLibroGasto(db, { clienteId: cliente.id });
+  await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -86,7 +94,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
 async function snapshot(db: Db, clienteId: ClienteId) {
   const out: Record<string, unknown[]> = {};
   for (const table of CLIENT_TABLES) {
-    out[table] = (await db.query(`SELECT * FROM ${table} WHERE cliente_id = $1 ORDER BY id`, [clienteId])).rows;
+    out[table] = (await db.query(`SELECT * FROM ${table} WHERE cliente_id = $1 ORDER BY 1`, [clienteId])).rows;
   }
   return out;
 }
