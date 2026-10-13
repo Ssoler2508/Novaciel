@@ -2,6 +2,7 @@ import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import { assertPasswordPolicy, hashPassword, needsRehash, verifyPassword } from '../../lib/crypto/passwords.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
+import { revokeAllSessions } from '../sesiones/sesionesRepository.js';
 
 /**
  * Global table: users are not tied to one client, so these functions take no cliente_id.
@@ -68,6 +69,8 @@ export async function setUsuarioActivo(
       antes: { ...before },
       despues: { ...after },
     });
+    // Deactivating ends every session, so reactivating the user never revives an old one.
+    if (!activo) await revokeAllSessions(tx, id, actor);
     return after;
   });
 }
@@ -94,6 +97,8 @@ export async function setPassword(db: Db, usuarioId: string, plain: string, acto
       filaId: usuarioId,
       despues: { password_changed: true },
     });
+    // A new password ends every existing session of the user.
+    await revokeAllSessions(tx, usuarioId, actor);
     return row;
   });
 }

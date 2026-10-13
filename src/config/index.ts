@@ -91,6 +91,8 @@ const schema = z
     SECRETS_KEYS: z.string().min(1),
     SECRETS_ACTIVE_KEY_VERSION: z.string().min(1),
     // scrypt cost is 2^N; 15 is the production minimum, tests may go lower.
+    SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
+    SESSION_IDLE_MINUTES: z.coerce.number().int().min(1).max(60 * 24 * 30).default(120),
     PASSWORD_SCRYPT_LOG_N: z.coerce.number().int().min(4).max(18).default(MIN_SCRYPT_LOG_N),
   })
   .superRefine((env, ctx) => {

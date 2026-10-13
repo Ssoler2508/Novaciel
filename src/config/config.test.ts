@@ -190,3 +190,19 @@ describe('password scrypt cost', () => {
     expect(() => loadConfig({ ...valid, PASSWORD_SCRYPT_LOG_N: '25' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
   });
 });
+
+describe('session config', () => {
+  it('defaults to 12 hours and 120 idle minutes', () => {
+    const cfg = loadConfig(valid);
+    expect([cfg.SESSION_TTL_HOURS, cfg.SESSION_IDLE_MINUTES]).toEqual([12, 120]);
+  });
+
+  it('accepts overrides and rejects invalid values', () => {
+    const cfg = loadConfig({ ...valid, SESSION_TTL_HOURS: '8', SESSION_IDLE_MINUTES: '30' });
+    expect([cfg.SESSION_TTL_HOURS, cfg.SESSION_IDLE_MINUTES]).toEqual([8, 30]);
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(() => loadConfig({ ...valid, SESSION_TTL_HOURS: bad })).toThrow(/SESSION_TTL_HOURS/);
+      expect(() => loadConfig({ ...valid, SESSION_IDLE_MINUTES: bad })).toThrow(/SESSION_IDLE_MINUTES/);
+    }
+  });
+});
