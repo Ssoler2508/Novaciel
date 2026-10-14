@@ -70,7 +70,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 **Done when:** a user without the required role is rejected on every protected endpoint, and there is a test proving that secrets are stored encrypted.
 **Must be completed before Steps 9, 10 and 11** (approval endpoints, network credentials and the dashboard all need it).
 
-### Step 3 — Budget and LLM adapter
+### Step 3 — Budget and LLM adapter ✅ (merge ` `)
 - Budget model: ceilings per client and period, authorization before any paid call, recorded spend.
 - `LLMProvider` interface; Claude implementation (provider and model in config); `FakeLLMProvider` for tests.
 - Output validation with zod schemas: one retry, then alert.
