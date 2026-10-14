@@ -20,3 +20,5 @@ export { registerMediaRoutes } from './mediaRoutes.js';
 export type { MediaRoutesOptions } from './mediaRoutes.js';
 export { toMediaView } from './mediaView.js';
 export type { MediaView } from './mediaView.js';
+export { describeMedia } from './describeMedia.js';
+export type { DescribeMediaDeps } from './describeMedia.js';

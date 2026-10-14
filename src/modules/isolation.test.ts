@@ -50,6 +50,9 @@ import {
   updateMediaTags,
 } from './media/index.js';
 import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
+import { FakeAlertSink } from '../lib/ai/alerts.js';
+import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
+import { describeMedia } from './media/describeMedia.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
@@ -297,6 +300,20 @@ describe('isolation: media service', () => {
       const bKey = (await db.query('SELECT clave_almacenamiento FROM media WHERE id = $1', [b.mediaId])).rows[0].clave_almacenamiento;
       await storage.put(bKey, Buffer.from('x'));
       await expect(getMediaSignedUrl({ db, storage }, a.clienteId, b.mediaId, 60)).rejects.toBeInstanceOf(MediaNotFoundError);
+    });
+  });
+});
+
+describe('isolation: media description', () => {
+  it("A cannot describe B's media: not found, no vision call, no budget touched, B unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const vision = new FakeVisionProvider().enqueue({ description: 'x', tags: [] });
+      await expect(
+        describeMedia({ db, vision, alerts: new FakeAlertSink() }, a.clienteId, b.mediaId, SISTEMA),
+      ).rejects.toBeInstanceOf(MediaNotFoundError);
+      expect(vision.calls).toHaveLength(0);
+      const { rows } = await db.query('SELECT descripcion, descrito_en FROM media WHERE id = $1', [b.mediaId]);
+      expect(rows[0]).toEqual({ descripcion: null, descrito_en: null });
     });
   });
 });

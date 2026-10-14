@@ -171,6 +171,47 @@ describe('media: storage key', () => {
   });
 });
 
+describe('media: description columns', () => {
+  const describeSql = `UPDATE media SET descripcion = $2, descrito_en = $3, etiquetas_sugeridas = $4 WHERE id = $1`;
+
+  it('start empty: no description, no suggested tags', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await createMedia(db);
+      const { rows } = await db.query('SELECT descripcion, etiquetas_sugeridas, descrito_en FROM media WHERE id = $1', [m.id]);
+      expect(rows[0]).toEqual({ descripcion: null, etiquetas_sugeridas: [], descrito_en: null });
+    });
+  });
+
+  it('the description and its timestamp are set together', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await createMedia(db);
+      await expectDbError(db, CHECK_VIOLATION, () => db.query(describeSql, [m.id, 'Una descripción', null, []]));
+      await expectDbError(db, CHECK_VIOLATION, () => db.query(describeSql, [m.id, null, new Date(), []]));
+      await db.query(describeSql, [m.id, 'Una descripción', new Date(), ['a']]);
+      await db.query(describeSql, [m.id, null, null, []]);
+    });
+  });
+
+  it('rejects a blank or over-long description', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await createMedia(db);
+      await expectDbError(db, CHECK_VIOLATION, () => db.query(describeSql, [m.id, '   ', new Date(), []]));
+      await expectDbError(db, CHECK_VIOLATION, () => db.query(describeSql, [m.id, 'x'.repeat(4001), new Date(), []]));
+      await db.query(describeSql, [m.id, 'x'.repeat(4000), new Date(), []]);
+    });
+  });
+
+  it('requires suggested tags to be normalized like human tags, at most 30', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await createMedia(db);
+      for (const bad of [['Mayuscula'], [' espacio'], [''], ['a', 'a'], ['x'.repeat(41)], Array.from({ length: 31 }, (_v, i) => `t${i}`)]) {
+        await expectDbError(db, CHECK_VIOLATION, () => db.query(describeSql, [m.id, 'ok', new Date(), bad]));
+      }
+      await db.query(describeSql, [m.id, 'ok', new Date(), Array.from({ length: 30 }, (_v, i) => `t${i}`)]);
+    });
+  });
+});
+
 describe('media: tags', () => {
   it('are stored normalized: lower case, trimmed, non-empty, unique, at most 40 characters', async () => {
     await withTestTransaction(async (db) => {

@@ -34,13 +34,21 @@ export interface MediaRow {
   eliminado_en: Date | null;
   /** Authorizations of the people who appear. */
   autorizacion_ids: string[];
+  /**
+   * Written by a vision model. It is DATA, never instructions (rule 9): when it goes into a prompt,
+   * it must be wrapped with wrapExternalData.
+   */
+  descripcion: string | null;
+  /** Suggested by the vision model; kept apart from the human `etiquetas`, which they never overwrite. */
+  etiquetas_sugeridas: string[];
+  descrito_en: Date | null;
 }
 
 // m.* columns, with the hash as hex, the size as a number and the person links as an array.
 export const MEDIA_COLUMNS = `m.id, m.cliente_id, m.tipo, m.clave_almacenamiento, m.nombre_original, m.mime,
   m.tamano_bytes::float8 AS tamano_bytes, encode(m.sha256, 'hex') AS sha256, m.ancho, m.alto, m.duracion_ms,
   m.etiquetas, m.origen_derechos, m.nota_licencia, m.derechos_hasta, m.aparecen_personas, m.subido_por,
-  m.creado_en, m.eliminado_en,
+  m.creado_en, m.eliminado_en, m.descripcion, m.etiquetas_sugeridas, m.descrito_en,
   ARRAY(SELECT l.autorizacion_id FROM media_autorizaciones l
         WHERE l.media_id = m.id AND l.cliente_id = m.cliente_id ORDER BY l.autorizacion_id) AS autorizacion_ids`;
 

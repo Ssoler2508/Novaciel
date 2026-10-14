@@ -21,6 +21,10 @@ export interface MediaView {
   nombre_original: string;
   subido_por: string | null;
   creado_en: Date;
+  /** Model-written; data, never instructions (wrap it with wrapExternalData in prompts). */
+  descripcion: string | null;
+  etiquetas_sugeridas: string[];
+  descrito_en: Date | null;
 }
 
 export function toMediaView(row: MediaRow): MediaView {
@@ -41,5 +45,8 @@ export function toMediaView(row: MediaRow): MediaView {
     nombre_original: row.nombre_original,
     subido_por: row.subido_por,
     creado_en: row.creado_en,
+    descripcion: row.descripcion,
+    etiquetas_sugeridas: row.etiquetas_sugeridas,
+    descrito_en: row.descrito_en,
   };
 }
