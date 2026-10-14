@@ -18,12 +18,18 @@ import {
   hasNovaCielRole,
   listClientUsers,
 } from '../modules/roles/usuarioRolesRepository.js';
+import { hasAnyPrice, setModelPrice } from '../modules/precios/preciosRepository.js';
+import { createSpendConfig, getSpendConfig } from '../modules/presupuesto/gastoConfigRepository.js';
+import { usdToMicro } from '../modules/presupuesto/money.js';
 import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
 import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
 
 // Every value below is fictional.
 export const SEED_ADMIN_EMAIL = 'admin.novaciel@example.test';
 export const SEED_OWNER_EMAIL = 'dueno.aurora@example.test';
+export const SEED_PRICE_PROVIDER = 'fake';
+export const SEED_PRICE_MODEL = 'fake-model';
+export const SEED_PRICE_NOTE = 'FAKE — replace with real prices';
 export const SEED_CLIENT_NAME = 'Cafetería Aurora (ficticia)';
 const SEED_AUTHORIZATION_KEY = 'autorizaciones/seed-persona-ficticia.pdf';
 
@@ -54,6 +60,24 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
   note(!adminHasRole, 'rol administrador_novaciel');
   if (!adminHasRole) await assignNovaCielRole(db, { usuarioId: admin.id, rolCodigo: 'administrador_novaciel' }, SISTEMA);
 
+  // Obviously fake price for the fake development model. Real prices are entered by an administrator
+  // from the provider's official pricing page, never by the seed.
+  const hasPrice = await hasAnyPrice(db, SEED_PRICE_PROVIDER, SEED_PRICE_MODEL);
+  note(!hasPrice, `precio ficticio ${SEED_PRICE_PROVIDER}/${SEED_PRICE_MODEL}`);
+  if (!hasPrice) {
+    await setModelPrice(
+      db,
+      {
+        provider: SEED_PRICE_PROVIDER,
+        model: SEED_PRICE_MODEL,
+        inputPerMillion: usdToMicro('1'),
+        outputPerMillion: usdToMicro('2'),
+        nota: SEED_PRICE_NOTE,
+      },
+      { tipo: 'usuario', usuarioId: admin.id },
+    );
+  }
+
   // Fictional client. Left in en_onboarding: it is activated once it can be planned.
   let cliente = await findClienteByNombreComercial(db, SEED_CLIENT_NAME);
   note(!cliente, 'cliente ficticio');
@@ -63,6 +87,14 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
     SISTEMA,
   );
   const clienteId = cliente.id;
+
+  // Small spending ceiling: a default monthly ceiling of USD 1, so the budget service creates each
+  // month's ceiling from it and the seed never has to be re-run when the month changes.
+  const hasSpendConfig = (await getSpendConfig(db, clienteId)) !== null;
+  note(!hasSpendConfig, 'configuración de gasto: techo mensual USD 1');
+  if (!hasSpendConfig) {
+    await createSpendConfig(db, clienteId, { techoMensualDefecto: usdToMicro('1') }, SISTEMA);
+  }
 
   // Client owner.
   let owner = await getUsuarioByEmail(db, SEED_OWNER_EMAIL);

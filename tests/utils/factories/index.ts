@@ -12,3 +12,11 @@ export { createReglaProhibida } from './reglasProhibidas.js';
 export { createAutorizacionImagen } from './autorizacionesImagen.js';
 export { createConexionRed } from './conexionesRedes.js';
 export { createSesion } from './sesiones.js';
+export {
+  createTope,
+  createAutorizacionGasto,
+  createLibroGasto,
+  createConfiguracionGastoCliente,
+  currentPeriodo,
+} from './presupuesto.js';
+export { createPrecioModelo } from './precios.js';

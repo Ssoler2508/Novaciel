@@ -95,7 +95,7 @@ describe('storage config', () => {
   it('production requires STORAGE_DRIVER to be set explicitly', () => {
     expect(() => loadConfig({ ...valid, NODE_ENV: 'production' })).toThrow(/STORAGE_DRIVER/);
     expect(() =>
-      loadConfig({ ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', ...s3Vars }),
+      loadConfig({ ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', LLM_PROVIDER: 'fake', ...s3Vars }),
     ).not.toThrow();
   });
 });
@@ -178,7 +178,7 @@ describe('password scrypt cost', () => {
 
   it('rejects values below 15 outside NODE_ENV=test', () => {
     for (const NODE_ENV of ['development', 'production']) {
-      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', ...s3Vars };
+      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', LLM_PROVIDER: 'fake', ...s3Vars };
       expect(() => loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '14' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
       expect(loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '15' }).PASSWORD_SCRYPT_LOG_N).toBe(15);
     }
@@ -204,5 +204,31 @@ describe('session config', () => {
       expect(() => loadConfig({ ...valid, SESSION_TTL_HOURS: bad })).toThrow(/SESSION_TTL_HOURS/);
       expect(() => loadConfig({ ...valid, SESSION_IDLE_MINUTES: bad })).toThrow(/SESSION_IDLE_MINUTES/);
     }
+  });
+});
+
+describe('llm config', () => {
+  const production = { ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', ...s3Vars };
+
+  it('defaults to the fake provider and model in development and test', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      expect(loadConfig({ ...valid, NODE_ENV }).llm).toEqual({ provider: 'fake', model: 'fake-model', timeoutMs: 60_000 });
+    }
+  });
+
+  it('requires LLM_PROVIDER to be set explicitly in production', () => {
+    expect(() => loadConfig(production)).toThrow(/LLM_PROVIDER/);
+    expect(loadConfig({ ...production, LLM_PROVIDER: 'fake' }).llm.provider).toBe('fake');
+  });
+
+  it('requires LLM_MODEL with the claude provider and passes it through', () => {
+    expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'claude' })).toThrow(/LLM_MODEL/);
+    const llm = loadConfig({ ...valid, LLM_PROVIDER: 'claude', LLM_MODEL: 'some-model', NOVACIEL_ANTHROPIC_API_KEY: 'sk-fake-key' }).llm;
+    expect(llm).toMatchObject({ provider: 'claude', model: 'some-model', timeoutMs: 60_000 });
+    expect(llm.apiKey?.reveal()).toBe('sk-fake-key');
+  });
+
+  it('rejects an unknown provider', () => {
+    expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'gpt' })).toThrow(/LLM_PROVIDER/);
   });
 });

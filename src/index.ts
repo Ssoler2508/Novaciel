@@ -4,6 +4,7 @@ import { closePool, pool } from './db/pool.js';
 import { logger } from './lib/logger/index.js';
 import { registerAuth } from './modules/auth/authRoutes.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
+import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
 import {
   createStorage,
   LocalFileStorage,
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
   // Before any other state-changing route, so the CSRF guard covers them.
   await registerAuth(app, { db: pool });
   await startQueue(boss);
+  await registerBudgetJobs(boss, pool);
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }
