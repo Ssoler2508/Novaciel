@@ -12,6 +12,7 @@
     "create-admin": "tsx src/scripts/createAdmin.ts",
     "set-price": "tsx src/scripts/setPrice.ts",
     "llm:smoke": "tsx src/scripts/llmSmoke.ts",
+    "media:upload": "tsx src/scripts/mediaUpload.ts",
     "migrate:up": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m src/db/migrations",
     "migrate:down": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m src/db/migrations"
   },

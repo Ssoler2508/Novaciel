@@ -7,6 +7,7 @@ export { MediaProbeError } from './types.js';
 export { parseFfprobeOutput } from './parseFfprobe.js';
 export { FfprobeMediaProbe } from './ffprobeMediaProbe.js';
 export { FakeMediaProbe } from './fakeMediaProbe.js';
+export { isFfprobeAvailable } from './ffprobeAvailable.js';
 
 /** Builds the real probe from configuration. */
 export function createMediaProbe(cfg: Pick<MediaConfig, 'ffprobePath' | 'ffprobeTimeoutMs'>): MediaProbe {
