@@ -1,0 +1,2 @@
+# Keep media fixtures byte-exact (no line-ending conversion).
+tests/fixtures/media/** -text

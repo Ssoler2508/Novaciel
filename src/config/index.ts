@@ -91,6 +91,11 @@ const schema = z
     S3_SECRET_KEY: z.string().min(1).optional(),
     LLM_PROVIDER: z.enum(['fake', 'claude']).optional(),
     LLM_MODEL: z.string().min(1).optional(),
+    // Media library: ffprobe location and limits.
+    FFPROBE_PATH: z.string().min(1).default('ffprobe'),
+    FFPROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+    // Default 200 MiB; bounds 1 MiB to 2 GiB.
+    MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
     // Our own key. Never ANTHROPIC_API_KEY: Claude Code reads that one for its own login.
     NOVACIEL_ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -161,7 +166,19 @@ export interface LlmConfig {
 }
 
 // The raw key is not part of the plain config object; it lives in config.llm.apiKey.
-export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & { storage: StorageConfig; secrets: SecretsConfig; llm: LlmConfig };
+export interface MediaConfig {
+  ffprobePath: string;
+  ffprobeTimeoutMs: number;
+  /** Largest accepted upload, in bytes. */
+  maxBytes: number;
+}
+
+export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
+  storage: StorageConfig;
+  secrets: SecretsConfig;
+  llm: LlmConfig;
+  media: MediaConfig;
+};
 
 /** "fake" by default outside production; in production there is no default. */
 function resolveLlmProvider(env: Pick<Env, 'NODE_ENV' | 'LLM_PROVIDER'>): 'fake' | 'claude' | undefined {
@@ -229,6 +246,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     storage: buildStorageConfig(result.data),
     secrets: new SecretsConfig(keys, active),
     llm: buildLlmConfig(result.data),
+    media: {
+      ffprobePath: result.data.FFPROBE_PATH,
+      ffprobeTimeoutMs: result.data.FFPROBE_TIMEOUT_MS,
+      maxBytes: result.data.MEDIA_MAX_BYTES,
+    },
   };
 }
 
