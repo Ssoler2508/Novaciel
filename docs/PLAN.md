@@ -77,7 +77,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Requires the system's own Anthropic API key (not the Pro account).
 - **Done when:** a call without budget authorization is rejected; a valid call records its cost; invalid output triggers retry and alert (tested with the fake).
 
-### Step 4 — Media library
+### Step 4 — Media library ✅ (merge ` `)
 - Upload and catalog the client's real media (photos, video) in storage, with metadata, tags and usage rights. `LocalFileStorage` in development, `FakeStorage` in tests.
 - Link to `autorizaciones_imagen` for people who appear; consent data is not duplicated in the library.
 - Optional description of media through a vision adapter (with fake).
