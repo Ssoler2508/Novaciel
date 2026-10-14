@@ -1,4 +1,5 @@
 import type { Db } from '../../../src/db/types.js';
+import { runInTransaction } from '../../../src/db/transaction.js';
 import { createCliente } from './clientes.js';
 import { createPerfilMarca } from './perfilMarca.js';
 import { uniqueSuffix } from './unique.js';
@@ -136,15 +137,18 @@ export async function moverPieza(
   hacia: string,
   options: { actor?: HistorialActor; motivo?: string } = {},
 ): Promise<PiezaRow> {
-  const current = (await db.query<PiezaRow>('SELECT * FROM piezas WHERE id = $1 FOR UPDATE', [piezaId])).rows[0]!;
-  await insertHistorial(db, piezaId, current.cliente_id, {
-    version: current.version_estado + 1,
-    desde: current.estado,
-    hacia,
-    actor: options.actor ?? { tipo: 'sistema' },
-    motivo: options.motivo ?? null,
+  // One transaction (also on a pool): the trigger needs the history row and the update to share it.
+  return runInTransaction(db, async (tx) => {
+    const current = (await tx.query<PiezaRow>('SELECT * FROM piezas WHERE id = $1 FOR UPDATE', [piezaId])).rows[0]!;
+    await insertHistorial(tx, piezaId, current.cliente_id, {
+      version: current.version_estado + 1,
+      desde: current.estado,
+      hacia,
+      actor: options.actor ?? { tipo: 'sistema' },
+      motivo: options.motivo ?? null,
+    });
+    return (await tx.query<PiezaRow>('UPDATE piezas SET estado = $2 WHERE id = $1 RETURNING *', [piezaId, hacia])).rows[0]!;
   });
-  return (await db.query<PiezaRow>('UPDATE piezas SET estado = $2 WHERE id = $1 RETURNING *', [piezaId, hacia])).rows[0]!;
 }
 
 /** Shortest path from the piece's state to `estado` over the allowed transitions, then walks it. */

@@ -56,6 +56,7 @@ import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
 import { FakeAlertSink } from '../lib/ai/alerts.js';
 import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
+import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
@@ -75,6 +76,7 @@ interface World {
   autorizacionMenorId: string;
   conexionId: string;
   mediaId: string;
+  piezaId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -117,6 +119,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     autorizacionMenorId: menor.id,
     conexionId: conexion.id,
     mediaId: media.id,
+    piezaId: pieza.id,
   };
 }
 
@@ -320,6 +323,21 @@ describe('isolation: media description', () => {
       expect(vision.calls).toHaveLength(0);
       const { rows } = await db.query('SELECT descripcion, descrito_en FROM media WHERE id = $1', [b.mediaId]);
       expect(rows[0]).toEqual({ descripcion: null, descrito_en: null });
+    });
+  });
+});
+
+describe('isolation: pieces', () => {
+  it("A cannot transition, pause, resume, read, list or see the history of B's pieces: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      await expect(transitionPieza(db, a.clienteId, b.piezaId, 'plan_aprobado', SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(pausarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(reanudarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(await getPieza(db, a.clienteId, b.piezaId)).toBeNull();
+      expect((await listPiezas(db, a.clienteId)).map((p) => p.id)).toEqual([a.piezaId]);
+      expect(await getHistorial(db, a.clienteId, b.piezaId)).toEqual([]);
+      const { rows } = await db.query('SELECT estado, version_estado FROM piezas WHERE id = $1', [b.piezaId]);
+      expect(rows[0]).toEqual({ estado: 'planeada', version_estado: 0 });
     });
   });
 });
