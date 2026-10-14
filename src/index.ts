@@ -3,6 +3,8 @@ import { config } from './config/index.js';
 import { closePool, pool } from './db/pool.js';
 import { logger } from './lib/logger/index.js';
 import { registerAuth } from './modules/auth/authRoutes.js';
+import { createMediaProbe } from './lib/media/probe/index.js';
+import { registerMediaRoutes } from './modules/media/mediaRoutes.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
 import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
 import {
@@ -51,6 +53,12 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 async function main(): Promise<void> {
   // Before any other state-changing route, so the CSRF guard covers them.
   await registerAuth(app, { db: pool });
+  await registerMediaRoutes(app, {
+    db: pool,
+    storage,
+    probe: createMediaProbe(config.media),
+    maxBytes: config.media.maxBytes,
+  });
   await startQueue(boss);
   await registerBudgetJobs(boss, pool);
   await app.listen({ port: config.PORT, host: '0.0.0.0' });

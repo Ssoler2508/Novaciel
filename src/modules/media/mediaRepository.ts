@@ -112,6 +112,9 @@ export interface ListMediaFilters {
   includeDeleted?: boolean;
   /** Instant for the usable rule; defaults to the database clock. */
   at?: Date;
+  /** Page size; omit to get every row (internal callers). */
+  limit?: number;
+  offset?: number;
 }
 
 export async function listMedia(db: Db, clienteId: ClienteId, filters: ListMediaFilters = {}): Promise<MediaRow[]> {
@@ -134,8 +137,18 @@ export async function listMedia(db: Db, clienteId: ClienteId, filters: ListMedia
     }
     where.push(usableCondition(at));
   }
+  // Newest first; id breaks ties (rows created in one transaction share creado_en), so pages are stable.
+  let paging = '';
+  if (filters.limit !== undefined) {
+    params.push(filters.limit);
+    paging += ` LIMIT $${params.length}`;
+  }
+  if (filters.offset !== undefined) {
+    params.push(filters.offset);
+    paging += ` OFFSET $${params.length}`;
+  }
   const { rows } = await db.query<MediaRow>(
-    `SELECT ${MEDIA_COLUMNS} FROM media m WHERE ${where.join(' AND ')} ORDER BY m.creado_en DESC, m.id`,
+    `SELECT ${MEDIA_COLUMNS} FROM media m WHERE ${where.join(' AND ')} ORDER BY m.creado_en DESC, m.id DESC${paging}`,
     params,
   );
   return rows;
