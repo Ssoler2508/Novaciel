@@ -3,7 +3,7 @@ import { assertTestDatabase } from './guard.js';
 
 /**
  * Domain tables emptied by cleanupDomainTables. Each checkpoint adds its own tables.
- * Never add: auditoria and libro_gastos (append-only), interruptor_global (seeded by a migration), roles (seeded by a migration), the migrations table
+ * Never add: auditoria, libro_gastos and historial_estados_pieza (append-only), transiciones_pieza (seeded by a migration), interruptor_global (seeded by a migration), roles (seeded by a migration), the migrations table
  * or the pg-boss schema.
  */
 export const DOMAIN_TABLES: readonly string[] = [
@@ -13,6 +13,9 @@ export const DOMAIN_TABLES: readonly string[] = [
   'autorizaciones_gasto',
   'topes',
   'conexiones_redes',
+  'piezas_hechos',
+  'piezas',
+  'planes_semanales',
   'media_autorizaciones',
   'media',
   'autorizaciones_imagen',

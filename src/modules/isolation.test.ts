@@ -12,6 +12,9 @@ import {
   createLibroGasto,
   createMedia,
   createMediaAutorizacion,
+  createPieza,
+  createPiezaHecho,
+  createPlanSemanal,
   createPerfilMarca,
   createReglaProhibida,
   createTope,
@@ -57,7 +60,7 @@ import { describeMedia } from './media/describeMedia.js';
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -96,6 +99,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
   const media = await createMedia(db, { clienteId: cliente.id, aparecenPersonas: true, subidoPor: creadoPor });
   await createMediaAutorizacion(db, { mediaId: media.id, clienteId: cliente.id, autorizacionId: valida.id });
+  const plan = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id });
+  const pieza = await createPieza(db, { clienteId: cliente.id, planId: plan.id });
+  await createPiezaHecho(db, { piezaId: pieza.id, hechoId: hechoValido.id, clienteId: cliente.id });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
