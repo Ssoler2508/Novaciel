@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Db } from '../db/types.js';
 import type { AuditActor } from '../modules/auditoria/recordAudit.js';
 import { createAutorizacion, listAutorizaciones } from '../modules/autorizaciones/autorizacionesRepository.js';
@@ -19,6 +21,10 @@ import {
   listClientUsers,
 } from '../modules/roles/usuarioRolesRepository.js';
 import { hasAnyPrice, setModelPrice } from '../modules/precios/preciosRepository.js';
+import type { MediaProbe } from '../lib/media/probe/types.js';
+import type { Storage } from '../lib/media/storage/types.js';
+import { DuplicateMediaError } from '../modules/media/errors.js';
+import { uploadMedia } from '../modules/media/uploadMedia.js';
 import { createSpendConfig, getSpendConfig } from '../modules/presupuesto/gastoConfigRepository.js';
 import { usdToMicro } from '../modules/presupuesto/money.js';
 import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
@@ -36,11 +42,33 @@ const SEED_AUTHORIZATION_KEY = 'autorizaciones/seed-persona-ficticia.pdf';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SISTEMA: AuditActor = { tipo: 'sistema' };
 
+/** Synthetic photos committed in the repository (see seed-data/media/README.md). Never real people. */
+export const SEED_MEDIA_DIR = fileURLToPath(new URL('../../seed-data/media/', import.meta.url));
+const SEED_MEDIA = [
+  { file: 'seed-foto-sin-personas.jpg', tags: ['seed', 'fachada'], aparecenPersonas: false },
+  { file: 'seed-foto-con-personas.jpg', tags: ['seed', 'barista'], aparecenPersonas: true },
+] as const;
+
+export interface SeedMediaDeps {
+  storage: Pick<Storage, 'putFile' | 'delete'>;
+  probe: MediaProbe;
+  maxBytes: number;
+}
+
+export interface SeedOptions {
+  /** When given, two synthetic photos are uploaded through uploadMedia. Needs a working ffprobe. */
+  media?: SeedMediaDeps;
+  /** Why media were skipped when `media` is not given (shown in the result). */
+  mediaSkippedReason?: string;
+}
+
 export interface SeedResult {
   created: string[];
   existing: string[];
   completeness: CompletenessResult | null;
   puedePlanificar: boolean;
+  /** Parts of the seed that were not run, with the reason. */
+  skipped: string[];
 }
 
 /**
@@ -48,8 +76,8 @@ export interface SeedResult {
  * second run writes no rows and no audit rows, and never overwrites edits made by hand.
  * Goes through the repositories (never the test factories). Callers run it inside a transaction.
  */
-export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<SeedResult> {
-  const result: SeedResult = { created: [], existing: [], completeness: null, puedePlanificar: false };
+export async function seedDevelopment(db: Db, now: Date = new Date(), options: SeedOptions = {}): Promise<SeedResult> {
+  const result: SeedResult = { created: [], existing: [], completeness: null, puedePlanificar: false, skipped: [] };
   const note = (created: boolean, what: string) => (created ? result.created : result.existing).push(what);
 
   // NovaCiel administrator.
@@ -179,6 +207,37 @@ export async function seedDevelopment(db: Db, now: Date = new Date()): Promise<S
       },
       SISTEMA,
     );
+  }
+
+  // Two synthetic photos, uploaded THROUGH uploadMedia (never inserted directly). Idempotent through
+  // its duplicate check: a second run finds both already there. The seed runs in one transaction, so
+  // if it fails after storing the files they stay in the development storage folder (harmless).
+  if (!options.media) {
+    result.skipped.push(options.mediaSkippedReason ?? 'media (not requested)');
+  } else {
+    const autorizacion = (await listAutorizaciones(db, clienteId)).find((a) => a.documento_clave === SEED_AUTHORIZATION_KEY);
+    for (const item of SEED_MEDIA) {
+      const label = `media: ${item.file}`;
+      try {
+        await uploadMedia(
+          { db, storage: options.media.storage, probe: options.media.probe, maxBytes: options.media.maxBytes },
+          clienteId,
+          {
+            filePath: path.join(SEED_MEDIA_DIR, item.file),
+            originalName: item.file,
+            tags: [...item.tags],
+            rights: { origen: 'propio' },
+            aparecenPersonas: item.aparecenPersonas,
+            ...(item.aparecenPersonas && autorizacion ? { autorizacionIds: [autorizacion.id] } : {}),
+          },
+          SISTEMA,
+        );
+        note(true, label);
+      } catch (error) {
+        if (!(error instanceof DuplicateMediaError)) throw error;
+        note(false, label);
+      }
+    }
   }
 
   // Completeness. Once the client can be planned it is activated, but only from en_onboarding, so a

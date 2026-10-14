@@ -10,6 +10,8 @@ import {
   createConfiguracionGastoCliente,
   createHechoVerificado,
   createLibroGasto,
+  createMedia,
+  createMediaAutorizacion,
   createPerfilMarca,
   createReglaProhibida,
   createTope,
@@ -34,11 +36,28 @@ import {
   rotateConexion,
 } from './conexionesRedes/conexionesRedesRepository.js';
 import { listClientUsers, revokeClientRole } from './roles/usuarioRolesRepository.js';
+import {
+  AutorizacionNotFoundError,
+  getMedia,
+  getMediaSignedUrl,
+  getUsableMedia,
+  linkPersons,
+  listMedia,
+  MediaNotFoundError,
+  softDeleteMedia,
+  unlinkPersons,
+  updateMediaRights,
+  updateMediaTags,
+} from './media/index.js';
+import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
+import { FakeAlertSink } from '../lib/ai/alerts.js';
+import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
+import { describeMedia } from './media/describeMedia.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -52,6 +71,7 @@ interface World {
   autorizacionRevocadaId: string;
   autorizacionMenorId: string;
   conexionId: string;
+  mediaId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -74,6 +94,8 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   await createAutorizacionGasto(db, { clienteId: cliente.id });
   await createLibroGasto(db, { clienteId: cliente.id });
   await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
+  const media = await createMedia(db, { clienteId: cliente.id, aparecenPersonas: true, subidoPor: creadoPor });
+  await createMediaAutorizacion(db, { mediaId: media.id, clienteId: cliente.id, autorizacionId: valida.id });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -88,6 +110,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     autorizacionRevocadaId: revocada.id,
     autorizacionMenorId: menor.id,
     conexionId: conexion.id,
+    mediaId: media.id,
   };
 }
 
@@ -243,6 +266,54 @@ describe('isolation: client role assignments', () => {
       expect(await revokeClientRole(db, a.clienteId, { usuarioId: b.usuarioSoloId, rolCodigo: 'dueno_cliente' }, SISTEMA)).toBe(false);
       const { rows } = await db.query('SELECT usuario_id FROM usuario_roles WHERE cliente_id = $1', [b.clienteId]);
       expect(rows.map((r) => r.usuario_id)).toContain(b.usuarioSoloId);
+    });
+  });
+});
+
+describe('isolation: media service', () => {
+  it("A never reads, lists or finds B's media as usable", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect(await getMedia(db, a.clienteId, b.mediaId)).toBeNull();
+      expect(await getMedia(db, a.clienteId, b.mediaId, { includeDeleted: true })).toBeNull();
+      expect((await listMedia(db, a.clienteId, { includeDeleted: true })).map((m) => m.id)).toEqual([a.mediaId]);
+      expect((await getUsableMedia(db, a.clienteId)).map((m) => m.id)).not.toContain(b.mediaId);
+    });
+  });
+
+  it("A cannot update tags or rights, link, unlink or delete B's media: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect(await updateMediaTags(db, a.clienteId, b.mediaId, ['alterado'], SISTEMA)).toBeNull();
+      expect(await updateMediaRights(db, a.clienteId, b.mediaId, { origen: 'cedido_por_cliente' }, SISTEMA)).toBeNull();
+      expect(await linkPersons(db, a.clienteId, b.mediaId, [a.autorizacionValidaId], SISTEMA)).toBeNull();
+      expect(await unlinkPersons(db, a.clienteId, b.mediaId, [b.autorizacionValidaId], SISTEMA)).toBeNull();
+      expect(await softDeleteMedia(db, a.clienteId, b.mediaId, SISTEMA)).toBeNull();
+      const { rows } = await db.query('SELECT eliminado_en FROM media WHERE id = $1', [b.mediaId]);
+      expect(rows[0].eliminado_en).toBeNull();
+      expect((await db.query('SELECT 1 FROM media_autorizaciones WHERE media_id = $1', [b.mediaId])).rows).toHaveLength(1);
+    });
+  });
+
+  it("A cannot link B's authorization to its own media, nor get a signed URL for B's media", async () => {
+    await withTwoClients(async (a, b, db) => {
+      await expect(linkPersons(db, a.clienteId, a.mediaId, [b.autorizacionValidaId], SISTEMA)).rejects.toBeInstanceOf(AutorizacionNotFoundError);
+      const storage = new FakeStorage();
+      const bKey = (await db.query('SELECT clave_almacenamiento FROM media WHERE id = $1', [b.mediaId])).rows[0].clave_almacenamiento;
+      await storage.put(bKey, Buffer.from('x'));
+      await expect(getMediaSignedUrl({ db, storage }, a.clienteId, b.mediaId, 60)).rejects.toBeInstanceOf(MediaNotFoundError);
+    });
+  });
+});
+
+describe('isolation: media description', () => {
+  it("A cannot describe B's media: not found, no vision call, no budget touched, B unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const vision = new FakeVisionProvider().enqueue({ description: 'x', tags: [] });
+      await expect(
+        describeMedia({ db, vision, alerts: new FakeAlertSink() }, a.clienteId, b.mediaId, SISTEMA),
+      ).rejects.toBeInstanceOf(MediaNotFoundError);
+      expect(vision.calls).toHaveLength(0);
+      const { rows } = await db.query('SELECT descripcion, descrito_en FROM media WHERE id = $1', [b.mediaId]);
+      expect(rows[0]).toEqual({ descripcion: null, descrito_en: null });
     });
   });
 });

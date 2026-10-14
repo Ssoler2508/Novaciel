@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -87,6 +87,55 @@ describe.each(factories)('Storage contract: %s', (_name, make) => {
     await expect(s.get(key)).rejects.toThrow(/Invalid storage key/);
     await expect(s.delete(key)).rejects.toThrow(/Invalid storage key/);
     await expect(s.getSignedUrl(key)).rejects.toThrow(/Invalid storage key/);
+  });
+});
+
+describe.each(factories)('Storage contract, putFile: %s', (_name, make) => {
+  async function sourceFile(content: Buffer): Promise<string> {
+    const file = path.join(dir, 'source.bin');
+    await writeFile(file, content);
+    return file;
+  }
+
+  it('stores the file content byte for byte, with nested keys', async () => {
+    const s = make();
+    const content = Buffer.from(Array.from({ length: 70_000 }, (_v, i) => (i * 7) % 256));
+    const file = await sourceFile(content);
+    await s.putFile('a/b/photo.jpg', file, 'image/jpeg');
+    expect((await s.get('a/b/photo.jpg')).equals(content)).toBe(true);
+  });
+
+  it('overwrites an existing key and keeps the source file', async () => {
+    const s = make();
+    await s.put('k.bin', Buffer.from('old'));
+    const file = await sourceFile(Buffer.from('new'));
+    await s.putFile('k.bin', file);
+    expect((await s.get('k.bin')).toString()).toBe('new');
+    expect((await readdir(dir)).includes('source.bin')).toBe(true);
+  });
+
+  it('rejects a missing source file and stores nothing', async () => {
+    const s = make();
+    await expect(s.putFile('k.bin', path.join(dir, 'does-not-exist.bin'))).rejects.toThrow();
+    await expect(s.get('k.bin')).rejects.toThrow(/not found/);
+  });
+
+  it.each(badKeys)('rejects a bad key: %s', async (_label, key) => {
+    const s = make();
+    const file = await sourceFile(Buffer.from('x'));
+    await expect(s.putFile(key, file)).rejects.toThrow(/Invalid storage key/);
+  });
+});
+
+describe('LocalFileStorage putFile on disk', () => {
+  it('leaves no temp file after a success or a failure, and streams without loading the file', async () => {
+    const base = path.join(dir, 'store');
+    const s = new LocalFileStorage({ baseDir: base, signingSecret: 's'.repeat(32), publicBaseUrl: 'http://localhost:3000' });
+    const file = path.join(dir, 'in.bin');
+    await writeFile(file, Buffer.alloc(300_000, 1));
+    await s.putFile('x/ok.bin', file);
+    await expect(s.putFile('x/bad.bin', path.join(dir, 'missing.bin'))).rejects.toThrow();
+    expect(await readdir(path.join(base, 'x'))).toEqual(['ok.bin']);
   });
 });
 

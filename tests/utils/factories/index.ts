@@ -20,3 +20,4 @@ export {
   currentPeriodo,
 } from './presupuesto.js';
 export { createPrecioModelo } from './precios.js';
+export { createMedia, createMediaAutorizacion } from './media.js';

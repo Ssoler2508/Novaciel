@@ -13,6 +13,8 @@ export const DOMAIN_TABLES: readonly string[] = [
   'autorizaciones_gasto',
   'topes',
   'conexiones_redes',
+  'media_autorizaciones',
+  'media',
   'autorizaciones_imagen',
   'reglas_prohibidas',
   'hechos_verificados',
