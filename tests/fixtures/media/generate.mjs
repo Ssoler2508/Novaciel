@@ -13,9 +13,10 @@ const write = (name, data) => writeFileSync(path.join(dir, name), data);
 // Text formats that browsers or servers could execute, saved with an innocent image name.
 write('vector.svg.jpg', '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script>alert(1)</script></svg>\n');
 write('page.html.jpg', '<!doctype html><html><body><script>alert(1)</script></body></html>\n');
-// A PDF (and an executable) pretending to be an image.
+// A PDF (and an executable) pretending to be an image. The executable is saved as .bin because
+// .gitignore blocks *.exe; validation never looks at the name, only the content (the MZ header).
 write('document.pdf.jpg', '%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n');
-write('program.exe', Buffer.concat([Buffer.from('MZ'), Buffer.alloc(62, 0), Buffer.from('This program cannot be run in DOS mode.')]));
+write('executable.bin', Buffer.concat([Buffer.from('MZ'), Buffer.alloc(62, 0), Buffer.from('This program cannot be run in DOS mode.')]));
 // An archive: the empty ZIP end-of-central-directory record.
 write('archive.zip', Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)]));
 // An empty file and a file too short to hold any signature.

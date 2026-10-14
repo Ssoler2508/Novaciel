@@ -27,5 +27,5 @@ Re-record them with a newer ffprobe if its output format changes; the parser tes
 ## Disallowed samples (`disallowed/`)
 
 Written by `node tests/fixtures/media/generate.mjs` (run from the repository root): an SVG and an HTML
-page saved as `.jpg`, a PDF saved as `.jpg`, an `.exe`, a ZIP, an empty file, a 2-byte file, a HEIC
+page saved as `.jpg`, a PDF saved as `.jpg`, an executable (an `MZ` header, saved as `executable.bin` because `.gitignore` blocks `*.exe`), a ZIP, an empty file, a 2-byte file, a HEIC
 header, and header-only JPEG/MP4 stubs used by the "probe disagrees with the magic bytes" tests.

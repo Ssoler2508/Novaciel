@@ -56,7 +56,7 @@ describe('validateMedia: disallowed types', () => {
     ['an SVG saved as .jpg', 'vector.svg.jpg'],
     ['an HTML page saved as .jpg', 'page.html.jpg'],
     ['a PDF saved as .jpg', 'document.pdf.jpg'],
-    ['an executable', 'program.exe'],
+    ['an executable (MZ header)', 'executable.bin'],
     ['a ZIP archive', 'archive.zip'],
     ['an empty file', 'empty.jpg'],
     ['a file shorter than any signature', 'short.jpg'],
