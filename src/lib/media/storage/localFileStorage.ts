@@ -1,7 +1,8 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { createReadStream, mkdirSync, type ReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, type ReadStream } from 'node:fs';
 import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { validateKey } from './keys.js';
 import type { Storage } from './types.js';
 
@@ -50,6 +51,19 @@ export class LocalFileStorage implements Storage {
     const tmp = path.join(path.dirname(file), `${path.basename(file)}.${randomUUID()}.tmp`);
     try {
       await writeFile(tmp, body);
+      await rename(tmp, file);
+    } catch (err) {
+      await unlink(tmp).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  async putFile(key: string, filePath: string, _contentType?: string): Promise<void> {
+    const file = this.resolvePath(key);
+    await mkdir(path.dirname(file), { recursive: true });
+    const tmp = path.join(path.dirname(file), `${path.basename(file)}.${randomUUID()}.tmp`);
+    try {
+      await pipeline(createReadStream(filePath), createWriteStream(tmp));
       await rename(tmp, file);
     } catch (err) {
       await unlink(tmp).catch(() => undefined);

@@ -4,6 +4,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Storage } from './types.js';
 
@@ -14,10 +16,13 @@ export interface S3StorageOptions {
   accessKeyId: string;
   secretAccessKey: string;
   region?: string;
+  /** For tests only: replaces the AWS client, so no network is used. */
+  client?: Pick<S3Client, 'send'>;
 }
 
 export class S3Storage implements Storage {
   private readonly client: S3Client;
+  private readonly sender: Pick<S3Client, 'send'>;
   private readonly bucket: string;
 
   constructor(opts: S3StorageOptions) {
@@ -28,11 +33,30 @@ export class S3Storage implements Storage {
       forcePathStyle: true, // path-style URLs work with S3-compatible services
       credentials: { accessKeyId: opts.accessKeyId, secretAccessKey: opts.secretAccessKey },
     });
+    this.sender = opts.client ?? this.client;
   }
 
   async put(key: string, body: Buffer, contentType?: string): Promise<void> {
-    await this.client.send(
+    await this.sender.send(
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }),
+    );
+  }
+
+  /**
+   * Streams the file with a single PutObject (up to 5 GB, above our 2 GiB upload limit), so no
+   * extra multipart library is needed. The AWS SDK cannot replay a consumed stream: a transient
+   * failure fails the upload instead of retrying it, and the caller retries the whole upload.
+   */
+  async putFile(key: string, filePath: string, contentType?: string): Promise<void> {
+    const { size } = await stat(filePath);
+    await this.sender.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: createReadStream(filePath),
+        ContentLength: size,
+        ContentType: contentType,
+      }),
     );
   }
 
