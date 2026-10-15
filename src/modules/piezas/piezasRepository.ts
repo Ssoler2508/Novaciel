@@ -22,6 +22,8 @@ export interface PiezaRow {
   actualizado_en: Date;
   /** Ids of the verified facts the piece cites. */
   hecho_ids: string[];
+  /** State of the piece's plan. Pieces of a 'descartado' plan are dead: they cannot change state. */
+  plan_estado: 'borrador' | 'propuesto' | 'aprobado' | 'descartado';
 }
 
 export interface HistorialRow {
@@ -40,14 +42,27 @@ export interface HistorialRow {
 
 export const PIEZA_COLUMNS = `p.id, p.cliente_id, p.plan_id, p.red, p.formato, p.pilar, p.trabajo, p.idea, p.fecha_hora,
   p.estado, p.estado_previo, p.version_estado, p.creado_en, p.actualizado_en,
-  ARRAY(SELECT h.hecho_id FROM piezas_hechos h WHERE h.pieza_id = p.id AND h.cliente_id = p.cliente_id ORDER BY h.hecho_id) AS hecho_ids`;
+  ARRAY(SELECT h.hecho_id FROM piezas_hechos h WHERE h.pieza_id = p.id AND h.cliente_id = p.cliente_id ORDER BY h.hecho_id) AS hecho_ids,
+  pl.estado AS plan_estado`;
 
-export async function getPieza(db: Db, clienteId: ClienteId, id: string): Promise<PiezaRow | null> {
-  const { rows } = await db.query<PiezaRow>(`SELECT ${PIEZA_COLUMNS} FROM piezas p WHERE p.id = $1 AND p.cliente_id = $2`, [id, clienteId]);
+/** The piece joined with its plan (same client on both sides). */
+export const PIEZA_FROM = `FROM piezas p JOIN planes_semanales pl ON pl.id = p.plan_id AND pl.cliente_id = p.cliente_id`;
+
+export interface PiezaReadOptions {
+  /** For audit views: also return pieces whose plan was discarded. They are hidden by default. */
+  includeDescartados?: boolean;
+}
+
+/** A piece of the client; null for another client's piece, and for a piece of a discarded plan unless asked. */
+export async function getPieza(db: Db, clienteId: ClienteId, id: string, options: PiezaReadOptions = {}): Promise<PiezaRow | null> {
+  const { rows } = await db.query<PiezaRow>(
+    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE p.id = $1 AND p.cliente_id = $2 AND ($3::boolean OR pl.estado <> 'descartado')`,
+    [id, clienteId, options.includeDescartados ?? false],
+  );
   return rows[0] ?? null;
 }
 
-export interface ListPiezasFilters {
+export interface ListPiezasFilters extends PiezaReadOptions {
   planId?: string;
   /** One state or several. */
   estado?: EstadoPieza | readonly EstadoPieza[];
@@ -61,6 +76,8 @@ export interface ListPiezasFilters {
 export async function listPiezas(db: Db, clienteId: ClienteId, filters: ListPiezasFilters = {}): Promise<PiezaRow[]> {
   const params: unknown[] = [clienteId];
   const where = ['p.cliente_id = $1'];
+  // Pieces of a discarded plan are dead: hidden unless an audit view asks for them.
+  if (!filters.includeDescartados) where.push(`pl.estado <> 'descartado'`);
   if (filters.planId) {
     params.push(filters.planId);
     where.push(`p.plan_id = $${params.length}`);
@@ -78,7 +95,7 @@ export async function listPiezas(db: Db, clienteId: ClienteId, filters: ListPiez
     where.push(`p.fecha_hora < $${params.length}`);
   }
   const { rows } = await db.query<PiezaRow>(
-    `SELECT ${PIEZA_COLUMNS} FROM piezas p WHERE ${where.join(' AND ')} ORDER BY p.fecha_hora, p.id`,
+    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE ${where.join(' AND ')} ORDER BY p.fecha_hora, p.id`,
     params,
   );
   return rows;

@@ -3,8 +3,8 @@ import { runInTransaction } from '../../db/transaction.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import type { ClienteId } from '../shared/clienteId.js';
 import { canTransition, type EstadoPieza } from './estados.js';
-import { InvalidPiezaInputError, InvalidTransitionError, NotPausedError, PiezaNotFoundError } from './errors.js';
-import { getPieza, PIEZA_COLUMNS, type PiezaRow } from './piezasRepository.js';
+import { InvalidPiezaInputError, InvalidTransitionError, NotPausedError, PiezaNotFoundError, PlanDescartadoError } from './errors.js';
+import { getPieza, PIEZA_COLUMNS, PIEZA_FROM, type PiezaRow } from './piezasRepository.js';
 
 // The only code that changes a piece's state. The database enforces the same rules with a trigger
 // (transiciones_pieza + a history row per change in the same transaction); this layer rejects an
@@ -27,13 +27,19 @@ function cleanMotivo(motivo: string | undefined): string | null {
   return trimmed;
 }
 
-/** Locks the piece row of this client for the rest of the transaction, or null. */
+/**
+ * Locks the piece row of this client for the rest of the transaction (and its plan row in share
+ * mode, so the plan cannot be discarded under it), or null. A piece of a discarded plan is refused
+ * here, under the same lock; the database trigger refuses it too.
+ */
 async function lockPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise<PiezaRow | null> {
   const { rows } = await tx.query<PiezaRow>(
-    `SELECT ${PIEZA_COLUMNS} FROM piezas p WHERE p.id = $1 AND p.cliente_id = $2 FOR UPDATE OF p`,
+    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE p.id = $1 AND p.cliente_id = $2 FOR UPDATE OF p FOR SHARE OF pl`,
     [piezaId, clienteId],
   );
-  return rows[0] ?? null;
+  const pieza = rows[0] ?? null;
+  if (pieza?.plan_estado === 'descartado') throw new PlanDescartadoError();
+  return pieza;
 }
 
 /** The transition itself, on a piece that is already locked. */

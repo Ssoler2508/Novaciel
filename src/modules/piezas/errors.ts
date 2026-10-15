@@ -33,3 +33,11 @@ export class InvalidPiezaInputError extends Error {
     this.name = 'InvalidPiezaInputError';
   }
 }
+
+/** The piece belongs to a discarded plan: it can never change state again. */
+export class PlanDescartadoError extends Error {
+  constructor() {
+    super('The plan of this piece is discarded');
+    this.name = 'PlanDescartadoError';
+  }
+}

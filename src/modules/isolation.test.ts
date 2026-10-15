@@ -57,6 +57,7 @@ import { FakeAlertSink } from '../lib/ai/alerts.js';
 import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
 import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
+import { getPlan, getPlanActivoDeSemana, listPlanes } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
@@ -77,6 +78,7 @@ interface World {
   conexionId: string;
   mediaId: string;
   piezaId: string;
+  planId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -120,6 +122,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     conexionId: conexion.id,
     mediaId: media.id,
     piezaId: pieza.id,
+    planId: plan.id,
   };
 }
 
@@ -338,6 +341,17 @@ describe('isolation: pieces', () => {
       expect(await getHistorial(db, a.clienteId, b.piezaId)).toEqual([]);
       const { rows } = await db.query('SELECT estado, version_estado FROM piezas WHERE id = $1', [b.piezaId]);
       expect(rows[0]).toEqual({ estado: 'planeada', version_estado: 0 });
+    });
+  });
+});
+
+describe('isolation: weekly plans', () => {
+  it("A never reads, lists or finds B's plans: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect(await getPlan(db, a.clienteId, b.planId)).toBeNull();
+      expect((await listPlanes(db, a.clienteId)).map((p) => p.id)).toEqual([a.planId]);
+      expect(await getPlanActivoDeSemana(db, a.clienteId, '2026-11-02')).toMatchObject({ id: a.planId }); // each client has its own plan for the same week
+      expect((await getPlanActivoDeSemana(db, b.clienteId, '2026-11-02'))!.id).toBe(b.planId);
     });
   });
 });
