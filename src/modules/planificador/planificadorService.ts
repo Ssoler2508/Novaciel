@@ -19,7 +19,7 @@ import { isValidLocalDate, isValidZone, localDateOf, mondayOf } from './fechas.j
 import { getPlan, getPlanActivoDeSemana, PLAN_COLUMNS, type PlanRow } from './planesRepository.js';
 import { buildPlannerPrompt } from './prompt.js';
 import { buildPlanSchema } from './schema.js';
-import type { PlanOutput } from './types.js';
+import type { PlanOutput, PlannerContext } from './types.js';
 
 // Generates the weekly plan of a client. Reads through the repositories (always filtered by
 // cliente_id), builds the context and prompt (pure, rule 9), calls generateStructured (budget,
@@ -39,6 +39,12 @@ export interface PlanificadorDeps {
   provider: LLMProvider;
   alerts: AlertSink;
   logger?: Logger;
+  /**
+   * Development side channel, used ONLY by the deterministic fake planner: it runs the model call
+   * with the structured context available to the provider, so the fake never has to read the prompt.
+   * Real providers do not set it.
+   */
+  withContext?: <T>(context: PlannerContext, run: () => Promise<T>) => Promise<T>;
 }
 
 export interface GenerarPlanOptions {
@@ -147,17 +153,19 @@ export async function generarPlanSemanal(
   });
 
   // 5. The model call: budget, estimate, authorization, single retry and alert live here.
-  const generated = await generateStructured<PlanOutput>(
-    { db, provider: deps.provider, alerts: deps.alerts, logger: log },
-    {
-      clienteId,
-      purpose: PLAN_PURPOSE,
-      schema: buildPlanSchema(context),
-      prompt: buildPlannerPrompt(context),
-      maxOutputTokens: maxOutputTokensFor(context.piezasPorSemana),
-      actor,
-    },
-  );
+  const callModel = () =>
+    generateStructured<PlanOutput>(
+      { db, provider: deps.provider, alerts: deps.alerts, logger: log },
+      {
+        clienteId,
+        purpose: PLAN_PURPOSE,
+        schema: buildPlanSchema(context),
+        prompt: buildPlannerPrompt(context),
+        maxOutputTokens: maxOutputTokensFor(context.piezasPorSemana),
+        actor,
+      },
+    );
+  const generated = await (deps.withContext ? deps.withContext(context, callModel) : callModel());
 
   // 6. One transaction stores everything.
   let stored: { plan: PlanRow; piezas: PiezaRow[] };

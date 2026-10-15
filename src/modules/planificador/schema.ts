@@ -34,6 +34,15 @@ export const PLAN_ISSUES = {
   bannedTerm: 'banned_term',
 } as const;
 
+/** True when a local date and time fall inside one of the client's vetoed windows (end exclusive). */
+export function isVetado(context: PlannerContext, fecha: string, hora: string): boolean {
+  const dia = diaDeLaSemana(fecha);
+  const minutos = minutesOf(hora);
+  return context.horariosVetados.some(
+    (v) => (v.dia === undefined || v.dia === dia) && minutos >= minutesOf(v.desde) && minutos < minutesOf(v.hasta),
+  );
+}
+
 /** Allowed distance, in pieces, between a pillar's count and its expected share: max(1, ceil(0.2 * N)). */
 export function pillarTolerance(pieceCount: number): number {
   return Math.max(1, Math.ceil(0.2 * pieceCount));
@@ -87,11 +96,7 @@ export function buildPlanSchema(context: PlannerContext): z.ZodType<PlanOutput> 
             if (!(error instanceof InvalidLocalTimeError)) throw error;
             issue(at('hora'), PLAN_ISSUES.invalidLocalTime);
           }
-          const dia = diaDeLaSemana(pieza.fecha);
-          const minutos = minutesOf(pieza.hora);
-          const vetado = context.horariosVetados.some(
-            (v) => (v.dia === undefined || v.dia === dia) && minutos >= minutesOf(v.desde) && minutos < minutesOf(v.hasta),
-          );
+          const vetado = isVetado(context, pieza.fecha, pieza.hora);
           if (vetado) issue(at('hora'), PLAN_ISSUES.vetoedTime);
         }
 
