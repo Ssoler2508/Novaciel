@@ -3,10 +3,20 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { cleanupDomainTables } from '../../../tests/utils/cleanup.js';
 import { closeTestPool, getTestPool } from '../../../tests/utils/testPool.js';
 import { withTestTransaction } from '../../../tests/utils/transaction.js';
+import {
+  createAutorizacionImagen,
+  createCliente,
+  createConfiguracionGastoCliente,
+  createHechoVerificado,
+  createPerfilMarca,
+  createPrecioModelo,
+  createReglaProhibida,
+  createUsuario,
+} from '../../../tests/utils/factories/index.js';
+import { SEED_IDIOMA, SEED_PROFILE } from '../../scripts/seedProfile.js';
 import { FakeAlertSink } from '../../lib/ai/alerts.js';
 import { FakeLLMProvider } from '../../lib/ai/fakeLLMProvider.js';
 import { LLMProviderError } from '../../lib/ai/types.js';
-import { runInTransaction } from '../../db/transaction.js';
 import { createLogger } from '../../lib/logger/index.js';
 import { seedDevelopment, SEED_CLIENT_NAME } from '../../scripts/seedDevelopment.js';
 import { findClienteByNombreComercial } from '../clientes/clientesRepository.js';
@@ -178,10 +188,20 @@ describe('the worker, with the real pg-boss', () => {
   it('runs the job, stores the plan, and a second run for the same week is rejected with the error name', async () => {
     const pool = getTestPool();
     await cleanupDomainTables(pool);
-    // Committed data: the worker uses its own connections.
-    await runInTransaction(pool, (tx) => seedDevelopment(tx));
-    const clienteId = asClienteId((await findClienteByNombreComercial(pool, SEED_CLIENT_NAME))!.id);
-    const cifra = (await getValidHechos(pool, clienteId)).find((h) => h.tipo === 'cifra')!.id;
+    // Committed data: the worker uses its own connections. It is built with the test factories (plain
+    // SQL, no audit rows), NOT with the seed: the audit log is append-only and its rows would stay in
+    // the test database for good, which other tests (counting audit rows per table) do not expect.
+    const user = await createUsuario(pool);
+    const cliente = await createCliente(pool);
+    const clienteId = asClienteId(cliente.id);
+    await createPerfilMarca(pool, { clienteId, creadoPor: user.id, idiomaContenido: SEED_IDIOMA, ...SEED_PROFILE });
+    await createHechoVerificado(pool, { clienteId, verificadoPor: user.id, tipo: 'precio', enunciado: 'Precio ficticio.' });
+    await createHechoVerificado(pool, { clienteId, verificadoPor: user.id, tipo: 'horario', enunciado: 'Horario ficticio.' });
+    const cifra = (await createHechoVerificado(pool, { clienteId, verificadoPor: user.id, tipo: 'cifra', enunciado: 'Cifra ficticia.' })).id;
+    await createReglaProhibida(pool, { clienteId, tipo: 'palabra', texto: 'garantizado' });
+    await createAutorizacionImagen(pool, { clienteId });
+    await createPrecioModelo(pool, { proveedor: 'fake', modelo: 'fake-model', precioEntrada: '1', precioSalida: '2' });
+    await createConfiguracionGastoCliente(pool, { clienteId, techoMensualDefecto: '1' });
     const semana = nextMonday();
     const provider = new FakeLLMProvider().enqueue(planJson(semana, cifra));
 
