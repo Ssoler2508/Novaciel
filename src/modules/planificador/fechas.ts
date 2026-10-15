@@ -130,3 +130,10 @@ export function localDateOf(instant: Date, zone: string): string {
   if (!isValidZone(zone)) throw new InvalidLocalTimeError('zone');
   return new Date(wallMsAt(Math.floor(instant.getTime() / 1000) * 1000, zone)).toISOString().slice(0, 10);
 }
+
+/** The wall-clock date (YYYY-MM-DD) and time (HH:mm) of an instant in `zone`. */
+export function localDateTimeOf(instant: Date, zone: string): { fecha: string; hora: string } {
+  if (!isValidZone(zone)) throw new InvalidLocalTimeError('zone');
+  const wall = new Date(wallMsAt(Math.floor(instant.getTime() / 1000) * 1000, zone)).toISOString();
+  return { fecha: wall.slice(0, 10), hora: wall.slice(11, 16) };
+}

@@ -9,7 +9,7 @@ import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { getValidHechos } from '../hechos/hechosRepository.js';
 import { listPiezas, type PiezaRow } from '../piezas/piezasRepository.js';
 import { getCompleteness } from '../perfilMarca/puedePlanificar.js';
-import { getCurrentPerfilMarca } from '../perfilMarca/perfilMarcaRepository.js';
+import { getCurrentPerfilMarca, type PerfilMarcaRow } from '../perfilMarca/perfilMarcaRepository.js';
 import type { MicroUsd } from '../presupuesto/money.js';
 import { listReglas } from '../reglasProhibidas/reglasRepository.js';
 import type { ClienteId } from '../shared/clienteId.js';
@@ -70,17 +70,11 @@ function assertCanReplace(existing: PlanRow, reemplazar: boolean): void {
   if (!(reemplazable && reemplazar)) throw new PlanExistenteError(existing.id, existing.estado, reemplazable);
 }
 
-export async function generarPlanSemanal(
-  deps: PlanificadorDeps,
-  clienteId: ClienteId,
-  options: GenerarPlanOptions,
-  actor: AuditActor,
-): Promise<PlanGenerado> {
-  const { db } = deps;
-  const log = deps.logger ?? defaultLogger;
-  const reemplazar = options.reemplazar ?? false;
-
-  // 1. Eligibility, before anything is paid for.
+/**
+ * The client's current profile, or NoPuedePlanificarError (naming the incomplete blocks and their
+ * missing fields) when there is none or it is not complete. Nothing is paid for before this passes.
+ */
+export async function assertPuedePlanificar(db: Db, clienteId: ClienteId): Promise<PerfilMarcaRow> {
   const perfil = await getCurrentPerfilMarca(db, clienteId);
   const completeness = perfil ? await getCompleteness(db, clienteId) : null;
   if (!perfil || !completeness || !completeness.mandatoryComplete) {
@@ -91,22 +85,43 @@ export async function generarPlanSemanal(
       : [];
     throw new NoPuedePlanificarError(bloques);
   }
+  return perfil;
+}
 
-  // 2. The Monday of the week, in the client's zone.
+/** The Monday (YYYY-MM-DD) of the week of `semana`, in the client's zone. */
+export function normalizarSemana(perfil: PerfilMarcaRow, semana: Date | string): string {
   const zona = (perfil.operacion as Record<string, unknown>).zona_horaria;
   let fechaLocal: string;
-  if (options.semana instanceof Date) {
+  if (semana instanceof Date) {
     if (typeof zona !== 'string' || !isValidZone(zona)) throw new PlannerContextError('operacion.zona_horaria');
-    fechaLocal = localDateOf(options.semana, zona);
+    fechaLocal = localDateOf(semana, zona);
   } else {
-    if (!isValidLocalDate(options.semana)) throw new PlannerContextError('semana');
-    fechaLocal = options.semana;
+    if (!isValidLocalDate(semana)) throw new PlannerContextError('semana');
+    fechaLocal = semana;
   }
-  const semanaInicio = mondayOf(fechaLocal);
+  return mondayOf(fechaLocal);
+}
 
-  // 3. An existing plan is refused now, so nothing is paid for a plan that cannot be stored.
+/** Throws PlanExistenteError when the week has an active plan that cannot (or must not) be replaced. */
+export async function assertSemanaDisponible(db: Db, clienteId: ClienteId, semanaInicio: string, reemplazar: boolean): Promise<void> {
   const existing = await getPlanActivoDeSemana(db, clienteId, semanaInicio);
   if (existing) assertCanReplace(existing, reemplazar);
+}
+
+export async function generarPlanSemanal(
+  deps: PlanificadorDeps,
+  clienteId: ClienteId,
+  options: GenerarPlanOptions,
+  actor: AuditActor,
+): Promise<PlanGenerado> {
+  const { db } = deps;
+  const log = deps.logger ?? defaultLogger;
+  const reemplazar = options.reemplazar ?? false;
+
+  // 1. Eligibility, 2. the Monday of the week, 3. an existing plan: all refused before anything is paid for.
+  const perfil = await assertPuedePlanificar(db, clienteId);
+  const semanaInicio = normalizarSemana(perfil, options.semana);
+  await assertSemanaDisponible(db, clienteId, semanaInicio, reemplazar);
 
   // 4. Context and prompt (pure).
   const hechos = (await getValidHechos(db, clienteId)).map((h) => ({

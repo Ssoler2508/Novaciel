@@ -8,6 +8,7 @@ export {
   isValidLocalTime,
   isValidZone,
   localDateOf,
+  localDateTimeOf,
   mondayOf,
   toUtc,
   weekDates,
@@ -17,5 +18,17 @@ export { buildPlanSchema, PLAN_ISSUES, pillarTolerance } from './schema.js';
 export * from './types.js';
 export { getPlan, getPlanActivoDeSemana, listPlanes } from './planesRepository.js';
 export type { PlanEstado, PlanRow } from './planesRepository.js';
-export { generarPlanSemanal, maxOutputTokensFor, PLAN_PURPOSE } from './planificadorService.js';
+export { assertPuedePlanificar, assertSemanaDisponible, generarPlanSemanal, maxOutputTokensFor, normalizarSemana, PLAN_PURPOSE } from './planificadorService.js';
 export type { GenerarPlanOptions, PlanGenerado, PlanificadorDeps } from './planificadorService.js';
+export { toPiezaView, toPlanView } from './planesView.js';
+export type { PiezaView, PlanView } from './planesView.js';
+export {
+  createPgBossPlanQueue,
+  ejecutarJobGenerarPlan,
+  GENERAR_PLAN_QUEUE,
+  registerPlanificadorJobs,
+  singletonKeyFor,
+} from './planificadorJobs.js';
+export type { GenerarPlanOutput, GenerarPlanPayload, JobEstado, JobInfo, PlanQueue } from './planificadorJobs.js';
+export { registerPlanificadorRoutes } from './planificadorRoutes.js';
+export type { PlanificadorRoutesOptions } from './planificadorRoutes.js';

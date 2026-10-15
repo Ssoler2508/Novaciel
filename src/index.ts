@@ -7,6 +7,10 @@ import { createMediaProbe } from './lib/media/probe/index.js';
 import { registerMediaRoutes } from './modules/media/mediaRoutes.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
 import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
+import { LogAlertSink } from './lib/ai/alerts.js';
+import { createLLMProvider } from './lib/ai/index.js';
+import { registerPlanificadorRoutes } from './modules/planificador/planificadorRoutes.js';
+import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
 import {
   createStorage,
   LocalFileStorage,
@@ -59,8 +63,10 @@ async function main(): Promise<void> {
     probe: createMediaProbe(config.media),
     maxBytes: config.media.maxBytes,
   });
+  await registerPlanificadorRoutes(app, { db: pool, queue: createPgBossPlanQueue(boss) });
   await startQueue(boss);
   await registerBudgetJobs(boss, pool);
+  await registerPlanificadorJobs(boss, { db: pool, provider: createLLMProvider(config.llm), alerts: new LogAlertSink() });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }

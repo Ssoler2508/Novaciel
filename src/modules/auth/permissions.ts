@@ -35,6 +35,7 @@ export type Action =
   | 'approve_as_client'
   | 'manage_connections'
   | 'manage_users'
+  | 'manage_plans'
   | 'view_spend'
   | 'manage_budget'
   | 'manage_novaciel_staff';
@@ -68,6 +69,9 @@ export const PERMISSIONS: Record<Action, ActionRule> = {
   manage_connections: { scope: 'client', roles: ['administrador_novaciel', 'dueno_cliente'] },
   // Assign and revoke client roles, name approvers.
   manage_users: { scope: 'client', roles: ['administrador_novaciel', 'dueno_cliente'] },
+  // Generate a client's weekly plan (a paid model call) and pause or resume its pieces. NovaCiel
+  // staff only: the client's approver receives the plan and approves it (spec 7, 14).
+  manage_plans: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   view_spend: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   // Prices, caps and switches.
   manage_budget: { scope: 'global', roles: ['administrador_novaciel'] },

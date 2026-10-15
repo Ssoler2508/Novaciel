@@ -90,6 +90,7 @@ describe('requirePermission: every role on every action', () => {
     approve_as_client: ['dueno_cliente', 'aprobador_cliente'],
     manage_connections: ['administrador_novaciel', 'dueno_cliente'],
     manage_users: ['administrador_novaciel', 'dueno_cliente'],
+    manage_plans: ['administrador_novaciel', 'operador_novaciel'],
     view_spend: ['administrador_novaciel', 'operador_novaciel'],
     manage_budget: ['administrador_novaciel'],
     manage_novaciel_staff: ['administrador_novaciel'],

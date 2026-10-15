@@ -7,6 +7,7 @@ import {
   isValidLocalTime,
   isValidZone,
   localDateOf,
+  localDateTimeOf,
   mondayOf,
   toUtc,
   weekDates,
@@ -165,5 +166,24 @@ describe('week helpers', () => {
     expect(mondayOf(localDateOf(instant, NY))).toBe('2026-10-26');
     expect(mondayOf(localDateOf(instant, 'UTC'))).toBe('2026-11-02');
     expect(() => localDateOf(instant, 'Mars/Base')).toThrow(InvalidLocalTimeError);
+  });
+});
+
+describe('localDateTimeOf', () => {
+  it('is the inverse of toUtc for ordinary times, in both zones', () => {
+    for (const [date, time, zone] of [
+      ['2026-11-03', '10:00', NY],
+      ['2026-07-15', '23:30', NY],
+      ['2026-01-15', '00:00', LA],
+      ['2026-03-08', '03:00', LA],
+    ] as const) {
+      expect(localDateTimeOf(toUtc(date, time, zone), zone)).toEqual({ fecha: date, hora: time });
+    }
+  });
+
+  it('shows the wall clock across a UTC date change', () => {
+    expect(localDateTimeOf(new Date('2026-11-04T03:30:00Z'), NY)).toEqual({ fecha: '2026-11-03', hora: '22:30' });
+    expect(localDateTimeOf(new Date('2026-11-01T05:30:00Z'), NY)).toEqual({ fecha: '2026-11-01', hora: '01:30' });
+    expect(() => localDateTimeOf(new Date(), 'Mars/Base')).toThrow(InvalidLocalTimeError);
   });
 });
