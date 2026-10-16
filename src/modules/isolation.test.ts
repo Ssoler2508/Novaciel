@@ -12,6 +12,9 @@ import {
   createLibroGasto,
   createMedia,
   createMediaAutorizacion,
+  createPieza,
+  createPiezaHecho,
+  createPlanSemanal,
   createPerfilMarca,
   createReglaProhibida,
   createTope,
@@ -53,11 +56,13 @@ import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
 import { FakeAlertSink } from '../lib/ai/alerts.js';
 import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
+import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
+import { getPlan, getPlanActivoDeSemana, listPlanes } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -72,6 +77,8 @@ interface World {
   autorizacionMenorId: string;
   conexionId: string;
   mediaId: string;
+  piezaId: string;
+  planId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -96,6 +103,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
   const media = await createMedia(db, { clienteId: cliente.id, aparecenPersonas: true, subidoPor: creadoPor });
   await createMediaAutorizacion(db, { mediaId: media.id, clienteId: cliente.id, autorizacionId: valida.id });
+  const plan = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id });
+  const pieza = await createPieza(db, { clienteId: cliente.id, planId: plan.id });
+  await createPiezaHecho(db, { piezaId: pieza.id, hechoId: hechoValido.id, clienteId: cliente.id });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -111,6 +121,8 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     autorizacionMenorId: menor.id,
     conexionId: conexion.id,
     mediaId: media.id,
+    piezaId: pieza.id,
+    planId: plan.id,
   };
 }
 
@@ -314,6 +326,32 @@ describe('isolation: media description', () => {
       expect(vision.calls).toHaveLength(0);
       const { rows } = await db.query('SELECT descripcion, descrito_en FROM media WHERE id = $1', [b.mediaId]);
       expect(rows[0]).toEqual({ descripcion: null, descrito_en: null });
+    });
+  });
+});
+
+describe('isolation: pieces', () => {
+  it("A cannot transition, pause, resume, read, list or see the history of B's pieces: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      await expect(transitionPieza(db, a.clienteId, b.piezaId, 'plan_aprobado', SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(pausarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(reanudarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(await getPieza(db, a.clienteId, b.piezaId)).toBeNull();
+      expect((await listPiezas(db, a.clienteId)).map((p) => p.id)).toEqual([a.piezaId]);
+      expect(await getHistorial(db, a.clienteId, b.piezaId)).toEqual([]);
+      const { rows } = await db.query('SELECT estado, version_estado FROM piezas WHERE id = $1', [b.piezaId]);
+      expect(rows[0]).toEqual({ estado: 'planeada', version_estado: 0 });
+    });
+  });
+});
+
+describe('isolation: weekly plans', () => {
+  it("A never reads, lists or finds B's plans: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect(await getPlan(db, a.clienteId, b.planId)).toBeNull();
+      expect((await listPlanes(db, a.clienteId)).map((p) => p.id)).toEqual([a.planId]);
+      expect(await getPlanActivoDeSemana(db, a.clienteId, '2026-11-02')).toMatchObject({ id: a.planId }); // each client has its own plan for the same week
+      expect((await getPlanActivoDeSemana(db, b.clienteId, '2026-11-02'))!.id).toBe(b.planId);
     });
   });
 });
