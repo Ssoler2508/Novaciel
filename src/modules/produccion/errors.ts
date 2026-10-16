@@ -48,3 +48,21 @@ export class TextDoesNotFitError extends Error {
     this.name = 'TextDoesNotFitError';
   }
 }
+
+export type ImageDecodeReason = 'no_se_pudo_decodificar' | 'formato_no_soportado' | 'animada' | 'demasiados_pixeles';
+
+/** The source image cannot be used: it does not decode, it is not a still JPEG/PNG/WebP, or it is huge. No output exists. */
+export class ImageDecodeError extends Error {
+  constructor(readonly reason: ImageDecodeReason) {
+    super(`The source image cannot be used: ${reason}`);
+    this.name = 'ImageDecodeError';
+  }
+}
+
+/** The text has characters the bundled font cannot draw. The text is never changed to hide them. */
+export class UnsupportedGlyphsError extends Error {
+  constructor(readonly cantidad: number) {
+    super(`The text has ${cantidad} character(s) the bundled font cannot draw`);
+    this.name = 'UnsupportedGlyphsError';
+  }
+}

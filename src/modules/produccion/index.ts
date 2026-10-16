@@ -24,3 +24,16 @@ export {
   toHex,
 } from './colors.js';
 export type { ColoresSlide, Rgb } from './colors.js';
+export { ImageDecodeError, UnsupportedGlyphsError } from './errors.js';
+export type { ImageDecodeReason } from './errors.js';
+export {
+  assertGlifosSoportados,
+  COBERTURA_INTER_LATIN,
+  contarGlifosNoSoportados,
+  directorioDeFuentes,
+  esTextoSoportado,
+  FUENTE_POR_DEFECTO,
+  registrarFuentes,
+} from './fonts.js';
+export { JPEG_CALIDAD, MAX_PIXELES_ORIGEN, renderSlide } from './renderer.js';
+export type { LayoutSpec, RenderedSlide, SlideSpec } from './renderer.js';

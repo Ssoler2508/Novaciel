@@ -12,6 +12,13 @@ All files here are tiny and synthetic (solid colors, text, header bytes). No rea
 | `sample.mp4` | `ffmpeg -f lavfi -i color=c=green:s=64x48:d=1:r=10 -pix_fmt yuv420p -c:v libx264 -preset ultrafast -crf 40 -an -movflags +faststart sample.mp4` |
 | `rotated.mov` | the same kind of clip in purple, then `ffmpeg -display_rotation 90 -i unrotated.mov -c copy -f mov rotated.mov` (a QuickTime file rotated by 90 degrees) |
 
+## Image with an EXIF orientation (`exif-orientation-6.jpg`)
+
+Written by `node tests/fixtures/media/generate-exif.mjs` (run from the repository root, uses `sharp`): a 160x120 JPEG of four solid
+quadrants (top-left red, top-right green, bottom-left blue, bottom-right yellow) with the EXIF Orientation tag set to 6 ("rotate 90 degrees
+clockwise to display"). Shown upright it is 120x160 with blue top-left, red top-right, yellow bottom-left and green bottom-right. The slide
+renderer tests use it to check that the orientation is applied. Synthetic: solid colors, no photo, no person, no location.
+
 ## Recorded ffprobe output (`ffprobe/*.json`)
 
 These are **real recordings**, not hand-written. They were produced on 2026-10-13 with
