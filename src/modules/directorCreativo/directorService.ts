@@ -75,14 +75,27 @@ export interface BriefGenerado {
 
 const ESTADOS_CON_BRIEF = ['plan_aprobado', 'guion_listo'] as const;
 
-/** What the caller needs to know about the piece before paying for the model. */
-function assertElegible(pieza: PiezaRow | null, versionActual: number | null, regenerar: boolean): PiezaRow {
+/**
+ * The free, read-only checks before a brief is paid for: the piece exists for this client, its plan
+ * is approved and not discarded, the piece is in a state a brief can be made from, and a current
+ * brief is not in the way. The routes use the same function, so they cannot disagree with the
+ * service. Returns the piece and the version of its current brief (null when it has none).
+ */
+export async function assertPiezaElegible(
+  db: Db,
+  clienteId: ClienteId,
+  piezaId: string,
+  regenerar: boolean,
+): Promise<{ pieza: PiezaRow; versionActual: number | null }> {
+  const pieza = await getPieza(db, clienteId, piezaId, { includeDescartados: true });
   if (!pieza) throw new PiezaNotFoundError();
   if (pieza.plan_estado === 'descartado') throw new PlanDescartadoError();
   if (pieza.plan_estado !== 'aprobado') throw new PlanNoAprobadoError(pieza.plan_estado);
   if (!(ESTADOS_CON_BRIEF as readonly string[]).includes(pieza.estado)) throw new PiezaEstadoInvalidoError(pieza.estado);
+  const actual = await getBriefActual(db, clienteId, piezaId, { includeDescartados: true });
+  const versionActual = actual?.version ?? null;
   if (versionActual !== null && !regenerar) throw new BriefExistenteError(versionActual);
-  return pieza;
+  return { pieza, versionActual };
 }
 
 export async function generarBrief(
@@ -98,11 +111,7 @@ export async function generarBrief(
 
   // 1. Eligibility, read-only: nothing is paid for before this passes. The lock is taken at write
   //    time (step 6): holding a row lock across a paid model call would block the whole piece.
-  const pieza = await getPieza(db, clienteId, piezaId, { includeDescartados: true });
-  const actual = pieza ? await getBriefActual(db, clienteId, piezaId, { includeDescartados: true }) : null;
-  const versionVista = actual?.version ?? null;
-  assertElegible(pieza, versionVista, regenerar);
-  const piezaVista = pieza!;
+  const { pieza: piezaVista, versionActual: versionVista } = await assertPiezaElegible(db, clienteId, piezaId, regenerar);
 
   // 2. Context and prompt (pure).
   const [plan, perfil] = await Promise.all([getPlan(db, clienteId, piezaVista.plan_id), getCurrentPerfilMarca(db, clienteId)]);

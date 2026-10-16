@@ -27,7 +27,22 @@ export {
   BriefObsoletoError,
   PiezaEstadoInvalidoError,
 } from './errors.js';
-export { BRIEF_PURPOSE, generarBrief, generarBriefsDelPlan, maxOutputTokensFor } from './directorService.js';
+export { assertPiezaElegible, BRIEF_PURPOSE, generarBrief, generarBriefsDelPlan, maxOutputTokensFor } from './directorService.js';
 export type { BriefGenerado, BriefsDelPlan, DirectorDeps, GenerarBriefOptions, ResultadoPieza } from './directorService.js';
 export { getBriefActual, listBriefVersions } from './guionesRepository.js';
 export type { GuionReadOptions, GuionView, TomaView } from './guionesRepository.js';
+export { toBriefView } from './briefView.js';
+export type { BriefView } from './briefView.js';
+export {
+  createPgBossBriefQueue,
+  ejecutarJobBriefPieza,
+  ejecutarJobBriefsPlan,
+  GENERAR_BRIEF_PIEZA_QUEUE,
+  GENERAR_BRIEFS_PLAN_QUEUE,
+  registerDirectorJobs,
+  singletonKeyPieza,
+  singletonKeyPlan,
+} from './directorJobs.js';
+export type { BriefJobInfo, BriefPiezaOutput, BriefPiezaPayload, BriefQueue, BriefsPlanOutput, BriefsPlanPayload } from './directorJobs.js';
+export { registerDirectorRoutes } from './directorRoutes.js';
+export type { DirectorRoutesOptions } from './directorRoutes.js';
