@@ -22,3 +22,4 @@ export {
 export { createPrecioModelo } from './precios.js';
 export { createMedia, createMediaAutorizacion } from './media.js';
 export { createPlanSemanal, createPieza, createPiezaHecho, insertHistorial, moverPieza, DEFAULT_MONDAY } from './planesPiezas.js';
+export { createGuion, createToma, createGuionHecho, guionContenido } from './guiones.js';
