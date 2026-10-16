@@ -55,10 +55,12 @@ import {
 } from './media/index.js';
 import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
 import { FakeAlertSink } from '../lib/ai/alerts.js';
+import { FakeLLMProvider } from '../lib/ai/fakeLLMProvider.js';
 import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
 import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
-import { getPlan, getPlanActivoDeSemana, listPlanes } from './planificador/index.js';
+import { generarBrief, getBriefActual, listBriefVersions } from './directorCreativo/index.js';
+import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
@@ -384,6 +386,22 @@ describe('isolation: briefs', () => {
       }
       // Filtered by A's client id, B's brief cannot be touched.
       expect((await db.query('UPDATE guiones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.guionId])).rowCount).toBe(0);
+    });
+  });
+});
+
+describe('isolation: creative director service', () => {
+  it("A cannot read, list, generate or approve B's briefs and plans: no provider call, B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const provider = new FakeLLMProvider();
+      const deps = { db, provider, alerts: new FakeAlertSink() };
+      expect(await getBriefActual(db, a.clienteId, b.piezaConGuionId)).toBeNull();
+      expect(await listBriefVersions(db, a.clienteId, b.piezaConGuionId)).toEqual([]);
+      expect((await getBriefActual(db, b.clienteId, b.piezaConGuionId))!.id).toBe(b.guionId);
+      await expect(generarBrief(deps, a.clienteId, b.piezaConGuionId, SISTEMA, { regenerar: true })).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(generarBrief(deps, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(aprobarPlanInterno(db, a.clienteId, b.planId, SISTEMA)).rejects.toBeInstanceOf(PlanNotFoundError);
+      expect(provider.calls).toHaveLength(0);
     });
   });
 });

@@ -20,3 +20,14 @@ export type {
   MediaCandidate,
   MediaTipo,
 } from './types.js';
+export {
+  BriefExistenteError,
+  BriefHechoVencidoError,
+  BriefMediaNoUsableError,
+  BriefObsoletoError,
+  PiezaEstadoInvalidoError,
+} from './errors.js';
+export { BRIEF_PURPOSE, generarBrief, generarBriefsDelPlan, maxOutputTokensFor } from './directorService.js';
+export type { BriefGenerado, BriefsDelPlan, DirectorDeps, GenerarBriefOptions, ResultadoPieza } from './directorService.js';
+export { getBriefActual, listBriefVersions } from './guionesRepository.js';
+export type { GuionReadOptions, GuionView, TomaView } from './guionesRepository.js';

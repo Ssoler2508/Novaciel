@@ -56,3 +56,50 @@ export class HechoVencidoError extends Error {
     this.name = 'HechoVencidoError';
   }
 }
+
+/** The plan does not exist for this client (another client's plan gives the same error). */
+export class PlanNotFoundError extends Error {
+  constructor() {
+    super('Plan not found');
+    this.name = 'PlanNotFoundError';
+  }
+}
+
+/** Something needs an approved plan and this one is not (yet). */
+export class PlanNoAprobadoError extends Error {
+  constructor(readonly estado: string) {
+    super(`The plan is not approved (state: ${estado})`);
+    this.name = 'PlanNoAprobadoError';
+  }
+}
+
+/** The internal approval only accepts a draft plan. */
+export class PlanNoAprobableError extends Error {
+  constructor(readonly estado: string) {
+    super(`The plan cannot be approved from state ${estado}`);
+    this.name = 'PlanNoAprobableError';
+  }
+}
+
+export class PlanSinPiezasError extends Error {
+  constructor() {
+    super('The plan has no pieces to approve');
+    this.name = 'PlanSinPiezasError';
+  }
+}
+
+/** A paused piece would be left behind, planeada, in an approved plan: resume or discard it first. */
+export class PlanConPiezasPausadasError extends Error {
+  constructor(readonly piezaIds: readonly string[]) {
+    super(`${piezaIds.length} piece(s) of the plan are paused`);
+    this.name = 'PlanConPiezasPausadasError';
+  }
+}
+
+/** Every piece of a draft plan should be planeada; any other state means the data is inconsistent. */
+export class PlanPiezasEnOtroEstadoError extends Error {
+  constructor(readonly piezaIds: readonly string[]) {
+    super(`${piezaIds.length} piece(s) of the plan are not in state planeada`);
+    this.name = 'PlanPiezasEnOtroEstadoError';
+  }
+}
