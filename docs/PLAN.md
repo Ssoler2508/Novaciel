@@ -84,7 +84,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - FFmpeg (`ffprobe`) installed natively on Windows from this step.
 - **Done when:** media can be uploaded, listed and searched per client.
 
-### Step 5 — Planner and piece states
+### Step 5 — Planner and piece states ✅ (merge ` `)
 - Weekly plan generation per client from Brand Profile and verified facts.
 - Piece state machine with the states and transitions of spec section 15 (planeada → plan_aprobado → guion_listo → en_produccion → …); `pausada` is reachable from any state.
 - Invalid transitions are impossible.
