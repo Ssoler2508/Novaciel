@@ -1,5 +1,19 @@
 export { buildPlannerContext } from './context.js';
-export { HechoVencidoError, InvalidLocalTimeError, NoPuedePlanificarError, PlanExistenteError, PlannerContextError } from './errors.js';
+export {
+  HechoVencidoError,
+  InvalidLocalTimeError,
+  NoPuedePlanificarError,
+  PlanConPiezasPausadasError,
+  PlanExistenteError,
+  PlanNoAprobableError,
+  PlanNoAprobadoError,
+  PlanNotFoundError,
+  PlanPiezasEnOtroEstadoError,
+  PlannerContextError,
+  PlanSinPiezasError,
+} from './errors.js';
+export { aprobarPlanInterno, MOTIVO_APROBACION_INTERNA } from './aprobacionInterna.js';
+export type { PlanAprobado } from './aprobacionInterna.js';
 export type { InvalidLocalTimeReason } from './errors.js';
 export {
   addDays,
@@ -33,5 +47,3 @@ export type { GenerarPlanOutput, GenerarPlanPayload, JobEstado, JobInfo, PlanQue
 export { registerPlanificadorRoutes } from './planificadorRoutes.js';
 export type { PlanificadorRoutesOptions } from './planificadorRoutes.js';
 export { buildDeterministicPlan, DeterministicPlannerFake } from './deterministicPlannerFake.js';
-export { createPlannerProvider } from './plannerProvider.js';
-export type { PlannerRuntime } from './plannerProvider.js';

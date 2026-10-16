@@ -2,7 +2,7 @@ import { config } from '../config/index.js';
 import { closePool, pool } from '../db/pool.js';
 import { LogAlertSink } from '../lib/ai/alerts.js';
 import { getClienteById } from '../modules/clientes/clientesRepository.js';
-import { createPlannerProvider } from '../modules/planificador/plannerProvider.js';
+import { createLlmRuntime } from '../modules/desarrollo/developmentProvider.js';
 import { parsePlanGenerateArgs } from './planGenerateArgs.js';
 import { runPlanGenerate } from './planGenerateCore.js';
 import { assertPlanGenerateAllowed, confirmPlanGenerateDatabase } from './planGenerateGuard.js';
@@ -21,9 +21,9 @@ async function main(): Promise<void> {
   console.log(`Database "${database}" (url name "${urlName}"), provider: ${config.llm.provider}`);
   if (!(await getClienteById(pool, args.clienteId))) throw new Error('plan:generate refused: that client does not exist');
 
-  const planner = createPlannerProvider(config.llm, config.NODE_ENV);
+  const runtime = createLlmRuntime(config.llm, config.NODE_ENV);
   const result = await runPlanGenerate(
-    { db: pool, provider: planner.provider, alerts: new LogAlertSink(), ...(planner.withContext ? { withContext: planner.withContext } : {}) },
+    { db: pool, provider: runtime.provider, alerts: new LogAlertSink(), ...(runtime.withPlannerContext ? { withContext: runtime.withPlannerContext } : {}) },
     args,
   );
   for (const line of result.lines) (result.ok ? console.log : console.error)(line);

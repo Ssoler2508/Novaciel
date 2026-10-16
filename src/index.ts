@@ -10,7 +10,8 @@ import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
 import { LogAlertSink } from './lib/ai/alerts.js';
 import { registerPlanificadorRoutes } from './modules/planificador/planificadorRoutes.js';
 import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
-import { createPlannerProvider } from './modules/planificador/plannerProvider.js';
+import { createLlmRuntime } from './modules/desarrollo/developmentProvider.js';
+import { createPgBossBriefQueue, registerDirectorJobs, registerDirectorRoutes } from './modules/directorCreativo/index.js';
 import {
   createStorage,
   LocalFileStorage,
@@ -64,15 +65,23 @@ async function main(): Promise<void> {
     maxBytes: config.media.maxBytes,
   });
   await registerPlanificadorRoutes(app, { db: pool, queue: createPgBossPlanQueue(boss) });
+  await registerDirectorRoutes(app, { db: pool, queue: createPgBossBriefQueue(boss) });
   await startQueue(boss);
   await registerBudgetJobs(boss, pool);
-  // LLM_PROVIDER=fake gives the deterministic planner fake (development), claude the real provider.
-  const planner = createPlannerProvider(config.llm, config.NODE_ENV);
+  // LLM_PROVIDER=fake gives ONE deterministic development provider that serves both the planner and
+  // the creative director (dispatching by purpose); claude gives the real provider.
+  const llm = createLlmRuntime(config.llm, config.NODE_ENV);
   await registerPlanificadorJobs(boss, {
     db: pool,
-    provider: planner.provider,
+    provider: llm.provider,
     alerts: new LogAlertSink(),
-    ...(planner.withContext ? { withContext: planner.withContext } : {}),
+    ...(llm.withPlannerContext ? { withContext: llm.withPlannerContext } : {}),
+  });
+  await registerDirectorJobs(boss, {
+    db: pool,
+    provider: llm.provider,
+    alerts: new LogAlertSink(),
+    ...(llm.withBriefContext ? { withContext: llm.withBriefContext } : {}),
   });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');

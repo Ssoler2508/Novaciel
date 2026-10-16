@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   HECHO_CIFRA,
@@ -8,9 +7,7 @@ import {
   REGLAS,
   makeContext,
 } from '../../../tests/utils/plannerFixtures.js';
-import { LLMProviderError } from '../../lib/ai/types.js';
 import { buildDeterministicPlan, DeterministicPlannerFake } from './deterministicPlannerFake.js';
-import { createPlannerProvider } from './plannerProvider.js';
 import { buildPlanSchema, pillarTolerance } from './schema.js';
 import { toUtc } from './fechas.js';
 import type { PlannerContext } from './types.js';
@@ -184,32 +181,5 @@ describe('DeterministicPlannerFake: the prompt is never read', () => {
     const context = makeContext();
     const response = await generate(context);
     expect(response.inputTokens).toBeLessThanOrEqual(Buffer.byteLength(JSON.stringify(request)));
-  });
-});
-
-describe('createPlannerProvider', () => {
-  const cfg = { provider: 'fake', model: 'fake-model', timeoutMs: 60_000 } as const;
-
-  it('gives the deterministic fake and its side channel for LLM_PROVIDER=fake', () => {
-    for (const env of ['development', 'test']) {
-      const runtime = createPlannerProvider(cfg, env);
-      expect(runtime.provider).toBeInstanceOf(DeterministicPlannerFake);
-      expect(runtime.withContext).toBeTypeOf('function');
-    }
-  });
-
-  it('refuses the fake in production', () => {
-    expect(() => createPlannerProvider(cfg, 'production')).toThrow(/development and tests only/);
-  });
-
-  it('gives the real provider, without a side channel, for LLM_PROVIDER=claude', () => {
-    const runtime = createPlannerProvider({ provider: 'claude', model: 'm', timeoutMs: 1000, apiKey: { reveal: () => 'sk-fake' } as never }, 'development');
-    expect(runtime.provider.name).toBe('claude');
-    expect(runtime.withContext).toBeUndefined();
-  });
-
-  it('is not a stand-in for provider errors: unrelated helpers stay untouched', () => {
-    expect(new LLMProviderError('x')).toBeInstanceOf(Error);
-    expect(randomUUID()).toHaveLength(36);
   });
 });

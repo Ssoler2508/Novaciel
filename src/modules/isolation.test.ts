@@ -12,6 +12,7 @@ import {
   createLibroGasto,
   createMedia,
   createMediaAutorizacion,
+  createGuion,
   createPieza,
   createPiezaHecho,
   createPlanSemanal,
@@ -54,15 +55,17 @@ import {
 } from './media/index.js';
 import { FakeStorage } from '../lib/media/storage/fakeStorage.js';
 import { FakeAlertSink } from '../lib/ai/alerts.js';
+import { FakeLLMProvider } from '../lib/ai/fakeLLMProvider.js';
 import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
 import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
-import { getPlan, getPlanActivoDeSemana, listPlanes } from './planificador/index.js';
+import { generarBrief, getBriefActual, listBriefVersions } from './directorCreativo/index.js';
+import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -79,6 +82,10 @@ interface World {
   mediaId: string;
   piezaId: string;
   planId: string;
+  /** The approved plan and the piece (in plan_aprobado) that hold the brief. */
+  planAprobadoId: string;
+  piezaConGuionId: string;
+  guionId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -106,6 +113,15 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   const plan = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id });
   const pieza = await createPieza(db, { clienteId: cliente.id, planId: plan.id });
   await createPiezaHecho(db, { piezaId: pieza.id, hechoId: hechoValido.id, clienteId: cliente.id });
+  // A brief needs an approved plan and a piece in plan_aprobado: its own plan, for another week.
+  const planAprobado = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id, estado: 'aprobado', semanaInicio: '2026-11-09' });
+  const piezaConGuion = await createPieza(db, { clienteId: cliente.id, planId: planAprobado.id, estado: 'plan_aprobado' });
+  const guion = await createGuion(db, {
+    piezaId: piezaConGuion.id,
+    perfilMarcaId: perfil.id,
+    tomas: [{ mediaId: media.id }, { motivoFaltante: 'No hay foto del local' }],
+    hechoIds: [hechoValido.id],
+  });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -123,6 +139,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     mediaId: media.id,
     piezaId: pieza.id,
     planId: plan.id,
+    planAprobadoId: planAprobado.id,
+    piezaConGuionId: piezaConGuion.id,
+    guionId: guion.id,
   };
 }
 
@@ -337,7 +356,7 @@ describe('isolation: pieces', () => {
       await expect(pausarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
       await expect(reanudarPieza(db, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
       expect(await getPieza(db, a.clienteId, b.piezaId)).toBeNull();
-      expect((await listPiezas(db, a.clienteId)).map((p) => p.id)).toEqual([a.piezaId]);
+      expect((await listPiezas(db, a.clienteId)).map((p) => p.id).sort()).toEqual([a.piezaId, a.piezaConGuionId].sort());
       expect(await getHistorial(db, a.clienteId, b.piezaId)).toEqual([]);
       const { rows } = await db.query('SELECT estado, version_estado FROM piezas WHERE id = $1', [b.piezaId]);
       expect(rows[0]).toEqual({ estado: 'planeada', version_estado: 0 });
@@ -349,9 +368,40 @@ describe('isolation: weekly plans', () => {
   it("A never reads, lists or finds B's plans: B stays unchanged", async () => {
     await withTwoClients(async (a, b, db) => {
       expect(await getPlan(db, a.clienteId, b.planId)).toBeNull();
-      expect((await listPlanes(db, a.clienteId)).map((p) => p.id)).toEqual([a.planId]);
+      expect((await listPlanes(db, a.clienteId)).map((p) => p.id).sort()).toEqual([a.planId, a.planAprobadoId].sort());
       expect(await getPlanActivoDeSemana(db, a.clienteId, '2026-11-02')).toMatchObject({ id: a.planId }); // each client has its own plan for the same week
       expect((await getPlanActivoDeSemana(db, b.clienteId, '2026-11-02'))!.id).toBe(b.planId);
+    });
+  });
+});
+
+describe('isolation: briefs', () => {
+  it("A never reads B's briefs, slots or fact links, and cannot change or delete them: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      for (const [table, column] of [['guiones', 'id'], ['tomas', 'guion_id'], ['guiones_hechos', 'guion_id']] as const) {
+        const own = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1`, [a.clienteId])).rows;
+        const foreign = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1 AND ${column} = $2`, [a.clienteId, b.guionId])).rows;
+        expect(own.length).toBeGreaterThan(0);
+        expect(foreign).toEqual([]);
+      }
+      // Filtered by A's client id, B's brief cannot be touched.
+      expect((await db.query('UPDATE guiones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.guionId])).rowCount).toBe(0);
+    });
+  });
+});
+
+describe('isolation: creative director service', () => {
+  it("A cannot read, list, generate or approve B's briefs and plans: no provider call, B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const provider = new FakeLLMProvider();
+      const deps = { db, provider, alerts: new FakeAlertSink() };
+      expect(await getBriefActual(db, a.clienteId, b.piezaConGuionId)).toBeNull();
+      expect(await listBriefVersions(db, a.clienteId, b.piezaConGuionId)).toEqual([]);
+      expect((await getBriefActual(db, b.clienteId, b.piezaConGuionId))!.id).toBe(b.guionId);
+      await expect(generarBrief(deps, a.clienteId, b.piezaConGuionId, SISTEMA, { regenerar: true })).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(generarBrief(deps, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(aprobarPlanInterno(db, a.clienteId, b.planId, SISTEMA)).rejects.toBeInstanceOf(PlanNotFoundError);
+      expect(provider.calls).toHaveLength(0);
     });
   });
 });
