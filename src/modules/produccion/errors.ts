@@ -66,3 +66,87 @@ export class UnsupportedGlyphsError extends Error {
     this.name = 'UnsupportedGlyphsError';
   }
 }
+
+/**
+ * One or more sources are too small for their slide. Thrown by the production service after trying
+ * EVERY slide, with the distinct media ids and the slide numbers involved (ids and numbers only).
+ * It is a SourceTooSmallError, so `instanceof SourceTooSmallError` still holds.
+ */
+export class FuentesMuyPequenasError extends SourceTooSmallError {
+  constructor(
+    base: SourceTooSmallError,
+    readonly mediaIds: readonly string[],
+    readonly ordenes: readonly number[],
+  ) {
+    super(base.scale, base.source, base.target);
+    this.name = 'FuentesMuyPequenasError';
+    this.message = `${mediaIds.length} source image(s) are too small for their slide (slides ${ordenes.join(', ')})`;
+  }
+}
+
+/** The piece is not in a state that can be produced (or re-produced). */
+export class ProduccionEstadoInvalidoError extends Error {
+  constructor(readonly estado: string) {
+    super(`A piece in state ${estado} cannot be produced`);
+    this.name = 'ProduccionEstadoInvalidoError';
+  }
+}
+
+/** Only still-image formats are produced in 7a; video waits for 7b. */
+export class FormatoNoSoportadoError extends Error {
+  constructor(
+    readonly red: string,
+    readonly formato: string,
+  ) {
+    super(`The format ${formato} is not produced yet for ${red}`);
+    this.name = 'FormatoNoSoportadoError';
+  }
+}
+
+/** The piece has no current brief to produce from. */
+export class SinBriefError extends Error {
+  constructor() {
+    super('The piece has no current brief');
+    this.name = 'SinBriefError';
+  }
+}
+
+/** The brief has slots without media (`faltante`): production refuses before changing anything. */
+export class BriefConFaltantesError extends Error {
+  constructor(readonly ordenes: readonly number[]) {
+    super(`The brief has ${ordenes.length} slot(s) without media (slides ${ordenes.join(', ')})`);
+    this.name = 'BriefConFaltantesError';
+  }
+}
+
+/** The piece already has a current production and `reproducir` was not asked. */
+export class ProduccionExistenteError extends Error {
+  constructor(readonly version: number) {
+    super(`The piece already has a current production (version ${version})`);
+    this.name = 'ProduccionExistenteError';
+  }
+}
+
+/** A fact the brief cites is not valid now or at the piece's instant (rule 2 at production time). */
+export class ProduccionHechoVencidoError extends Error {
+  constructor(readonly hechoIds: readonly string[]) {
+    super(`${hechoIds.length} fact(s) cited by the brief are no longer valid`);
+    this.name = 'ProduccionHechoVencidoError';
+  }
+}
+
+/** A media item of the brief stopped being usable (rights, authorization, deleted). */
+export class ProduccionMediaNoUsableError extends Error {
+  constructor(readonly mediaIds: readonly string[]) {
+    super(`${mediaIds.length} media item(s) of the brief are no longer usable`);
+    this.name = 'ProduccionMediaNoUsableError';
+  }
+}
+
+/** The piece, its brief or its productions changed while the files were being made: nothing is kept. */
+export class ProduccionObsoletaError extends Error {
+  constructor() {
+    super('The piece changed while it was being produced; nothing was kept');
+    this.name = 'ProduccionObsoletaError';
+  }
+}

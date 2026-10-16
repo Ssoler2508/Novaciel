@@ -2,11 +2,10 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GlobalFonts } from '@napi-rs/canvas';
-import { UnsupportedGlyphsError } from './errors.js';
 
-// The bundled font (Inter, SIL OFL 1.1: assets/fonts/), its glyph coverage and its registration with
-// the canvas. The coverage table is the single place that says which characters a slide may carry,
-// so the renderer (last guard) and the brief schema (upstream) use the same one.
+// The bundled font (Inter, SIL OFL 1.1: assets/fonts/) and its registration with the canvas. Its glyph
+// coverage (the single table that says which characters a slide may carry) is in glyphCoverage.ts, so
+// the renderer (last guard) and the brief schema (upstream) use the same one.
 
 /** The family name the renderer draws with by default. */
 export const FUENTE_POR_DEFECTO = 'Inter';
@@ -16,54 +15,8 @@ const ARCHIVOS = [
   { archivo: 'inter-latin-700-normal.woff2', peso: 700 },
 ] as const;
 
-/**
- * Code points the bundled Inter Latin subset has (its unicode-range in @fontsource/inter 5.3.0):
- * Spanish, English, Portuguese, French and Italian text, the euro sign and general punctuation. No
- * emoji and no other scripts.
- */
-export const COBERTURA_INTER_LATIN: readonly (readonly [number, number])[] = [
-  [0x0000, 0x00ff],
-  [0x0131, 0x0131],
-  [0x0152, 0x0153],
-  [0x02bb, 0x02bc],
-  [0x02c6, 0x02c6],
-  [0x02da, 0x02da],
-  [0x02dc, 0x02dc],
-  [0x0304, 0x0304],
-  [0x0308, 0x0308],
-  [0x0329, 0x0329],
-  [0x2000, 0x206f],
-  [0x20ac, 0x20ac],
-  [0x2122, 0x2122],
-  [0x2191, 0x2191],
-  [0x2193, 0x2193],
-  [0x2212, 0x2212],
-  [0x2215, 0x2215],
-  [0xfeff, 0xfeff],
-  [0xfffd, 0xfffd],
-];
-
-function cubierto(codePoint: number): boolean {
-  return COBERTURA_INTER_LATIN.some(([desde, hasta]) => codePoint >= desde && codePoint <= hasta);
-}
-
-/** How many characters (code points) of `texto` the bundled font cannot draw. */
-export function contarGlifosNoSoportados(texto: string): number {
-  let cantidad = 0;
-  for (const caracter of texto) if (!cubierto(caracter.codePointAt(0)!)) cantidad++;
-  return cantidad;
-}
-
-/** True when every character of `texto` can be drawn with the bundled font. */
-export function esTextoSoportado(texto: string): boolean {
-  return contarGlifosNoSoportados(texto) === 0;
-}
-
-/** Throws UnsupportedGlyphsError (a count, never the text) when `texto` has characters the font lacks. */
-export function assertGlifosSoportados(texto: string): void {
-  const cantidad = contarGlifosNoSoportados(texto);
-  if (cantidad > 0) throw new UnsupportedGlyphsError(cantidad);
-}
+// The coverage table and its checks are in glyphCoverage.ts (pure, no canvas); re-exported here.
+export { assertGlifosSoportados, COBERTURA_INTER_LATIN, contarGlifosNoSoportados, esTextoSoportado } from './glyphCoverage.js';
 
 /**
  * The folder with the bundled fonts. Found by walking up from this file until assets/fonts/OFL.txt

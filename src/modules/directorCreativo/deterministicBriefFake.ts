@@ -1,4 +1,5 @@
 import { containsText, containsWord } from '../planificador/textMatch.js';
+import { esTextoSoportado } from '../produccion/glyphCoverage.js';
 import { buildBriefSchema, type BriefContent } from './schema.js';
 import { factToken, isValidAt } from './tokens.js';
 import type { BriefContext, MediaCandidate } from './types.js';
@@ -79,7 +80,8 @@ export function buildDeterministicBrief(context: BriefContext): BriefContent {
   // Cited facts: through tokens, unless they are not valid when the piece goes out or would hit a
   // banned rule once rendered; those are listed as omitted with a reason.
   const citados = context.hechos.filter((h) => h.citado);
-  const usables = citados.filter((h) => isValidAt(h, context.pieza.fechaHora) && !isBanned(context, h.enunciado));
+  // A fact whose text the slide font cannot draw (an emoji...) cannot go on the slide either.
+  const usables = citados.filter((h) => isValidAt(h, context.pieza.fechaHora) && !isBanned(context, h.enunciado) && esTextoSoportado(h.enunciado));
   const omitidos = citados.filter((h) => !usables.includes(h));
 
   const duracion = limites.duracionTotalS ? 20 / n : undefined;

@@ -37,3 +37,18 @@ export {
 } from './fonts.js';
 export { JPEG_CALIDAD, MAX_PIXELES_ORIGEN, renderSlide } from './renderer.js';
 export type { LayoutSpec, RenderedSlide, SlideSpec } from './renderer.js';
+export {
+  BriefConFaltantesError,
+  FormatoNoSoportadoError,
+  FuentesMuyPequenasError,
+  ProduccionEstadoInvalidoError,
+  ProduccionExistenteError,
+  ProduccionHechoVencidoError,
+  ProduccionMediaNoUsableError,
+  ProduccionObsoletaError,
+  SinBriefError,
+} from './errors.js';
+export { getProduccionActual, listProduccionVersions } from './produccionRepository.js';
+export type { ArchivoView, ProduccionReadOptions, ProduccionView } from './produccionRepository.js';
+export { producirPieza } from './produccionService.js';
+export type { PiezaProducida, ProducirOptions, ProduccionDeps } from './produccionService.js';

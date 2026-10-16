@@ -200,3 +200,24 @@ describe('DeterministicBriefFake: language and banned rules', () => {
     }
   });
 });
+
+
+describe('DeterministicBriefFake: facts the slide font cannot draw', () => {
+  const HECHO_EMOJI: HechoPlanner = {
+    id: randomUUID(),
+    tipo: 'otro',
+    enunciado: 'El mejor momento del día ☕ es con nosotros.',
+    vigente_desde: new Date('2026-10-01T00:00:00Z'),
+    vigente_hasta: null,
+  };
+
+  it('omits, with a reason, a cited fact with an emoji instead of putting it on a slide, and still passes its own schema', () => {
+    for (const formato of FORMATOS) {
+      const context = makeBriefContext({ formato, hechoIds: [HECHO_EMOJI.id, HECHO_PRECIO.id], hechos: [HECHO_EMOJI, HECHO_PRECIO] });
+      const brief = buildDeterministicBrief(context);
+      expect(extractFactTokenIds(brief)).toEqual([HECHO_PRECIO.id]);
+      expect(brief.hechos_omitidos.map((o) => o.hecho_id)).toEqual([HECHO_EMOJI.id]);
+      expect(valid(context).success, formato).toBe(true);
+    }
+  });
+});
