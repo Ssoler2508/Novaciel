@@ -52,3 +52,28 @@ export { getProduccionActual, listProduccionVersions } from './produccionReposit
 export type { ArchivoView, ProduccionReadOptions, ProduccionView } from './produccionRepository.js';
 export { producirPieza } from './produccionService.js';
 export type { PiezaProducida, ProducirOptions, ProduccionDeps } from './produccionService.js';
+export { assertProducible } from './produccionService.js';
+export {
+  createPgBossProduccionQueue,
+  ejecutarJobProducirPieza,
+  ejecutarJobProducirPlan,
+  PRODUCIR_PIEZA_QUEUE,
+  PRODUCIR_PLAN_QUEUE,
+  registerProduccionJobs,
+  singletonKeyPieza,
+  singletonKeyPlan,
+} from './produccionJobs.js';
+export type {
+  FuentesPequenas,
+  ProducirPiezaEnPlan,
+  ProducirPiezaOutput,
+  ProducirPiezaPayload,
+  ProducirPlanOutput,
+  ProducirPlanPayload,
+  ProduccionJobInfo,
+  ProduccionQueue,
+} from './produccionJobs.js';
+export { registerProduccionRoutes } from './produccionRoutes.js';
+export type { ProduccionRoutesOptions } from './produccionRoutes.js';
+export { toProduccionPublica } from './produccionView.js';
+export type { ArchivoPublico, ProduccionPublica } from './produccionView.js';

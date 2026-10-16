@@ -64,15 +64,18 @@ const FORMATOS_7A = ['carrusel', 'post', 'historia'] as const;
 /** States a production can start from: ready (guion_listo), sent back (en_produccion) or already produced (en_control_calidad). */
 const ESTADOS_DE_INICIO = ['guion_listo', 'en_produccion', 'en_control_calidad'] as const;
 
-interface Contexto {
+export interface Contexto {
   pieza: PiezaRow;
   brief: GuionView;
   /** Version of the current production, or null. */
   versionActual: number | null;
 }
 
-/** The free, read-only checks: nothing is rendered, stored or changed before they pass. */
-async function comprobar(db: Db, clienteId: ClienteId, piezaId: string, reproducir: boolean): Promise<Contexto> {
+/**
+ * The free, read-only checks: nothing is rendered, stored or changed before they pass. Exported so the
+ * routes refuse for free exactly like the service does.
+ */
+export async function assertProducible(db: Db, clienteId: ClienteId, piezaId: string, reproducir: boolean): Promise<Contexto> {
   const pieza = await getPieza(db, clienteId, piezaId, { includeDescartados: true });
   if (!pieza) throw new PiezaNotFoundError();
   if (pieza.plan_estado === 'descartado') throw new PlanDescartadoError();
@@ -159,7 +162,7 @@ export async function producirPieza(
   const reproducir = options.reproducir ?? false;
 
   // 1 and 2. Free checks, then the resources again, before any work is done.
-  const { pieza, brief, versionActual } = await comprobar(db, clienteId, piezaId, reproducir);
+  const { pieza, brief, versionActual } = await assertProducible(db, clienteId, piezaId, reproducir);
   await verificarRecursos(db, clienteId, brief, pieza, false);
 
   // 3. Render EVERY slide first, in memory: a render failure stops here with nothing stored.

@@ -63,7 +63,8 @@ import { describeMedia } from './media/describeMedia.js';
 import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
 import { generarBrief, getBriefActual, listBriefVersions } from './directorCreativo/index.js';
 import { getProduccionActual, listProduccionVersions } from './produccion/produccionRepository.js';
-import { producirPieza } from './produccion/produccionService.js';
+import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/produccionJobs.js';
+import { assertProducible, producirPieza } from './produccion/produccionService.js';
 import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
@@ -439,6 +440,18 @@ describe('isolation: production service', () => {
       expect((await getProduccionActual(db, b.clienteId, b.piezaConGuionId))!.id).toBe(b.produccionId);
       await expect(producirPieza({ db, storage }, a.clienteId, b.piezaConGuionId, SISTEMA, { reproducir: true })).rejects.toBeInstanceOf(PiezaNotFoundError);
       await expect(producirPieza({ db, storage }, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(storage.keys()).toEqual([]);
+    });
+  });
+});
+
+describe('isolation: production job and free checks', () => {
+  it("A cannot produce, check or queue-run B's pieces and plans through the job or the route checks: nothing stored, B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const storage = new FakeStorage();
+      await expect(assertProducible(db, a.clienteId, b.piezaConGuionId, true)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(await ejecutarJobProducirPieza({ db, storage }, { clienteId: a.clienteId, piezaId: b.piezaConGuionId, reproducir: true })).toEqual({ resultado: 'rechazado', codigo: 'PiezaNotFoundError' });
+      expect(await ejecutarJobProducirPlan({ db, storage }, { clienteId: a.clienteId, planId: b.planId })).toEqual({ resultado: 'rechazado', codigo: 'PlanNotFoundError' });
       expect(storage.keys()).toEqual([]);
     });
   });

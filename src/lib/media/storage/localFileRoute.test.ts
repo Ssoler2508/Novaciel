@@ -98,3 +98,16 @@ describe('GET /files/*', () => {
     expect((await app.inject({ method: 'GET', url: p })).statusCode).toBe(404);
   });
 });
+
+describe('LocalFileStorage.localPath', () => {
+  it('gives the absolute path of a stored key, and refuses keys that would leave the base folder', async () => {
+    await storage.put('cliente/producidos/a.jpg', Buffer.from('jpg'));
+    const file = storage.localPath('cliente/producidos/a.jpg');
+    expect(path.isAbsolute(file)).toBe(true);
+    expect(file).toBe(path.join(path.resolve(dir), 'cliente', 'producidos', 'a.jpg'));
+    expect(await storage.exists('cliente/producidos/a.jpg')).toBe(true);
+    for (const key of ['../fuera.jpg', 'cliente/../../fuera.jpg', '/absoluta.jpg', '', 'a\b.jpg']) {
+      expect(() => storage.localPath(key), key).toThrow();
+    }
+  });
+});

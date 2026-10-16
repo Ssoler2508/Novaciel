@@ -112,6 +112,11 @@ export class LocalFileStorage implements Storage {
     return given.length === expected.length && timingSafeEqual(given, expected);
   }
 
+  /** The absolute path on disk of a key (validated, so it cannot leave the base folder). For development tooling. */
+  localPath(key: string): string {
+    return this.resolvePath(key);
+  }
+
   openReadStream(key: string): ReadStream {
     return createReadStream(this.resolvePath(key));
   }
