@@ -14,7 +14,9 @@ import {
   createMediaAutorizacion,
   createGuion,
   createPieza,
+  createProduccion,
   createPiezaHecho,
+  moverPieza,
   createPlanSemanal,
   createPerfilMarca,
   createReglaProhibida,
@@ -65,7 +67,7 @@ import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNot
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -86,6 +88,7 @@ interface World {
   planAprobadoId: string;
   piezaConGuionId: string;
   guionId: string;
+  produccionId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -122,6 +125,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     tomas: [{ mediaId: media.id }, { motivoFaltante: 'No hay foto del local' }],
     hechoIds: [hechoValido.id],
   });
+  // A production needs the piece ready for it (guion_listo) and a final file made from real media.
+  await moverPieza(db, piezaConGuion.id, 'guion_listo');
+  const produccion = await createProduccion(db, { piezaId: piezaConGuion.id, archivos: [{ mediaId: media.id }] });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -142,6 +148,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     planAprobadoId: planAprobado.id,
     piezaConGuionId: piezaConGuion.id,
     guionId: guion.id,
+    produccionId: produccion.id,
   };
 }
 
@@ -386,6 +393,21 @@ describe('isolation: briefs', () => {
       }
       // Filtered by A's client id, B's brief cannot be touched.
       expect((await db.query('UPDATE guiones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.guionId])).rowCount).toBe(0);
+    });
+  });
+});
+
+describe('isolation: productions', () => {
+  it("A never reads, changes or deletes B's productions and files: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      for (const [table, column] of [['producciones', 'id'], ['producciones_archivos', 'produccion_id']] as const) {
+        const own = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1`, [a.clienteId])).rows;
+        const foreign = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1 AND ${column} = $2`, [a.clienteId, b.produccionId])).rows;
+        expect(own.length).toBeGreaterThan(0);
+        expect(foreign).toEqual([]);
+      }
+      // Filtered by A's client id, B's production cannot be touched.
+      expect((await db.query('UPDATE producciones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.produccionId])).rowCount).toBe(0);
     });
   });
 });
