@@ -90,7 +90,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Invalid transitions are impossible.
 - **Done when:** a weekly plan is created for the fictional client and state transitions are tested.
 
-### Step 6 — Creative director
+### Step 6 — Creative director ✅ (merge ` `)
 - Turns each planned piece into a creative brief: format, copy, media to use, references to verified facts.
 - Schema-validated LLM output; every factual claim traced to a `hechos_verificados` record.
 - **Done when:** briefs are generated with the fake and contain no untraceable facts.
