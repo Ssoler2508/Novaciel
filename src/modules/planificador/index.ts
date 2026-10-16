@@ -47,5 +47,3 @@ export type { GenerarPlanOutput, GenerarPlanPayload, JobEstado, JobInfo, PlanQue
 export { registerPlanificadorRoutes } from './planificadorRoutes.js';
 export type { PlanificadorRoutesOptions } from './planificadorRoutes.js';
 export { buildDeterministicPlan, DeterministicPlannerFake } from './deterministicPlannerFake.js';
-export { createPlannerProvider } from './plannerProvider.js';
-export type { PlannerRuntime } from './plannerProvider.js';

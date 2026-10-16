@@ -36,7 +36,7 @@ import { LIMITES_FORMATO } from './limits.js';
 import { buildBriefPrompt } from './prompt.js';
 import { buildBriefSchema, type BriefContent } from './schema.js';
 import { extractFactTokenIds, isValidAt, renderFactTokens } from './tokens.js';
-import type { HechoBrief } from './types.js';
+import type { BriefContext, HechoBrief } from './types.js';
 
 // The creative director's service. Reads through the repositories (always filtered by cliente_id),
 // builds the context and prompt (pure, rule 9), calls generateStructured (budget, one retry, alert)
@@ -60,6 +60,12 @@ export interface DirectorDeps {
   provider: LLMProvider;
   alerts: AlertSink;
   logger?: Logger;
+  /**
+   * Development side channel, used ONLY by the deterministic development provider: it runs the model
+   * call with the structured context available to the provider, so the fake never has to read the
+   * prompt. Real providers do not set it.
+   */
+  withContext?: <T>(context: BriefContext, run: () => Promise<T>) => Promise<T>;
 }
 
 export interface GenerarBriefOptions {
@@ -154,17 +160,19 @@ export async function generarBrief(
   });
 
   // 3. The model call: budget, estimate, authorization, single retry and alert live here.
-  const generated = await generateStructured<BriefContent>(
-    { db, provider: deps.provider, alerts: deps.alerts, logger: log },
-    {
-      clienteId,
-      purpose: BRIEF_PURPOSE,
-      schema: buildBriefSchema(context),
-      prompt: buildBriefPrompt(context),
-      maxOutputTokens: maxOutputTokensFor(piezaVista.formato),
-      actor,
-    },
-  );
+  const callModel = () =>
+    generateStructured<BriefContent>(
+      { db, provider: deps.provider, alerts: deps.alerts, logger: log },
+      {
+        clienteId,
+        purpose: BRIEF_PURPOSE,
+        schema: buildBriefSchema(context),
+        prompt: buildBriefPrompt(context),
+        maxOutputTokens: maxOutputTokensFor(piezaVista.formato),
+        actor,
+      },
+    );
+  const generated = await (deps.withContext ? deps.withContext(context, callModel) : callModel());
   const contenidoModelo = generated.data;
 
   // 4. One transaction stores everything.
@@ -325,6 +333,8 @@ export interface ResultadoPieza {
   resultado: 'ok' | 'omitida' | 'fallida';
   /** For 'ok': the stored version. */
   version?: number;
+  /** For 'ok': what the model call cost (micro-USD). */
+  costo?: MicroUsd;
   /** For 'omitida': why. For 'fallida': the error name. Never content. */
   motivo?: string;
   codigo?: string;
@@ -367,7 +377,7 @@ export async function generarBriefsDelPlan(deps: DirectorDeps, clienteId: Client
     }
     try {
       const result = await generarBrief(deps, clienteId, pieza.id, actor);
-      resultados.push({ piezaId: pieza.id, resultado: 'ok', version: result.guion.version });
+      resultados.push({ piezaId: pieza.id, resultado: 'ok', version: result.guion.version, costo: result.generacion.costo });
     } catch (error) {
       const codigo = error instanceof Error ? error.name : 'Error';
       resultados.push({ piezaId: pieza.id, resultado: 'fallida', codigo });

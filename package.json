@@ -14,6 +14,8 @@
     "llm:smoke": "tsx src/scripts/llmSmoke.ts",
     "media:upload": "tsx src/scripts/mediaUpload.ts",
     "plan:generate": "tsx src/scripts/planGenerate.ts",
+    "plan:approve-internal": "tsx src/scripts/planApproveInternal.ts",
+    "brief:generate": "tsx src/scripts/briefGenerate.ts",
     "migrate:up": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m src/db/migrations",
     "migrate:down": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m src/db/migrations"
   },

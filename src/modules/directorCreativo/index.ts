@@ -46,3 +46,4 @@ export {
 export type { BriefJobInfo, BriefPiezaOutput, BriefPiezaPayload, BriefQueue, BriefsPlanOutput, BriefsPlanPayload } from './directorJobs.js';
 export { registerDirectorRoutes } from './directorRoutes.js';
 export type { DirectorRoutesOptions } from './directorRoutes.js';
+export { buildDeterministicBrief } from './deterministicBriefFake.js';

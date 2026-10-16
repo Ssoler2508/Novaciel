@@ -397,9 +397,9 @@ describe('generarBriefsDelPlan', () => {
 
       expect(result.detenidoPorPresupuesto).toBe(false);
       expect(result.resultados).toEqual([
-        { piezaId: a.id, resultado: 'ok', version: 1 },
+        { piezaId: a.id, resultado: 'ok', version: 1, costo: 200n },
         { piezaId: b.id, resultado: 'fallida', codigo: 'SchemaValidationError' },
-        { piezaId: c.id, resultado: 'ok', version: 1 },
+        { piezaId: c.id, resultado: 'ok', version: 1, costo: 200n },
         { piezaId: yaTiene.id, resultado: 'omitida', motivo: 'ya_tiene_guion' },
         { piezaId: pausada.id, resultado: 'omitida', motivo: 'estado_pausada' },
       ]);
