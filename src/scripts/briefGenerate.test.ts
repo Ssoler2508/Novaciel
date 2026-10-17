@@ -170,7 +170,7 @@ describe('brief:generate (core), with the development provider', () => {
   it('generates the briefs of the whole plan from the seed client, reports counts and never the copy', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
-      for (let i = 0; i < 3; i++) await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', etiquetas: ['cafe'] });
+      for (let i = 0; i < 3; i++) await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 3000, alto: 2000, etiquetas: ['cafe'] });
       const { plan, piezas } = await approvedPlan(w);
 
       const result = await runBriefGenerate(w.deps, { modo: 'plan', clienteId: w.clienteId, planId: plan.id });
@@ -206,7 +206,7 @@ describe('brief:generate (core), with the development provider', () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
       const photos = [];
-      for (let i = 0; i < 2; i++) photos.push(await createMedia(db, { clienteId: w.clienteId, tipo: 'foto' }));
+      for (let i = 0; i < 2; i++) photos.push(await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 3000, alto: 2000 }));
       const { plan, piezas } = await approvedPlan(w);
       await runBriefGenerate(w.deps, { modo: 'plan', clienteId: w.clienteId, planId: plan.id });
       const carousel = piezas.find((p) => p.formato === 'carrusel');

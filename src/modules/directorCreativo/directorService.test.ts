@@ -290,7 +290,7 @@ describe('generarBrief: rule 2 and real media, re-checked when storing', () => {
     await withTestTransaction(async (db) => {
       let revoke: () => Promise<void> = async () => undefined;
       const w = await world(db, new ProviderWithSideEffect(() => revoke()));
-      const conGente = await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', aparecenPersonas: true, etiquetas: ['cafe'] });
+      const conGente = await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 3000, alto: 2000, aparecenPersonas: true, etiquetas: ['cafe'] });
       const link = await createMediaAutorizacion(db, { mediaId: conGente.id, clienteId: w.clienteId });
       const pieza = await piece(w);
       revoke = async () => {
@@ -442,6 +442,38 @@ describe('generarBriefsDelPlan', () => {
       await db.query(`UPDATE planes_semanales SET estado = 'descartado' WHERE id = $1`, [w.planId]);
       await expect(generarBriefsDelPlan(w.deps, w.clienteId, w.planId, SISTEMA)).rejects.toBeInstanceOf(PlanDescartadoError);
       expect(w.provider.calls).toHaveLength(0);
+    });
+  });
+});
+
+describe('generarBrief: media that production would refuse is never offered', () => {
+  it('leaves a 640x480 photo out of the candidates of a 4:5 carousel, and offers the big ones', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await world(db, new FakeLLMProvider(), { photos: 0 });
+      const tiny = await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 640, alto: 480, etiquetas: ['cafe'] });
+      const big: { id: string }[] = [];
+      for (let i = 0; i < 5; i++) big.push(await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 3000, alto: 2000, etiquetas: ['cafe'] }));
+      const pieza = await piece(w);
+      w.provider.enqueue(briefJson(w, { media: big.map((m) => m.id) }));
+      await generarBrief(w.deps, w.clienteId, pieza.id, SISTEMA);
+
+      const prompt = w.provider.calls[0]!.messages[0]!.content;
+      expect(prompt).not.toContain(tiny.id);
+      for (const m of big) expect(prompt).toContain(m.id);
+    });
+  });
+
+  it('when only small photos exist, the carousel gets no candidates and every slot is missing media', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await world(db, new FakeLLMProvider(), { photos: 0 });
+      const tiny = await createMedia(db, { clienteId: w.clienteId, tipo: 'foto', ancho: 640, alto: 480 });
+      const pieza = await piece(w);
+      // The model tries the small photo anyway: it is not a candidate, so the schema refuses it and the retry fixes it.
+      w.provider.enqueue(briefJson(w, { media: [tiny.id, null, null, null, null] }), briefJson(w, { media: [null, null, null, null, null] }));
+      const result = await generarBrief(w.deps, w.clienteId, pieza.id, SISTEMA);
+      expect(result.generacion.intentos).toBe(2);
+      expect(result.guion.tomas.every((t) => t.fuente === 'faltante')).toBe(true);
+      expect(w.provider.calls[0]!.messages[0]!.content).not.toContain(tiny.id);
     });
   });
 });

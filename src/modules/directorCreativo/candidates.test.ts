@@ -64,3 +64,63 @@ describe('selectCandidateMedia', () => {
     expect(selectCandidateMedia({ media: [oscura, oscuraEnTexto, buena], pieza: pieza('carrusel'), reglas }).map((m) => m.id)).toEqual([buena.id]);
   });
 });
+
+describe('selectCandidateMedia: photos too small for the slide (production would refuse them)', () => {
+  const para = (formato: 'reel' | 'carrusel' | 'post' | 'historia', red: 'instagram' | 'facebook' | 'tiktok' | 'youtube' = 'instagram') => ({
+    red,
+    formato,
+    pilar: 'Origen del café',
+    idea: 'Un vistazo al origen de nuestros granos',
+  });
+  const foto = (ancho: number, alto: number, n = 0) => makeMedia({ n, tipo: 'foto', ancho, alto });
+  const ids = (media: { id: string }[]) => media.map((m) => m.id);
+
+  it('drops a photo that would be enlarged by more than MAX_UPSCALE for a 4:5 slide, story and post', () => {
+    const seedPhoto = foto(640, 480); // the seed photos: 1350 / 480 = 2.8 times
+    const big = foto(3000, 2000, 1);
+    for (const formato of ['carrusel', 'post', 'historia'] as const) {
+      expect(ids(selectCandidateMedia({ media: [seedPhoto, big], pieza: para(formato), reglas: [] })), formato).toEqual([big.id]);
+    }
+    expect(ids(selectCandidateMedia({ media: [seedPhoto, big], pieza: para('carrusel', 'facebook'), reglas: [] }))).toEqual([big.id]);
+  });
+
+  it('keeps a photo at exactly 1.5 times and drops one just under it', () => {
+    const exact = foto(720, 900);
+    const justUnder = foto(719, 899, 1);
+    expect(ids(selectCandidateMedia({ media: [exact, justUnder], pieza: para('carrusel'), reglas: [] }))).toEqual([exact.id]);
+  });
+
+  it('judges the limiting dimension, not the larger one', () => {
+    const wideButShort = foto(6000, 600); // 1350 / 600 = 2.25 times
+    const wideAndTall = foto(6000, 1000, 1);
+    expect(ids(selectCandidateMedia({ media: [wideButShort, wideAndTall], pieza: para('carrusel'), reglas: [] }))).toEqual([wideAndTall.id]);
+  });
+
+  it('never judges videos (they are 7b)', () => {
+    const tinyVideo = makeMedia({ n: 5, tipo: 'video', ancho: 160, alto: 90 });
+    expect(ids(selectCandidateMedia({ media: [tinyVideo], pieza: para('reel'), reglas: [] }))).toEqual([tinyVideo.id]);
+    expect(ids(selectCandidateMedia({ media: [tinyVideo, foto(640, 480)], pieza: para('historia'), reglas: [] }))).toEqual([tinyVideo.id]);
+  });
+
+  it('does not filter when the network is not given or the pair has no size', () => {
+    const tiny = foto(640, 480);
+    const { red: _red, ...sinRed } = para('carrusel');
+    expect(ids(selectCandidateMedia({ media: [tiny], pieza: sinRed, reglas: [] }))).toEqual([tiny.id]);
+    expect(ids(selectCandidateMedia({ media: [tiny], pieza: para('carrusel', 'tiktok'), reglas: [] }))).toEqual([tiny.id]);
+  });
+
+  it('applies the 12-candidate limit after the filter, so it counts only usable photos', () => {
+    const tiny = Array.from({ length: 5 }, (_v, n) => foto(640, 480, 20 + n)); // the newest ones, all too small
+    const big = Array.from({ length: 4 }, (_v, n) => foto(3000, 2000, n));
+    const result = selectCandidateMedia({ media: [...tiny, ...big], pieza: para('carrusel'), reglas: [], limit: 3 });
+    expect(result).toHaveLength(3);
+    expect(result.every((m) => m.ancho === 3000)).toBe(true);
+  });
+
+  it('keeps the ranking of the photos that stay', () => {
+    const porEtiqueta = makeMedia({ n: 1, tipo: 'foto', ancho: 3000, alto: 2000, etiquetas: ['café', 'origen'] });
+    const sinPuntos = makeMedia({ n: 9, tipo: 'foto', ancho: 3000, alto: 2000 });
+    const chicaConPuntos = makeMedia({ n: 2, tipo: 'foto', ancho: 640, alto: 480, etiquetas: ['café', 'origen'] });
+    expect(ids(selectCandidateMedia({ media: [sinPuntos, chicaConPuntos, porEtiqueta], pieza: para('carrusel'), reglas: [] }))).toEqual([porEtiqueta.id, sinPuntos.id]);
+  });
+});

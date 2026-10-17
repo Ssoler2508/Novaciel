@@ -1,4 +1,7 @@
-import type { Formato, ReglaPlanner } from '../planificador/types.js';
+import { computeCoverCrop } from '../produccion/crop.js';
+import { DimensionNoSoportadaError, dimensionDe } from '../produccion/dimensiones.js';
+import { SourceTooSmallError } from '../produccion/errors.js';
+import type { Formato, ReglaPlanner, Red } from '../planificador/types.js';
 import { containsText, fold } from '../planificador/textMatch.js';
 import { LIMITES_FORMATO, MAX_CANDIDATOS } from './limits.js';
 import type { MediaCandidate } from './types.js';
@@ -10,7 +13,11 @@ import type { MediaCandidate } from './types.js';
 
 export interface SelectCandidateParams {
   media: readonly MediaCandidate[];
-  pieza: { formato: Formato; pilar: string; idea: string };
+  /**
+   * `red` is optional: with it, photos that production would refuse because they would have to be
+   * enlarged by more than MAX_UPSCALE for this network and format are not offered.
+   */
+  pieza: { red?: Red; formato: Formato; pilar: string; idea: string };
   reglas: readonly ReglaPlanner[];
   /** Defaults to MAX_CANDIDATOS. */
   limit?: number;
@@ -30,7 +37,20 @@ function score(media: MediaCandidate, words: ReadonlySet<string>): number {
   return points;
 }
 
-/** The client's usable media that fit the piece: right type, no banned visual element, best first, bounded. */
+/** True when a photo is big enough for the slide size of the piece (videos are not judged: they are 7b). */
+function bigEnough(media: MediaCandidate, red: Red | undefined, formato: Formato): boolean {
+  if (red === undefined || media.tipo !== 'foto') return true;
+  try {
+    computeCoverCrop({ ancho: media.ancho, alto: media.alto }, dimensionDe(red, formato));
+    return true;
+  } catch (error) {
+    if (error instanceof SourceTooSmallError) return false;
+    if (error instanceof DimensionNoSoportadaError) return true; // no size for this pair: nothing to judge
+    throw error;
+  }
+}
+
+/** The client's usable media that fit the piece: right type, big enough, no banned visual element, best first, bounded. */
 export function selectCandidateMedia({ media, pieza, reglas, limit = MAX_CANDIDATOS }: SelectCandidateParams): MediaCandidate[] {
   const tipos = LIMITES_FORMATO[pieza.formato].tiposMedia;
   const visualBans = reglas.filter((r) => r.tipo === 'elemento_visual').map((r) => r.texto);
@@ -38,6 +58,7 @@ export function selectCandidateMedia({ media, pieza, reglas, limit = MAX_CANDIDA
 
   return media
     .filter((m) => tipos.includes(m.tipo))
+    .filter((m) => bigEnough(m, pieza.red, pieza.formato))
     .filter((m) => {
       const haystack = [...m.etiquetas, m.descripcion ?? ''].join(' ');
       return !visualBans.some((ban) => containsText(haystack, ban));

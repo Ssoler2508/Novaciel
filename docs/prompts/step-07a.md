@@ -180,3 +180,4 @@ Commit. Do not merge; the developer merges `step-07a` into `main` after review.
 - Automatic quality control of the produced files (Step 8).
 - Approval against the piece hash (Step 9) and publishing (Step 10).
 - Cleaning stored files of superseded productions after a retention period.
+- Test runs are not safe against the machine going to sleep: if the laptop suspends mid-run (lid closed, forced sleep), the clock jumps and the 5 s vitest timeout of whatever test is running fires on resume. Seen on 2026-10-16: 2 of 25 controlled runs failed, both contained a suspension (Windows event log) and the 23 runs without one passed; one earlier full-suite failure started about 40 s after a resume and was not reproduced. Run the suite with the lid open and sleep disabled; do not "fix" it with retries or longer timeouts.

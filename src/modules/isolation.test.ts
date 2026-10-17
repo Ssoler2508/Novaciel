@@ -14,7 +14,9 @@ import {
   createMediaAutorizacion,
   createGuion,
   createPieza,
+  createProduccion,
   createPiezaHecho,
+  moverPieza,
   createPlanSemanal,
   createPerfilMarca,
   createReglaProhibida,
@@ -60,12 +62,15 @@ import { FakeVisionProvider } from '../lib/ai/vision/fakeVisionProvider.js';
 import { describeMedia } from './media/describeMedia.js';
 import { getHistorial, getPieza, listPiezas, pausarPieza, PiezaNotFoundError, reanudarPieza, transitionPieza } from './piezas/index.js';
 import { generarBrief, getBriefActual, listBriefVersions } from './directorCreativo/index.js';
+import { getProduccionActual, listProduccionVersions } from './produccion/produccionRepository.js';
+import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/produccionJobs.js';
+import { assertProducible, producirPieza } from './produccion/produccionService.js';
 import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -86,6 +91,7 @@ interface World {
   planAprobadoId: string;
   piezaConGuionId: string;
   guionId: string;
+  produccionId: string;
 }
 
 /** A client with rows in every client table, created through the test factories. */
@@ -122,6 +128,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     tomas: [{ mediaId: media.id }, { motivoFaltante: 'No hay foto del local' }],
     hechoIds: [hechoValido.id],
   });
+  // A production needs the piece ready for it (guion_listo) and a final file made from real media.
+  await moverPieza(db, piezaConGuion.id, 'guion_listo');
+  const produccion = await createProduccion(db, { piezaId: piezaConGuion.id, archivos: [{ mediaId: media.id }] });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   return {
@@ -142,6 +151,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     planAprobadoId: planAprobado.id,
     piezaConGuionId: piezaConGuion.id,
     guionId: guion.id,
+    produccionId: produccion.id,
   };
 }
 
@@ -390,6 +400,21 @@ describe('isolation: briefs', () => {
   });
 });
 
+describe('isolation: productions', () => {
+  it("A never reads, changes or deletes B's productions and files: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      for (const [table, column] of [['producciones', 'id'], ['producciones_archivos', 'produccion_id']] as const) {
+        const own = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1`, [a.clienteId])).rows;
+        const foreign = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1 AND ${column} = $2`, [a.clienteId, b.produccionId])).rows;
+        expect(own.length).toBeGreaterThan(0);
+        expect(foreign).toEqual([]);
+      }
+      // Filtered by A's client id, B's production cannot be touched.
+      expect((await db.query('UPDATE producciones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.produccionId])).rowCount).toBe(0);
+    });
+  });
+});
+
 describe('isolation: creative director service', () => {
   it("A cannot read, list, generate or approve B's briefs and plans: no provider call, B stays unchanged", async () => {
     await withTwoClients(async (a, b, db) => {
@@ -402,6 +427,32 @@ describe('isolation: creative director service', () => {
       await expect(generarBrief(deps, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
       await expect(aprobarPlanInterno(db, a.clienteId, b.planId, SISTEMA)).rejects.toBeInstanceOf(PlanNotFoundError);
       expect(provider.calls).toHaveLength(0);
+    });
+  });
+});
+
+describe('isolation: production service', () => {
+  it("A cannot produce or read B's productions: nothing stored, B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const storage = new FakeStorage();
+      expect(await getProduccionActual(db, a.clienteId, b.piezaConGuionId)).toBeNull();
+      expect(await listProduccionVersions(db, a.clienteId, b.piezaConGuionId)).toEqual([]);
+      expect((await getProduccionActual(db, b.clienteId, b.piezaConGuionId))!.id).toBe(b.produccionId);
+      await expect(producirPieza({ db, storage }, a.clienteId, b.piezaConGuionId, SISTEMA, { reproducir: true })).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(producirPieza({ db, storage }, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(storage.keys()).toEqual([]);
+    });
+  });
+});
+
+describe('isolation: production job and free checks', () => {
+  it("A cannot produce, check or queue-run B's pieces and plans through the job or the route checks: nothing stored, B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const storage = new FakeStorage();
+      await expect(assertProducible(db, a.clienteId, b.piezaConGuionId, true)).rejects.toBeInstanceOf(PiezaNotFoundError);
+      expect(await ejecutarJobProducirPieza({ db, storage }, { clienteId: a.clienteId, piezaId: b.piezaConGuionId, reproducir: true })).toEqual({ resultado: 'rechazado', codigo: 'PiezaNotFoundError' });
+      expect(await ejecutarJobProducirPlan({ db, storage }, { clienteId: a.clienteId, planId: b.planId })).toEqual({ resultado: 'rechazado', codigo: 'PlanNotFoundError' });
+      expect(storage.keys()).toEqual([]);
     });
   });
 });

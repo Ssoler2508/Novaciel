@@ -133,7 +133,7 @@ export async function generarBrief(
   const reglas = (await listReglas(db, clienteId)).map((r) => ({ tipo: r.tipo, texto: r.texto }));
   const candidatos = selectCandidateMedia({
     media: await getUsableMedia(db, clienteId),
-    pieza: { formato: piezaVista.formato, pilar: piezaVista.pilar, idea: piezaVista.idea },
+    pieza: { red: piezaVista.red, formato: piezaVista.formato, pilar: piezaVista.pilar, idea: piezaVista.idea },
     reglas,
   });
   const context = buildBriefContext({

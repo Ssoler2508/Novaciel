@@ -466,3 +466,42 @@ describe('structure', () => {
     expect(messages.join(' ')).not.toContain('SECRETO-DE-PRUEBA');
   });
 });
+
+describe('on-screen text is drawn with a fixed font: no characters it cannot draw', () => {
+  const ctx = () => makeBriefContext({ formato: 'carrusel' });
+
+  it.each(['Un café ☕', '😀', 'Hecho con ❤', '漢字', 'Привет'])('rejects "%s" in the on-screen text, with its own issue code', (wording) => {
+    const c = ctx();
+    expect(BRIEF_ISSUES.unsupportedGlyphs).toBe('unsupported_glyphs');
+    expect(issuesOf(c, variant(c, (b) => (b.escenas[0].texto_en_pantalla = wording)))).toEqual([BRIEF_ISSUES.unsupportedGlyphs]);
+  });
+
+  it('allows emoji in the caption, the alt text, the voice-over, the hook and the call to action', () => {
+    const c = ctx();
+    for (const change of [
+      (b: Mutable) => (b.texto_publicacion.texto = 'Hecho con calma ☕ 😀'),
+      (b: Mutable) => (b.escenas[0].texto_alternativo = 'Una taza ☕ sobre la mesa'),
+      (b: Mutable) => (b.escenas[0].voz_en_off = 'Cuéntanos 😀'),
+      (b: Mutable) => (b.gancho = 'Buen día ☀'),
+      (b: Mutable) => (b.llamado_a_accion = 'Escríbenos 💬'),
+    ]) {
+      expect(issuesOf(c, variant(c, change))).toEqual([]);
+    }
+  });
+
+  it('accepts accented Spanish and punctuation in the on-screen text', () => {
+    const c = ctx();
+    expect(issuesOf(c, variant(c, (b) => (b.escenas[0].texto_en_pantalla = '¿Qué tal un café con leche, ñandú? ¡Pásate — «hoy»!')))).toEqual([]);
+  });
+
+  it('judges the text AFTER rendering the fact tokens: a fact with an emoji cannot go on the slide', () => {
+    const conEmoji = { ...HECHO_CIFRA, id: randomUUID(), enunciado: 'Llevamos años sirviendo café ☕ de origen.' };
+    const c = makeBriefContext({ formato: 'carrusel', hechos: [conEmoji] });
+    expect(issuesOf(c, variant(c, (b) => (b.escenas[0].texto_en_pantalla = `Mira ${factToken(conEmoji.id)}`)))).toEqual([BRIEF_ISSUES.unsupportedGlyphs]);
+    // The same token in the caption is fine: the caption is not drawn.
+    expect(issuesOf(c, variant(c, (b) => (b.texto_publicacion.texto = `Mira ${factToken(conEmoji.id)}`)))).toEqual([]);
+    // A fact of plain text on the slide is fine.
+    const plain = makeBriefContext({ formato: 'carrusel', hechos: [HECHO_CIFRA] });
+    expect(issuesOf(plain, variant(plain, (b) => (b.escenas[0].texto_en_pantalla = `Mira ${factToken(HECHO_CIFRA.id)}`)))).toEqual([]);
+  });
+});

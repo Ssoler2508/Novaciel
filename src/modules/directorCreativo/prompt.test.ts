@@ -87,3 +87,12 @@ describe('buildBriefPrompt', () => {
     expect(buildBriefPrompt(makeBriefContext({ idioma: 'es' })).user).toContain('- content language: Spanish');
   });
 });
+
+
+describe('the brief prompt and the slide font', () => {
+  it('tells the model that on-screen text has no emoji, and where emoji are still allowed', () => {
+    expect(BRIEF_SYSTEM).toContain('"texto_en_pantalla" is drawn on the image with a fixed font');
+    expect(BRIEF_SYSTEM).toMatch(/no emoji and no other symbols/);
+    expect(BRIEF_SYSTEM).toMatch(/Emoji are allowed only in the caption, the hashtags and the alt text/);
+  });
+});

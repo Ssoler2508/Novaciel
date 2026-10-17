@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { containsText, containsWord, mentionsPrice, mentionsPromotion, mentionsSchedule } from '../planificador/textMatch.js';
 import { FORMATOS, type HechoTipo } from '../planificador/types.js';
+import { esTextoSoportado } from '../produccion/glyphCoverage.js';
 import { mentionsAi, mentionsAiGenerationRequest, mentionsNumber } from './detectors.js';
 import { MAX_HECHOS_OMITIDOS } from './limits.js';
 import { hasMalformedToken, isValidAt, stripFactTokens, tokenIdsIn } from './tokens.js';
@@ -47,6 +48,7 @@ export const BRIEF_ISSUES = {
   bannedTerm: 'banned_term',
   aiGenerationRequest: 'ai_generation_request',
   aiMentionInProduction: 'ai_mention_in_production',
+  unsupportedGlyphs: 'unsupported_glyphs',
 } as const;
 
 const text = z.string().trim().min(1);
@@ -233,6 +235,12 @@ export function buildBriefSchema(context: BriefContext): z.ZodType<BriefContent>
         return false; // elemento_visual is applied to the media candidates
       });
       if (banned) issue(path, BRIEF_ISSUES.bannedTerm);
+
+      // 9. The on-screen text is DRAWN with the bundled font: no character it cannot draw (emoji...), also
+      //    once the fact tokens are rendered. Caption, hashtags, alt text and voice-over may keep emoji.
+      if (path[0] === 'escenas' && path[2] === 'texto_en_pantalla' && !esTextoSoportado(rendered)) {
+        issue(path, BRIEF_ISSUES.unsupportedGlyphs);
+      }
 
       // 8. The AI never generates the client's product, premises or people.
       if (mentionsAiGenerationRequest(own)) issue(path, BRIEF_ISSUES.aiGenerationRequest);

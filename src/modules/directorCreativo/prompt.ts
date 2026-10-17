@@ -18,6 +18,7 @@ export const BRIEF_SYSTEM = [
   '- Choose media only by "media_id" from the media block. If no media fits a slot, set "media_id" to null and give "motivo_faltante". Never ask for an image or video to be generated, and never invent or describe media that is not in the block.',
   '- "entrada_ms" and "salida_ms" only for a video, inside its duration, "salida_ms" greater than "entrada_ms".',
   '- Every slide of an image format (carousel, post, story) has "texto_alternativo".',
+  '- "texto_en_pantalla" is drawn on the image with a fixed font: use only Latin letters, punctuation and the euro sign, with no emoji and no other symbols. Emoji are allowed only in the caption, the hashtags and the alt text.',
   '- Write the copy in the content language and in the brand voice. Hashtags start with "#" and have letters, digits or "_" only.',
   '- Never use a banned word, promise or topic from the banned_rules block.',
   '- Do not mention artificial intelligence in "notas_produccion", "motivo_faltante", "portada" or "musica".',

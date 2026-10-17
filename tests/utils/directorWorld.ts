@@ -47,7 +47,7 @@ export async function world(db: Db, provider: FakeLLMProvider = new FakeLLMProvi
   const byTipo = (tipo: string) => valid.find((h) => h.tipo === tipo)!;
   const plan = await createPlanSemanal(db, { clienteId, perfilMarcaId: perfil.id, estado: 'aprobado', semanaInicio: '2026-11-09' });
   const photos = [];
-  for (let i = 0; i < (options.photos ?? 6); i++) photos.push(await createMedia(db, { clienteId, tipo: 'foto', etiquetas: ['cafe'] }));
+  for (let i = 0; i < (options.photos ?? 6); i++) photos.push(await createMedia(db, { clienteId, tipo: 'foto', ancho: 3000, alto: 2000, etiquetas: ['cafe'] }));
   const lines: string[] = [];
   const logger = createLogger('debug', { write: (l: string) => void lines.push(l) });
   const alerts = new FakeAlertSink();
