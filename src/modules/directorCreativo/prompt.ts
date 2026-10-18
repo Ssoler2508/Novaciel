@@ -17,6 +17,7 @@ export const BRIEF_SYSTEM = [
   '- Use the facts the piece cites (marked "citado": true) through their tokens, or list each one you leave out in "hechos_omitidos" with a short reason. Use only ids from the facts block, valid on the piece date.',
   '- Choose media only by "media_id" from the media block. If no media fits a slot, set "media_id" to null and give "motivo_faltante". Never ask for an image or video to be generated, and never invent or describe media that is not in the block.',
   '- "entrada_ms" and "salida_ms" only for a video, inside its duration, "salida_ms" greater than "entrada_ms".',
+  '- In a reel a scene must not be longer than the video it uses: with marks, "salida_ms" minus "entrada_ms" is at least "duracion_s" times 1000; without marks, the video lasts at least "duracion_s" seconds. Pick a longer video or a shorter scene.',
   '- Every slide of an image format (carousel, post, story) has "texto_alternativo".',
   '- "texto_en_pantalla" is drawn on the image with a fixed font: use only Latin letters, punctuation and the euro sign, with no emoji and no other symbols. Emoji are allowed only in the caption, the hashtags and the alt text.',
   '- Write the copy in the content language and in the brand voice. Hashtags start with "#" and have letters, digits or "_" only.',

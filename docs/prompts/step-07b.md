@@ -140,3 +140,4 @@ Commit. Do not merge; the developer merges `step-07b` into `main` after review.
 - Transitions beyond hard cuts.
 - Cover selection by a person, if not in scope here.
 - Cleaning stored files of superseded productions after a retention period.
+- Queue limits for reels: the `producir-plan` queue expires a job after 1800 s and `producir-pieza` after 900 s, while one reel may take up to `FFMPEG_TIMEOUT_MS` (600 s by default). A plan with many slow reels (more than about three) can outlive the plan job's expiry. pg-boss does not update the options of a queue that already exists, so raising them needs a one-time `updateQueue` (or per-job `expireInSeconds`) in a later step.

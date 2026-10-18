@@ -4,6 +4,15 @@ import type { ProduccionView } from './produccionRepository.js';
 // What the production routes show. The storage key is NEVER exposed: each file carries a short-lived
 // signed URL instead.
 
+/** What is known about a video file: its technical record and the stretch of each clip behind each scene. */
+export interface VideoPublico {
+  duracion_ms: number;
+  fps: number;
+  codec_video: string;
+  codec_audio: string;
+  fuentes: { escena: number; media_id: string; entrada_ms: number; salida_ms: number }[];
+}
+
 export interface ArchivoPublico {
   orden: number;
   mime: string;
@@ -11,7 +20,10 @@ export interface ArchivoPublico {
   alto: number;
   tamano_bytes: number;
   sha256: string;
+  /** For a reel, the clip of its first scene (all of them are in `video.fuentes`). */
   media_id: string;
+  /** Null for an image. */
+  video: VideoPublico | null;
   url: string;
   url_expira_en_s: number;
 }
@@ -48,6 +60,10 @@ export async function toProduccionPublica(
         tamano_bytes: a.tamano_bytes,
         sha256: a.sha256,
         media_id: a.media_id,
+        video:
+          a.duracion_ms === null || a.fps === null || a.codec_video === null || a.codec_audio === null
+            ? null
+            : { duracion_ms: a.duracion_ms, fps: a.fps, codec_video: a.codec_video, codec_audio: a.codec_audio, fuentes: a.fuentes.map((f) => ({ ...f })) },
         url: await storage.getSignedUrl(a.clave_almacenamiento, ttlSeconds),
         url_expira_en_s: ttlSeconds,
       }),

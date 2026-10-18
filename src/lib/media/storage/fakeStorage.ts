@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { validateKey } from './keys.js';
 import type { Storage } from './types.js';
 
@@ -14,6 +14,11 @@ export class FakeStorage implements Storage {
     validateKey(key);
     // A test double: reading the whole file is fine here. The real implementations stream.
     this.objects.set(key, { body: await readFile(filePath), contentType });
+  }
+
+  async getFile(key: string, destPath: string): Promise<void> {
+    // A test double: the whole object is written at once. The real implementations stream.
+    await writeFile(destPath, await this.get(key));
   }
 
   /** Test helper: true when an object exists under `key`. */

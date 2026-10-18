@@ -2,9 +2,23 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { producibleWorld } from '../../tests/utils/produccionWorld.js';
 import { withTestTransaction } from '../../tests/utils/transaction.js';
+import { FfmpegRunError } from '../lib/media/ffmpeg/runFfmpeg.js';
+import { FfmpegToolingError } from '../lib/media/ffmpeg/tooling.js';
 import { getPieza } from '../modules/piezas/index.js';
+import {
+  DuracionTotalFueraDeRangoError,
+  EscenaMasLargaQueLaFuenteError,
+  EscenaSinVideoError,
+  FormatoNoSoportadoError,
+  FuenteDeVideoIlegibleError,
+  HdrNoSoportadoError,
+  MarcasFueraDeRangoError,
+  ReelNoConfiguradoError,
+  SalidaInvalidaError,
+  TimelineInvalidoError,
+} from '../modules/produccion/index.js';
 import { parsePieceProduceArgs } from './pieceProduceArgs.js';
-import { runPieceProduce } from './pieceProduceCore.js';
+import { failureLine, runPieceProduce } from './pieceProduceCore.js';
 
 const ID = '123e4567-e89b-42d3-a456-426614174000';
 const ID2 = '223e4567-e89b-42d3-a456-426614174001';
@@ -85,7 +99,7 @@ describe('piece:produce (core)', () => {
       expect(await one(faltante, { modo: 'pieza', piezaId: faltante.piezaId, reproducir: false })).toBe('The brief has slots without media (slides 2, 5): upload more media and regenerate the brief');
       // The expected result for an old brief that still uses small photos: media ids and slide numbers.
       const small = await one(pequena, { modo: 'pieza', piezaId: pequena.piezaId, reproducir: false });
-      expect(small).toContain('2 source image(s) are too small for slides 1, 2');
+      expect(small).toContain('2 source image(s) are too small for slides or scenes 1, 2');
       expect(small).toContain(pequena.media[0]!.id);
       expect(small).toContain(pequena.media[1]!.id);
       expect(small).toContain('regenerate the brief');
@@ -128,5 +142,35 @@ describe('piece:produce (core)', () => {
       await db.query(`UPDATE planes_semanales SET estado = 'descartado' WHERE id = $1 AND cliente_id = $2`, [first.planId, first.clienteId]);
       expect((await runPieceProduce(deps, args)).lines).toEqual(['The plan is discarded']);
     });
+  });
+});
+
+describe('piece:produce: one clear line for every reel error, never the text, a path or FFmpeg output', () => {
+  const SECRET = 'C:\privado\SECRETO-TEXTO-Y-RUTA.mp4';
+  const cases: [string, Error, RegExp][] = [
+    ['TimelineInvalido', new TimelineInvalidoError('numero_de_escenas'), /^The reel scenes are not valid \(numero_de_escenas\): regenerate the brief$/],
+    ['EscenaSinVideo', new EscenaSinVideoError([2, 3]), /^Scenes 2, 3 have no video: upload videos and regenerate the brief/],
+    ['MarcasFueraDeRango', new MarcasFueraDeRangoError([1]), /^Scenes 1 have in\/out marks outside their video/],
+    ['EscenaMasLargaQueLaFuente', new EscenaMasLargaQueLaFuenteError([2]), /^Scenes 2 last longer than the part of their video/],
+    ['DuracionTotalFueraDeRango', new DuracionTotalFueraDeRangoError(12_000, 15_000, 30_000), /^The reel would last 12000 ms; it must last 15000 to 30000 ms/],
+    ['HdrNoSoportado', new HdrNoSoportadoError([1]), /^Scenes 1 are HDR and this FFmpeg has no zscale\/tonemap/],
+    ['FuenteDeVideoIlegible', new FuenteDeVideoIlegibleError(ID, 'no_se_pudo_leer'), /^The source video 123e4567-e89b-42d3-a456-426614174000 cannot be used \(no_se_pudo_leer\): upload it again/],
+    ['SalidaInvalida', new SalidaInvalidaError('etiqueta_no_permitida', 'title'), /^The rendered reel was refused and nothing was kept \(etiqueta_no_permitida: title\)$/],
+    ['FfmpegRun', new FfmpegRunError('filtro', 1), /^FFmpeg failed \(filtro, exit code 1\); nothing was kept$/],
+    ['FfmpegTooling', new FfmpegToolingError('missing', ['libx264']), /^FFmpeg is missing what reel production needs: libx264 \(check FFMPEG_PATH/],
+    ['ReelNoConfigurado', new ReelNoConfiguradoError(), /^Reel production is not configured in this process$/],
+    ['FormatoNoSoportado', new FormatoNoSoportadoError('tiktok', 'carrusel'), /^The format carrusel has no defined size for tiktok/],
+  ];
+  it.each(cases)('%s', (_name, error, expected) => {
+    const line = failureLine(error);
+    expect(line).toMatch(expected);
+    expect(line).not.toContain('SECRETO');
+    expect(line).not.toContain('privado');
+    expect(line.split('\n')).toHaveLength(1);
+  });
+
+  it('does not echo what an unknown error carries', () => {
+    expect(failureLine(new Error(SECRET))).toBe('Production failed (Error)');
+    expect(failureLine(new FfmpegRunError('desconocido'))).toBe('FFmpeg failed (desconocido); nothing was kept');
   });
 });

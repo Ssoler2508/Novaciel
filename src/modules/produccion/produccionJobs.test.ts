@@ -59,12 +59,12 @@ describe('ejecutarJobProducirPieza', () => {
   it('ends "rechazado" with the error name for every expected refusal, storing nothing', async () => {
     await withTestTransaction(async (db) => {
       const faltante = await producibleWorld(db, { faltantes: [2] });
-      const reel = await producibleWorld(db, { formato: 'reel' });
+      const sinTamano = await producibleWorld(db, { red: 'tiktok' });
       const pequena = await producibleWorld(db, { source: [640, 480] });
       const deps = (w: { storage: typeof faltante.storage }) => ({ db, storage: w.storage });
 
       expect(await ejecutarJobProducirPieza(deps(faltante), { clienteId: faltante.clienteId, piezaId: faltante.piezaId })).toEqual({ resultado: 'rechazado', codigo: 'BriefConFaltantesError' });
-      expect(await ejecutarJobProducirPieza(deps(reel), { clienteId: reel.clienteId, piezaId: reel.piezaId })).toEqual({ resultado: 'rechazado', codigo: 'FormatoNoSoportadoError' });
+      expect(await ejecutarJobProducirPieza(deps(sinTamano), { clienteId: sinTamano.clienteId, piezaId: sinTamano.piezaId })).toEqual({ resultado: 'rechazado', codigo: 'FormatoNoSoportadoError' });
       expect(await ejecutarJobProducirPieza(deps(faltante), { clienteId: faltante.clienteId, piezaId: NO_PIEZA })).toEqual({ resultado: 'rechazado', codigo: 'PiezaNotFoundError' });
 
       // Small sources: the ids and slide numbers (and nothing else) travel in the output.
@@ -74,7 +74,7 @@ describe('ejecutarJobProducirPieza', () => {
         codigo: 'FuentesMuyPequenasError',
         fuentes_pequenas: { media_ids: pequena.media.map((m) => m.id), ordenes: [1, 2, 3, 4, 5] },
       });
-      for (const w of [faltante, reel, pequena]) expect(w.storage.keys().filter((k) => k.includes('/producidos/'))).toEqual([]);
+      for (const w of [faltante, sinTamano, pequena]) expect(w.storage.keys().filter((k) => k.includes('/producidos/'))).toEqual([]);
       expect((await getPieza(db, pequena.clienteId, pequena.piezaId))!.estado).toBe('guion_listo');
     });
   });

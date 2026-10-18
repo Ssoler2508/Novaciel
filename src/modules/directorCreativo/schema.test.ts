@@ -10,6 +10,7 @@ import {
   makeMedia,
   validBrief,
 } from '../../../tests/utils/briefFixtures.js';
+import { buildDeterministicBrief } from './deterministicBriefFake.js';
 import { BRIEF_ISSUES, buildBriefSchema, type BriefContent } from './schema.js';
 import { factToken } from './tokens.js';
 import type { BriefContext } from './types.js';
@@ -58,9 +59,61 @@ describe('a valid brief passes', () => {
   it('a video slot with in and out marks inside the clip', () => {
     const context = reel();
     const brief = variant(context, (b) => {
-      b.escenas[0].toma = { media_id: context.candidatos.find((m) => m.tipo === 'video')!.id, entrada_ms: 1000, salida_ms: 5000 };
+      b.escenas[0].toma = { media_id: context.candidatos.find((m) => m.tipo === 'video')!.id, entrada_ms: 1000, salida_ms: 8000 }; // 7 s for a scene of 6.67 s
     });
     expect(issuesOf(context, brief)).toEqual([]);
+  });
+
+  describe('a reel scene must not be longer than the video it uses', () => {
+    // The scenes of validBrief last 20 / 3 s: production cuts 200 frames = 6667 ms of each.
+    const NEEDED = 6667;
+    const withClip = (duracionMs: number) => {
+      const clip = makeMedia({ tipo: 'video', duracion_ms: duracionMs });
+      const context = makeBriefContext({ formato: 'reel', media: [clip, ...makeLibrary().filter((m) => m.tipo === 'video')] });
+      return { context, clip };
+    };
+
+    it('with marks: the marked stretch must be at least the scene', () => {
+      const { context, clip } = withClip(20_000);
+      const marks = (entrada: number, salida: number) => (b: Mutable) => (b.escenas[0].toma = { media_id: clip.id, entrada_ms: entrada, salida_ms: salida });
+      expect(issuesOf(context, variant(context, marks(0, NEEDED)))).toEqual([]);
+      expect(issuesOf(context, variant(context, marks(3000, 3000 + NEEDED)))).toEqual([]);
+      expectIssue(context, marks(0, NEEDED - 1), BRIEF_ISSUES.sceneLongerThanSource);
+      expectIssue(context, marks(1000, 3000), BRIEF_ISSUES.sceneLongerThanSource);
+    });
+
+    it('without marks: the whole clip must be at least the scene', () => {
+      const long = withClip(NEEDED);
+      expect(issuesOf(long.context, variant(long.context, (b) => (b.escenas[0].toma = { media_id: long.clip.id })))).toEqual([]);
+      // (validBrief itself would use the short clip, so it is not a valid base here.)
+      for (const duracionMs of [NEEDED - 1, 2000]) {
+        const short = withClip(duracionMs);
+        expect(issuesOf(short.context, variant(short.context, (b) => (b.escenas[0].toma = { media_id: short.clip.id })))).toContain(BRIEF_ISSUES.sceneLongerThanSource);
+      }
+    });
+
+    it('measures the scene in whole frames, exactly as production does', () => {
+      // 5.02 s is 151 frames = 5033 ms: a 5020 ms stretch passes a naive seconds check and fails production.
+      const { context, clip } = withClip(20_000);
+      const scene = (b: Mutable, stretch: number) => {
+        for (const e of b.escenas) e.duracion_s = 5.02;
+        b.escenas[0].toma = { media_id: clip.id, entrada_ms: 0, salida_ms: stretch };
+      };
+      expectIssue(context, (b) => { scene(b, 5020); b.escenas[1].duracion_s = 5.02; b.escenas[2].duracion_s = 5.02; }, BRIEF_ISSUES.sceneLongerThanSource);
+      expect(issuesOf(context, variant(context, (b) => scene(b, 5033)))).not.toContain(BRIEF_ISSUES.sceneLongerThanSource);
+    });
+
+    it('does not apply to photos or to formats without a duration', () => {
+      const carrusel = makeBriefContext({ formato: 'carrusel' });
+      expect(issuesOf(carrusel, variant(carrusel, () => undefined))).not.toContain(BRIEF_ISSUES.sceneLongerThanSource);
+    });
+
+    it('the deterministic fake never trips it', () => {
+      for (const duracionMs of [7000, 20_000]) {
+        const { context } = withClip(duracionMs);
+        expect(() => buildDeterministicBrief(context)).not.toThrow();
+      }
+    });
   });
 
   it('keeps the tokens in the parsed content', () => {
@@ -136,13 +189,12 @@ describe('media', () => {
     expectIssue(reelContext, (b) => (b.escenas[0].toma = { media_id: photo.id }), BRIEF_ISSUES.mediaTypeMismatch);
   });
 
-  it('a story may use a photo or a video', () => {
+  it('a story takes a photo; a video is refused until stories with video are produced', () => {
     const context = makeBriefContext({ formato: 'historia' });
     const photo = context.candidatos.find((m) => m.tipo === 'foto')!;
     const video = context.candidatos.find((m) => m.tipo === 'video')!;
-    for (const media of [photo, video]) {
-      expect(issuesOf(context, variant(context, (b) => (b.escenas[0].toma = { media_id: media.id })))).toEqual([]);
-    }
+    expect(issuesOf(context, variant(context, (b) => (b.escenas[0].toma = { media_id: photo.id })))).toEqual([]);
+    expectIssue(context, (b) => (b.escenas[0].toma = { media_id: video.id }), BRIEF_ISSUES.mediaTypeMismatch);
   });
 
   it('marks: only on videos, both or neither, out after in, inside the clip', () => {

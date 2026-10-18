@@ -12,7 +12,7 @@ import { registerPlanificadorRoutes } from './modules/planificador/planificadorR
 import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
 import { createLlmRuntime } from './modules/desarrollo/developmentProvider.js';
 import { createPgBossBriefQueue, registerDirectorJobs, registerDirectorRoutes } from './modules/directorCreativo/index.js';
-import { createPgBossProduccionQueue, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
+import { createPgBossProduccionQueue, createReelRuntime, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
 import {
   createStorage,
   LocalFileStorage,
@@ -85,7 +85,8 @@ async function main(): Promise<void> {
     alerts: new LogAlertSink(),
     ...(llm.withBriefContext ? { withContext: llm.withBriefContext } : {}),
   });
-  await registerProduccionJobs(boss, { db: pool, storage });
+  // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
+  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media) });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }

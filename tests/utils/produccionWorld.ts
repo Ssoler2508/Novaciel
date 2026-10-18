@@ -9,6 +9,17 @@ import { createCliente, createGuion, createMedia, createPerfilMarca, createPieza
 // fake storage: everything the production job, routes and script need. Works with a test transaction
 // and with the pool (committed data, for tests that use a real worker). All values are fictional.
 
+/** A source clip of a reel scene: its bytes (stored in the fake storage) and what the media row says about it. */
+export interface WorldClip {
+  bytes: Buffer;
+  ancho: number;
+  alto: number;
+  duracionMs: number;
+  /** In and out marks of the brief for this scene, in ms. */
+  entradaMs?: number;
+  salidaMs?: number;
+}
+
 export interface ProducibleWorldOptions {
   formato?: 'carrusel' | 'post' | 'historia' | 'reel';
   slides?: number;
@@ -19,6 +30,16 @@ export interface ProducibleWorldOptions {
   /** Reuse a client, plan and storage (to build several pieces of the same plan). */
   base?: { clienteId: ClienteId; planId: string; perfilId: string; storage: FakeStorage };
   semanaInicio?: string;
+  /** The network of the piece. Default instagram. A pair with no defined size (tiktok + carrusel) is "format not supported". */
+  red?: 'instagram' | 'facebook' | 'tiktok' | 'youtube';
+  /**
+   * Reels only: the clip of each scene (the last one is reused when there are more scenes) and the
+   * length of each scene in seconds (default 5, so 3 scenes make 15 s).
+   */
+  clips?: readonly WorldClip[];
+  sceneSeconds?: number;
+  /** On-screen text of each scene (default "Escena N del origen del café"). */
+  texts?: readonly string[];
 }
 
 export interface ProducibleWorld {
@@ -50,14 +71,27 @@ export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): P
     planId = (await createPlanSemanal(db, { clienteId, estado: 'aprobado', perfilMarcaId: perfilId, ...(o.semanaInicio ? { semanaInicio: o.semanaInicio } : {}) })).id;
     storage = new FakeStorage();
   }
-  const pieza = await createPieza(db, { clienteId, planId, estado: 'plan_aprobado', formato });
+  const pieza = await createPieza(db, { clienteId, planId, estado: 'plan_aprobado', formato, ...(o.red ? { red: o.red } : {}) });
   const media: ProducibleWorld['media'] = [];
   const escenas = [];
   const tomas = [];
+  const esReel = formato === 'reel';
+  if (esReel && (o.clips ?? []).length === 0) throw new Error('producibleWorld: a reel needs clips');
+  const duracion = esReel ? { duracion_s: o.sceneSeconds ?? 5 } : {};
   for (let i = 0; i < slides; i++) {
     const orden = i + 1;
+    if (esReel && !faltantes.has(orden)) {
+      const clip = o.clips![Math.min(i, o.clips!.length - 1)]!;
+      const row = await createMedia(db, { clienteId, tipo: 'video', ancho: clip.ancho, alto: clip.alto, duracionMs: clip.duracionMs });
+      await storage.put(row.clave_almacenamiento, clip.bytes);
+      media.push(row);
+      const marks = clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entrada_ms: clip.entradaMs, salida_ms: clip.salidaMs } : {};
+      escenas.push({ orden, texto_en_pantalla: o.texts?.[i] ?? `Escena ${orden} del origen del café`, ...duracion, toma: { media_id: row.id, ...marks } });
+      tomas.push({ mediaId: row.id, ...(clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entradaMs: clip.entradaMs, salidaMs: clip.salidaMs } : {}) });
+      continue;
+    }
     if (faltantes.has(orden)) {
-      escenas.push({ orden, texto_en_pantalla: `Escena ${orden} del origen del café`, texto_alternativo: `Granos de café, foto ${orden}`, toma: { media_id: null, motivo_faltante: 'No hay media adecuada' } });
+      escenas.push({ orden, texto_en_pantalla: `Escena ${orden} del origen del café`, ...(esReel ? {} : { texto_alternativo: `Granos de café, foto ${orden}` }), ...duracion, toma: { media_id: null, motivo_faltante: 'No hay media adecuada' } });
       tomas.push({ fuente: 'faltante' as const, motivoFaltante: 'No hay media adecuada' });
       continue;
     }

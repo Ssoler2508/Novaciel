@@ -1,4 +1,4 @@
-import { createCanvas, ImageData } from '@napi-rs/canvas';
+import { createCanvas, ImageData, type SKRSContext2D } from '@napi-rs/canvas';
 import sharp, { type Metadata } from 'sharp';
 import { detectTypeFromHeader } from '../../lib/media/validateMedia.js';
 import type { Formato, Red } from '../planificador/types.js';
@@ -107,6 +107,70 @@ async function pixels(source: Buffer, crop: CoverCrop, ancho: number, alto: numb
   }
 }
 
+export interface TextoSobreLienzo {
+  ancho: number;
+  alto: number;
+  formato: Formato;
+  /** Already trimmed and not empty. */
+  texto: string;
+  /** The profile's kit_visual (read only for its brand colors). */
+  kitVisual: unknown;
+  /** Font family to draw with. Defaults to the bundled Inter. */
+  fuente?: string;
+}
+
+/**
+ * Draws the scrim and the text of one slide or reel scene on a canvas that already holds the
+ * background: the scrim is a translucent full-width band, the text is laid out inside the safe zone
+ * and never cut. The same code draws the text over a photo (renderSlide) and over a transparent
+ * canvas (the overlay of a reel). Throws TextDoesNotFitError or UnsupportedGlyphsError.
+ */
+export function dibujarTexto(ctx: SKRSContext2D, spec: TextoSobreLienzo): NonNullable<RenderedSlide['texto']> {
+  const { ancho, alto, texto } = spec;
+  const fuente = spec.fuente ?? FUENTE_POR_DEFECTO;
+  assertGlifosSoportados(texto);
+  registrarFuentes();
+
+  const k = ancho / ANCHO_REFERENCIA;
+  const zona = zonaSegura(ancho, alto, spec.formato);
+  const medir = (linea: string, tamano: number) => {
+    ctx.font = `700 ${tamano}px "${fuente}"`;
+    return ctx.measureText(linea).width;
+  };
+  const layout = layoutText({
+    texto,
+    maxAncho: zona.ancho,
+    maxAlto: zona.alto * ALTO_MAXIMO_DEL_TEXTO,
+    medir,
+    tamanoMax: TAMANO_MAX * k,
+    tamanoMin: TAMANO_MIN * k,
+    paso: 2 * k,
+    interlineado: INTERLINEADO,
+    maxLineas: MAX_LINEAS,
+  });
+  const colores = elegirColores(spec.kitVisual);
+
+  // The text block sits at the bottom of the safe zone; the scrim is a full-width band around it.
+  const relleno = layout.tamano * RELLENO;
+  const bloqueAbajo = zona.y + zona.alto;
+  const bloqueArriba = bloqueAbajo - layout.altoBloque;
+  const bandaArriba = Math.max(0, bloqueArriba - relleno);
+  const bandaAbajo = Math.min(alto, bloqueAbajo + relleno);
+  ctx.globalAlpha = colores.alfa;
+  ctx.fillStyle = colores.scrim;
+  ctx.fillRect(0, bandaArriba, ancho, bandaAbajo - bandaArriba);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = colores.texto;
+  ctx.font = `700 ${layout.tamano}px "${fuente}"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  layout.lineas.forEach((linea, i) => {
+    ctx.fillText(linea, ancho / 2, bloqueArriba + (i + 0.5) * layout.interlineadoPx);
+  });
+  return { tamano: layout.tamano, lineas: layout.lineas.length, colores };
+}
+
 /**
  * The final JPEG of one slide. Throws SourceTooSmallError, TextDoesNotFitError, UnsupportedGlyphsError
  * or ImageDecodeError; never returns a partial result.
@@ -132,48 +196,10 @@ export async function renderSlide(source: Buffer, slide: SlideSpec, layoutSpec: 
     const canvas = createCanvas(ancho, alto);
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(new Uint8ClampedArray(base.buffer, base.byteOffset, base.length), ancho, alto), 0, 0);
-
-    const k = ancho / ANCHO_REFERENCIA;
-    const zona = zonaSegura(ancho, alto, layoutSpec.formato);
-    const medir = (linea: string, tamano: number) => {
-      ctx.font = `700 ${tamano}px "${fuente}"`;
-      return ctx.measureText(linea).width;
-    };
-    const layout = layoutText({
-      texto,
-      maxAncho: zona.ancho,
-      maxAlto: zona.alto * ALTO_MAXIMO_DEL_TEXTO,
-      medir,
-      tamanoMax: TAMANO_MAX * k,
-      tamanoMin: TAMANO_MIN * k,
-      paso: 2 * k,
-      interlineado: INTERLINEADO,
-      maxLineas: MAX_LINEAS,
-    });
-    const colores = elegirColores(layoutSpec.kitVisual);
-
-    // The text block sits at the bottom of the safe zone; the scrim is a full-width band around it.
-    const relleno = layout.tamano * RELLENO;
-    const bloqueAbajo = zona.y + zona.alto;
-    const bloqueArriba = bloqueAbajo - layout.altoBloque;
-    const bandaArriba = Math.max(0, bloqueArriba - relleno);
-    const bandaAbajo = Math.min(alto, bloqueAbajo + relleno);
-    ctx.globalAlpha = colores.alfa;
-    ctx.fillStyle = colores.scrim;
-    ctx.fillRect(0, bandaArriba, ancho, bandaAbajo - bandaArriba);
-    ctx.globalAlpha = 1;
-
-    ctx.fillStyle = colores.texto;
-    ctx.font = `700 ${layout.tamano}px "${fuente}"`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    layout.lineas.forEach((linea, i) => {
-      ctx.fillText(linea, ancho / 2, bloqueArriba + (i + 0.5) * layout.interlineadoPx);
-    });
+    dibujado = dibujarTexto(ctx, { ancho, alto, formato: layoutSpec.formato, texto, kitVisual: layoutSpec.kitVisual, fuente });
 
     const dibujada = ctx.getImageData(0, 0, ancho, alto);
     rgba = Buffer.from(dibujada.data.buffer, dibujada.data.byteOffset, dibujada.data.length);
-    dibujado = { tamano: layout.tamano, lineas: layout.lineas.length, colores };
   }
 
   // sharp drops every kind of metadata (EXIF, XMP, IPTC, ICC) unless asked to keep it, and this code never asks.

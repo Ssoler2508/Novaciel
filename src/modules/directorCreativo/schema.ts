@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { containsText, containsWord, mentionsPrice, mentionsPromotion, mentionsSchedule } from '../planificador/textMatch.js';
 import { FORMATOS, type HechoTipo } from '../planificador/types.js';
 import { esTextoSoportado } from '../produccion/glyphCoverage.js';
+import { reelSceneMs } from '../produccion/reelTimeline.js';
 import { mentionsAi, mentionsAiGenerationRequest, mentionsNumber } from './detectors.js';
 import { MAX_HECHOS_OMITIDOS } from './limits.js';
 import { hasMalformedToken, isValidAt, stripFactTokens, tokenIdsIn } from './tokens.js';
@@ -26,6 +27,7 @@ export const BRIEF_ISSUES = {
   duplicateMedia: 'duplicate_media',
   mediaTypeMismatch: 'media_type_mismatch',
   invalidMarks: 'invalid_marks',
+  sceneLongerThanSource: 'scene_longer_than_source',
   marksOnPhoto: 'marks_on_photo',
   missingReasonRequired: 'missing_reason_required',
   unexpectedReason: 'unexpected_reason',
@@ -183,6 +185,14 @@ export function buildBriefSchema(context: BriefContext): z.ZodType<BriefContent>
         issue(at('entrada_ms'), BRIEF_ISSUES.invalidMarks);
       } else if (entrada !== undefined && salida !== undefined) {
         if (salida <= entrada || (media.duracion_ms !== null && salida > media.duracion_ms)) issue(at('salida_ms'), BRIEF_ISSUES.invalidMarks);
+      }
+
+      // A reel scene lasts `duracion_s`: the video it uses must have that much to give, the marked
+      // stretch when there are marks, the whole clip when there are none (production refuses otherwise).
+      if (limitesFormato.duracionTotalS && media.tipo === 'video' && escena.duracion_s !== undefined) {
+        const marcado = entrada !== undefined && salida !== undefined ? salida - entrada : null;
+        const disponible = marcado ?? media.duracion_ms;
+        if (disponible !== null && disponible >= 0 && disponible < reelSceneMs(escena.duracion_s)) issue(at('duracion_s'), BRIEF_ISSUES.sceneLongerThanSource);
       }
     });
 

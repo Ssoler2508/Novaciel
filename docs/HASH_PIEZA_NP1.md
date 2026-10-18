@@ -55,7 +55,9 @@ The result is `SHA-256(bytes)`: 32 raw bytes in `producciones.hash_pieza`, shown
   `computePieceHash` refuses a mismatch (checkpoint B), the production service checks it before
   inserting (checkpoint D) and the database refuses an incomplete production at COMMIT (a deferred
   constraint trigger: at least one file, numbered 1 to n, one alt text per file). An alt text may be
-  the empty string only for a file that is not an image (7b videos).
+  the empty string only for a file that is not an image (7b videos). **A reel (Step 7b) is one video
+  file and so has one alt text, the empty string** (`[""]`: the list has one item, not zero). Vector V7
+  pins it. This clarifies the rule; it changes no byte of V1 to V6 and no serialization.
 * **Files:** at least one; their order is the `orden` column (1 to n, no gaps).
 * **Order matters.** Changing any file, the order of the files, the network, the caption, any hashtag
   or its position, any alt text or its position, or the location changes the hash.
@@ -75,3 +77,4 @@ reproduce them exactly (checkpoint B). Files are the 32-byte values `aa…aa` (6
 | V4 | V1 with caption `Café` written `Cafe` + U+0301 (decomposed) | `0f83fb79f4d3a828ee4c0ed0b7dbe6b207b6d382458971023321b98e67cba55d` (same as V3) |
 | V5 | V1 with the files in the order `[bb…, aa…]` | `61f0b6ba85be1309fc11a36f0e0ee5776461d5743184839330f09e99dffbfea9` |
 | V6 | V1 with the hashtags written without `#` (`["cafe", "origen"]`) | `317067b8f93d2d93a3e6b7f39d56d50690014d62fbcc459a8d73bb5ae7ed181a` |
+| V7 | a reel: `instagram`; files `[aa…]`; caption `Así tostamos el café.`; hashtags `["#cafe", "#tostado"]`; alts `[""]` (one empty alt text for the one video file); no location | `5405e09572b0622a5420abafe33779834233d3d3fcb1b62bcc9248832913f93f` |

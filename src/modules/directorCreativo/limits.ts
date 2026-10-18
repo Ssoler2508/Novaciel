@@ -7,6 +7,12 @@ import type { MediaTipo } from './types.js';
 //  - everything else is a HOUSE CAP chosen below the public maximum of each network so a wrong guess
 //    is harmless. VERIFICAR each one against the networks' own documentation before production.
 
+/**
+ * Shortest source video offered for a reel, in ms. HOUSE VALUE, VERIFICAR: spec 9.4 asks for a cut or
+ * visual change every 2 to 4 seconds, so a scene is rarely shorter than 2 s.
+ */
+export const MIN_DURACION_VIDEO_MS = 2000;
+
 /** Candidate media shown to the model per piece. */
 export const MAX_CANDIDATOS = 12;
 
@@ -28,8 +34,10 @@ export const LIMITES_FORMATO: Record<Formato, FormatLimits> = {
   // Spec 9.6: 5 to 10 slides.
   carrusel: { escenasMin: 5, escenasMax: 10, tiposMedia: ['foto'], requiereTextoAlternativo: true },
   // Spec 9.6: "post de imagen e historia: misma logica". House caps: one image; up to 3 story frames.
+  // A story takes PHOTOS only for now: a story with a video is not produced yet (Step 7b makes reels),
+  // so no brief may pick a video that production would refuse. Add 'video' when stories are produced.
   post: { escenasMin: 1, escenasMax: 1, tiposMedia: ['foto'], requiereTextoAlternativo: true },
-  historia: { escenasMin: 1, escenasMax: 3, tiposMedia: ['foto', 'video'], requiereTextoAlternativo: true },
+  historia: { escenasMin: 1, escenasMax: 3, tiposMedia: ['foto'], requiereTextoAlternativo: true },
 };
 
 /** House caps in characters (VERIFICAR): same for the four networks for now. */

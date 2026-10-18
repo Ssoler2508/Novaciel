@@ -150,3 +150,122 @@ export class ProduccionObsoletaError extends Error {
     this.name = 'ProduccionObsoletaError';
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Reels (Step 7b). Messages carry scene numbers, counts and times only: never on-screen text.
+
+export type TimelineInvalidoReason = 'escenas_sin_orden' | 'tomas_distintas_de_escenas' | 'duracion_de_escena_invalida' | 'numero_de_escenas' | 'metadatos_invalidos';
+
+/** The scenes of the brief cannot be turned into a timeline at all (structure, not content). */
+export class TimelineInvalidoError extends Error {
+  constructor(readonly reason: TimelineInvalidoReason) {
+    super(`The reel scenes are invalid: ${reason}`);
+    this.name = 'TimelineInvalidoError';
+  }
+}
+
+/** One or more scenes have no usable video: the slot is missing (`faltante`) or the clip was not probed as a video. */
+export class EscenaSinVideoError extends Error {
+  constructor(readonly escenas: readonly number[]) {
+    super(`${escenas.length} scene(s) have no video (scenes ${escenas.join(', ')})`);
+    this.name = 'EscenaSinVideoError';
+  }
+}
+
+/** In/out marks outside the clip, reversed, or only one of the two. */
+export class MarcasFueraDeRangoError extends Error {
+  constructor(readonly escenas: readonly number[]) {
+    super(`${escenas.length} scene(s) have in/out marks outside their clip (scenes ${escenas.join(', ')})`);
+    this.name = 'MarcasFueraDeRangoError';
+  }
+}
+
+/** A scene lasts longer than the stretch of its clip that it may use. */
+export class EscenaMasLargaQueLaFuenteError extends Error {
+  constructor(readonly escenas: readonly number[]) {
+    super(`${escenas.length} scene(s) are longer than their source stretch (scenes ${escenas.join(', ')})`);
+    this.name = 'EscenaMasLargaQueLaFuenteError';
+  }
+}
+
+/** The reel, in whole frames, is shorter or longer than the allowed range. */
+export class DuracionTotalFueraDeRangoError extends Error {
+  constructor(
+    readonly totalMs: number,
+    readonly minMs: number,
+    readonly maxMs: number,
+  ) {
+    super(`The reel lasts ${totalMs} ms; it must last ${minMs} to ${maxMs} ms`);
+    this.name = 'DuracionTotalFueraDeRangoError';
+  }
+}
+
+/** A source is HDR and this FFmpeg cannot tone-map it to SDR (no zscale/tonemap). */
+export class HdrNoSoportadoError extends Error {
+  constructor(readonly escenas: readonly number[]) {
+    super(`${escenas.length} scene(s) are HDR and this FFmpeg cannot tone-map them (scenes ${escenas.join(', ')})`);
+    this.name = 'HdrNoSoportadoError';
+  }
+}
+
+export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control';
+
+/** A path given to the argument builder is missing, extra, relative, or has control characters. Paths are never echoed. */
+export class RutaInvalidaError extends Error {
+  constructor(readonly reason: RutaInvalidaReason) {
+    super(`A path for FFmpeg is invalid: ${reason}`);
+    this.name = 'RutaInvalidaError';
+  }
+}
+
+export type SalidaInvalidaRazon =
+  | 'salida_no_creada'
+  | 'formato_contenedor'
+  | 'tamano'
+  | 'codec_video'
+  | 'perfil'
+  | 'pix_fmt'
+  | 'fps'
+  | 'fotogramas'
+  | 'duracion'
+  | 'audio'
+  | 'color'
+  | 'tamano_maximo'
+  | 'faststart'
+  | 'streams_inesperados'
+  | 'etiqueta_no_permitida'
+  | 'atomo_no_permitido'
+  | 'moov_demasiado_grande';
+
+/**
+ * The MP4 FFmpeg wrote is not what was asked for, or carries metadata that must not be published.
+ * `detalle` is a tag KEY or a box type, never a value, and never client content. Nothing is stored.
+ */
+export class SalidaInvalidaError extends Error {
+  constructor(
+    readonly razon: SalidaInvalidaRazon,
+    readonly detalle?: string,
+  ) {
+    super(`The rendered reel is not valid: ${razon}${detalle === undefined ? '' : ` (${detalle})`}`);
+    this.name = 'SalidaInvalidaError';
+  }
+}
+
+/** A source video could not be read, or has no video stream. Carries the media id only. */
+export class FuenteDeVideoIlegibleError extends Error {
+  constructor(
+    readonly mediaId: string,
+    readonly razon: 'no_se_pudo_leer' | 'sin_video',
+  ) {
+    super(`The source video ${mediaId} cannot be used: ${razon}`);
+    this.name = 'FuenteDeVideoIlegibleError';
+  }
+}
+
+/** A reel was asked for in a process that has no FFmpeg configured. A deployment fault, not a refusal. */
+export class ReelNoConfiguradoError extends Error {
+  constructor() {
+    super('Reel production is not configured in this process (no FFmpeg runtime)');
+    this.name = 'ReelNoConfiguradoError';
+  }
+}

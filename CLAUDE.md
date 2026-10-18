@@ -61,4 +61,5 @@ Tablero de avance: `docs/PLAN.md`.
 ## Flujo de trabajo
 - One task per session. One branch per step and one commit per checkpoint (see "Prompt-driven workflow"). Before each commit: tests passing and `npm run typecheck` clean.
 - Si algo de la especificación es ambiguo, preguntar antes de inventar.
-- Comandos: `npm run dev`, `npm run build`, `npm run typecheck`, `npm test`, `npm run migrate:up`, `npm run migrate:down`.
+- Comandos: `npm run dev`, `npm run build`, `npm run typecheck`, `npm test`, `npm run test:fast`, `npm run migrate:up`, `npm run migrate:down`.
+- `npm test` es la suite completa y es la que cierra un checkpoint. `npm run test:fast` salta los archivos `*.render.test.ts` (los que renderizan video real con FFmpeg) y sirve para iterar; no reemplaza a `npm test`.

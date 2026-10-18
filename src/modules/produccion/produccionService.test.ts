@@ -86,6 +86,7 @@ interface WorldOptions {
   source?: [number, number];
   texts?: string[];
   conHecho?: boolean;
+  red?: 'instagram' | 'facebook' | 'tiktok' | 'youtube';
 }
 
 const DEFAULT_SLIDES = { carrusel: 5, post: 1, historia: 2, reel: 3 } as const;
@@ -99,7 +100,7 @@ async function world(db: Db, o: WorldOptions = {}): Promise<World> {
   const clienteId = asClienteId(cliente.id);
   const perfil = await createPerfilMarca(db, { clienteId, kit_visual: structuredClone(SEED_PROFILE.kit_visual) });
   const plan = await createPlanSemanal(db, { clienteId, estado: 'aprobado', perfilMarcaId: perfil.id });
-  const pieza = await createPieza(db, { clienteId, planId: plan.id, estado: 'plan_aprobado', formato });
+  const pieza = await createPieza(db, { clienteId, planId: plan.id, estado: 'plan_aprobado', formato, ...(o.red ? { red: o.red } : {}) });
   const storage = new HookedStorage();
   const media = [];
   for (let i = 0; i < slides; i++) {
@@ -268,11 +269,11 @@ describe('producirPieza: refused before any work', () => {
     });
   });
 
-  it('a reel (video is 7b), a piece without a brief, and a plan that is not approved or is discarded', async () => {
+  it('a format with no size for the network, a piece without a brief, and a plan that is not approved or is discarded', async () => {
     await withTestTransaction(async (db) => {
-      const reel = await world(db, { formato: 'reel' });
-      await expect(producirPieza(reel.deps, reel.clienteId, reel.piezaId, SISTEMA)).rejects.toBeInstanceOf(FormatoNoSoportadoError);
-      await expectNothingProduced(reel);
+      const sinTamano = await world(db, { red: 'tiktok' }); // TikTok has no carousel size
+      await expect(producirPieza(sinTamano.deps, sinTamano.clienteId, sinTamano.piezaId, SISTEMA)).rejects.toBeInstanceOf(FormatoNoSoportadoError);
+      await expectNothingProduced(sinTamano);
 
       const sinBrief = await world(db);
       const otra = await createPieza(db, { clienteId: sinBrief.clienteId, planId: sinBrief.planId, estado: 'plan_aprobado', formato: 'carrusel' });

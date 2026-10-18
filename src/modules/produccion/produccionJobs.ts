@@ -9,9 +9,15 @@ import type { JobEstado } from '../planificador/planificadorJobs.js';
 import { asClienteId } from '../shared/clienteId.js';
 import {
   BriefConFaltantesError,
+  DuracionTotalFueraDeRangoError,
+  EscenaMasLargaQueLaFuenteError,
+  EscenaSinVideoError,
   FormatoNoSoportadoError,
+  FuenteDeVideoIlegibleError,
   FuentesMuyPequenasError,
+  HdrNoSoportadoError,
   ImageDecodeError,
+  MarcasFueraDeRangoError,
   ProduccionEstadoInvalidoError,
   ProduccionExistenteError,
   ProduccionHechoVencidoError,
@@ -19,6 +25,7 @@ import {
   ProduccionObsoletaError,
   SinBriefError,
   TextDoesNotFitError,
+  TimelineInvalidoError,
   UnsupportedGlyphsError,
 } from './errors.js';
 import { producirPieza, type ProduccionDeps } from './produccionService.js';
@@ -72,7 +79,10 @@ export const singletonKeyPieza = (clienteId: string, piezaId: string) => `${clie
 export const singletonKeyPlan = (clienteId: string, planId: string) => `${clienteId}:${planId}`;
 
 // Expected domain errors: the job ends normally with resultado "rechazado". Anything else (a storage
-// outage, a bug) fails the job.
+// outage, a bug) fails the job. For reels the refusals caused by the brief or the client's clips are
+// expected; FFmpeg failing (FfmpegRunError), a missing FFmpeg (FfmpegToolingError), an invalid output
+// (SalidaInvalidaError) and a process with no reel runtime (ReelNoConfiguradoError) are faults, so
+// they fail the job and are logged by name.
 const EXPECTED_PIEZA_ERRORS = [
   PiezaNotFoundError,
   PlanDescartadoError,
@@ -89,6 +99,13 @@ const EXPECTED_PIEZA_ERRORS = [
   TextDoesNotFitError,
   UnsupportedGlyphsError,
   ImageDecodeError,
+  TimelineInvalidoError,
+  EscenaSinVideoError,
+  MarcasFueraDeRangoError,
+  EscenaMasLargaQueLaFuenteError,
+  DuracionTotalFueraDeRangoError,
+  HdrNoSoportadoError,
+  FuenteDeVideoIlegibleError,
 ] as const;
 const EXPECTED_PLAN_ERRORS = [PlanNotFoundError, PlanNoAprobadoError, PlanDescartadoError] as const;
 
