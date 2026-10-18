@@ -103,11 +103,17 @@ describe('DeterministicBriefFake: media', () => {
     for (const e of carousel.escenas) if (e.toma.media_id) expect(videoIds.has(e.toma.media_id)).toBe(false);
   });
 
-  it('gives a video slot in and out marks inside the clip, and a reel a total of 20 seconds', () => {
-    const clip = makeMedia({ tipo: 'video', duracion_ms: 2000 });
-    const reel = buildDeterministicBrief(makeBriefContext({ formato: 'reel', media: [clip, ...videos(1)] }));
-    expect(reel.escenas[0]!.toma).toMatchObject({ media_id: clip.id, entrada_ms: 0, salida_ms: 2000 });
+  it('gives a video slot in and out marks as long as the scene, inside the clip, and a reel a total of 20 seconds', () => {
+    const clip = makeMedia({ tipo: 'video', duracion_ms: 20_000 });
+    const exact = makeMedia({ tipo: 'video', duracion_ms: 6667 }); // exactly one scene of 20 / 3 s
+    const reel = buildDeterministicBrief(makeBriefContext({ formato: 'reel', media: [clip, exact, ...videos(1)] }));
+    expect(reel.escenas[0]!.toma).toMatchObject({ media_id: clip.id, entrada_ms: 0, salida_ms: 6667 });
+    expect(reel.escenas[1]!.toma).toMatchObject({ media_id: exact.id, entrada_ms: 0, salida_ms: 6667 });
     expect(reel.escenas.reduce((sum, e) => sum + (e.duracion_s ?? 0), 0)).toBeCloseTo(20);
+    // A clip shorter than a scene is not used: its slot is marked as missing media.
+    const short = makeMedia({ tipo: 'video', duracion_ms: 2000 });
+    const withShort = buildDeterministicBrief(makeBriefContext({ formato: 'reel', media: [short] }));
+    expect(withShort.escenas[0]!.toma.media_id).toBeNull();
     // A video of unknown length gets no marks.
     const unknown = makeMedia({ tipo: 'video', duracion_ms: null });
     const noMarks = buildDeterministicBrief(makeBriefContext({ formato: 'reel', media: [unknown] }));

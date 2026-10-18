@@ -102,3 +102,4 @@ export { dibujarTexto } from './renderer.js';
 export type { TextoSobreLienzo } from './renderer.js';
 export { ReelNoConfiguradoError } from './errors.js';
 export type { ReelRuntime } from './produccionService.js';
+export { createReelRuntime } from './reelRuntime.js';

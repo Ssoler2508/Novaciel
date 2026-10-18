@@ -1,5 +1,6 @@
 import { containsText, containsWord } from '../planificador/textMatch.js';
 import { esTextoSoportado } from '../produccion/glyphCoverage.js';
+import { reelSceneMs } from '../produccion/reelTimeline.js';
 import { buildBriefSchema, type BriefContent } from './schema.js';
 import { factToken, isValidAt } from './tokens.js';
 import type { BriefContext, MediaCandidate } from './types.js';
@@ -75,7 +76,11 @@ export function buildDeterministicBrief(context: BriefContext): BriefContent {
   const n = limites.escenasMin;
 
   // Slots: the candidate media in order (the preselection already respects the type), else missing.
-  const aptos: MediaCandidate[] = context.candidatos.filter((m) => limites.tiposMedia.includes(m.tipo));
+  const duracion = limites.duracionTotalS ? 20 / n : undefined;
+  // A reel scene needs a video that lasts at least as long as the scene; a shorter one is not used.
+  const aptos: MediaCandidate[] = context.candidatos.filter(
+    (m) => limites.tiposMedia.includes(m.tipo) && (duracion === undefined || m.tipo !== 'video' || m.duracion_ms === null || m.duracion_ms >= reelSceneMs(duracion)),
+  );
 
   // Cited facts: through tokens, unless they are not valid when the piece goes out or would hit a
   // banned rule once rendered; those are listed as omitted with a reason.
@@ -84,7 +89,6 @@ export function buildDeterministicBrief(context: BriefContext): BriefContent {
   const usables = citados.filter((h) => isValidAt(h, context.pieza.fechaHora) && !isBanned(context, h.enunciado) && esTextoSoportado(h.enunciado));
   const omitidos = citados.filter((h) => !usables.includes(h));
 
-  const duracion = limites.duracionTotalS ? 20 / n : undefined;
   const escenas = Array.from({ length: n }, (_v, i) => {
     const media = aptos[i];
     const token = usables[i] ? ` ${factToken(usables[i]!.id)}` : '';
@@ -96,8 +100,10 @@ export function buildDeterministicBrief(context: BriefContext): BriefContent {
       toma: media
         ? {
             media_id: media.id,
-            // A video slot uses its first seconds, inside the clip.
-            ...(media.tipo === 'video' && media.duracion_ms && media.duracion_ms > 0 ? { entrada_ms: 0, salida_ms: Math.min(media.duracion_ms, 3000) } : {}),
+            // A video slot uses the first seconds of its clip: as long as the scene (at least), inside the clip.
+            ...(media.tipo === 'video' && media.duracion_ms && media.duracion_ms > 0 && duracion !== undefined
+              ? { entrada_ms: 0, salida_ms: Math.min(media.duracion_ms, Math.round(duracion * 1000)) }
+              : {}),
           }
         : { media_id: null, motivo_faltante: pick(context, [lang.faltante]) },
     };

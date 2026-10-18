@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { producibleWorld, type ProducibleWorld } from '../../../tests/utils/produccionWorld.js';
-import { assignRole, createCliente, createPieza, createUsuario } from '../../../tests/utils/factories/index.js';
+import { assignRole, createCliente, createPieza, createProduccion, createUsuario } from '../../../tests/utils/factories/index.js';
 import { withTestTransaction } from '../../../tests/utils/transaction.js';
 import type { Db } from '../../db/types.js';
 import { createLogger } from '../../lib/logger/index.js';
@@ -299,7 +299,7 @@ describe('GET /clientes/:clienteId/piezas/:piezaId/produccion (and /versiones)',
       expect(body.textos_alternativos).toHaveLength(5);
       expect(body.archivos.map((a: { orden: number }) => a.orden)).toEqual([1, 2, 3, 4, 5]);
       for (const [i, archivo] of body.archivos.entries()) {
-        expect(archivo).toMatchObject({ mime: 'image/jpeg', ancho: 1080, alto: 1350, sha256: produccion.archivos[i]!.sha256, media_id: ctx.w.media[i]!.id, url_expira_en_s: 300 });
+        expect(archivo).toMatchObject({ mime: 'image/jpeg', ancho: 1080, alto: 1350, sha256: produccion.archivos[i]!.sha256, media_id: ctx.w.media[i]!.id, url_expira_en_s: 300, video: null });
         // The URL points at the file: the key the fake storage signed is the stored one, and its bytes hash to the listed SHA-256.
         const key = produccion.archivos[i]!.clave_almacenamiento;
         expect(archivo.url).toContain(encodeURIComponent(key)); // the fake storage encodes the key in its URL
@@ -312,6 +312,82 @@ describe('GET /clientes/:clienteId/piezas/:piezaId/produccion (and /versiones)',
       expect((await get(ctx, owner, `${piezaUrl(ctx)}?ttl=99999`)).statusCode).toBe(400);
       expect((await get(ctx, owner, `${piezaUrl(ctx)}?otro=1`)).statusCode).toBe(400);
     });
+  });
+
+  it('shows a reel as one video file with its record and the stretch of each clip, and the signed URL gives the stored bytes', async () => {
+    const mp4 = Buffer.from('not a real mp4, only bytes to hash'.repeat(40));
+    await withApp(
+      async (ctx) => {
+        const sha256 = createHash('sha256').update(mp4).digest();
+        const [m1, m2, m3] = ctx.w.media;
+        const produccion = await createProduccion(ctx.db, {
+          piezaId: ctx.w.piezaId,
+          textosAlternativos: [''],
+          archivos: [
+            {
+              mime: 'video/mp4',
+              mediaId: m1!.id,
+              ancho: 1080,
+              alto: 1920,
+              tamanoBytes: mp4.length,
+              sha256,
+              duracionMs: 20_000,
+              fps: 30,
+              fuentes: [
+                { mediaId: m1!.id, entradaMs: 0, salidaMs: 6667 },
+                { mediaId: m2!.id, entradaMs: 1000, salidaMs: 7667 },
+                { mediaId: m3!.id, entradaMs: 0, salidaMs: 6666 },
+              ],
+            },
+          ],
+        });
+        const key = (await ctx.db.query<{ clave_almacenamiento: string }>('SELECT clave_almacenamiento FROM producciones_archivos WHERE produccion_id = $1', [produccion.id])).rows[0]!.clave_almacenamiento;
+        await ctx.w.storage.put(key, mp4);
+
+        const owner = await login(ctx, 'dueno_cliente');
+        const res = await get(ctx, owner, piezaUrl(ctx));
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.textos_alternativos).toEqual(['']);
+        expect(body.archivos).toHaveLength(1);
+        const archivo = body.archivos[0];
+        expect(archivo).toMatchObject({
+          orden: 1,
+          mime: 'video/mp4',
+          ancho: 1080,
+          alto: 1920,
+          tamano_bytes: mp4.length,
+          sha256: sha256.toString('hex'),
+          media_id: m1!.id,
+          url_expira_en_s: 300,
+          video: {
+            duracion_ms: 20_000,
+            fps: 30,
+            codec_video: 'h264',
+            codec_audio: 'aac',
+            fuentes: [
+              { escena: 1, media_id: m1!.id, entrada_ms: 0, salida_ms: 6667 },
+              { escena: 2, media_id: m2!.id, entrada_ms: 1000, salida_ms: 7667 },
+              { escena: 3, media_id: m3!.id, entrada_ms: 0, salida_ms: 6666 },
+            ],
+          },
+        });
+        expect(archivo.url).toContain(encodeURIComponent(key));
+        expect(createHash('sha256').update(await ctx.w.storage.get(key)).digest('hex')).toBe(archivo.sha256);
+        expect(JSON.stringify(body)).not.toContain('clave_almacenamiento');
+        expect(JSON.stringify(body)).not.toContain('/producidos/'); // the key is not in the body, only inside the signed URL
+
+        // The same shape in the version list; the client roles that may read can, the collaborator cannot; another client sees nothing.
+        const versions = await get(ctx, owner, `${piezaUrl(ctx)}/versiones`);
+        expect(versions.json().items[0].archivos[0].video.fuentes).toHaveLength(3);
+        expect((await get(ctx, await login(ctx, 'aprobador_cliente'), piezaUrl(ctx))).statusCode).toBe(200);
+        expect((await get(ctx, await login(ctx, 'colaborador_cliente'), piezaUrl(ctx))).statusCode).toBe(403);
+        const other = await createCliente(ctx.db);
+        const stranger = await login(ctx, 'dueno_cliente', other.id);
+        expect((await get(ctx, stranger, piezaUrl(ctx))).statusCode).toBe(403);
+      },
+      { formato: 'reel', clips: [{ bytes: Buffer.from('source clip bytes'), ancho: 720, alto: 1280, duracionMs: 8000 }] },
+    );
   });
 
   it('lists every version after a re-production, oldest first, with the current one marked', async () => {

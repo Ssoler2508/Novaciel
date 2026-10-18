@@ -76,6 +76,15 @@ export interface ReelTimeline {
 }
 
 const framesToMs = (frames: number): number => Math.round((frames * 1000) / REEL_FPS);
+
+/**
+ * How many milliseconds of source a scene of `duracionS` seconds needs: the scene is cut to whole
+ * frames, so this is what the timeline compares with the stretch of the clip. The brief schema uses
+ * the same function, so a brief that passes it cannot be refused for this reason at production.
+ */
+export function reelSceneMs(duracionS: number): number {
+  return framesToMs(Math.round(duracionS * REEL_FPS));
+}
 const isPositiveInt = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0;
 
 function validMeta(meta: ReelSourceMeta | undefined): meta is ReelSourceMeta {
