@@ -223,8 +223,10 @@ describeFfmpeg('probeVideo (the real ffprobe)', () => {
     expect(facts.duracionMs).toBeGreaterThan(1900);
     expect(facts.audio).toBeNull();
 
-    const rotated = rotatedQuadrantsClip(dir, 'rotado.mp4', 90, { seconds: 2 });
-    expect(await probeVideo(rotated, { ffprobePath: 'ffprobe', timeoutMs: 15_000 })).toMatchObject({ video: { ancho: 810, alto: 1440 } });
+    for (const rotation of [90, 270] as const) {
+      const rotated = await rotatedQuadrantsClip(dir, `rotado-${rotation}.mp4`, rotation, { seconds: 2 });
+      expect(await probeVideo(rotated, { ffprobePath: 'ffprobe', timeoutMs: 15_000 })).toMatchObject({ video: { ancho: 810, alto: 1440 } });
+    }
   });
 
   it('fails with a typed error for a file that is not a video', async () => {

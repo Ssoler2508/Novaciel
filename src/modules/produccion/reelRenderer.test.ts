@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { framePng, hdrClip, patternClip, remux, rotatedQuadrantsClip, solidClip, taggedClip, variableFrameRateClip } from '../../../tests/utils/ffmpegClips.js';
+import { framePng, hdrClip, PATTERN_COLORS, patternClip, remux, rotatedQuadrantsClip, solidClip, taggedClip, UPRIGHT_PATTERN, variableFrameRateClip } from '../../../tests/utils/ffmpegClips.js';
 import { describeFfmpeg } from '../../../tests/utils/ffmpeg.js';
 import { inspectMp4 } from '../../lib/media/ffmpeg/mp4Boxes.js';
 import { probeVideo } from '../../lib/media/ffmpeg/probeVideo.js';
@@ -146,25 +146,23 @@ describeFfmpeg('renderReel (real FFmpeg)', () => {
     });
   }, 180_000);
 
-  it('turns a phone clip with rotation metadata upright (a pixel in each coloured quadrant)', async () => {
-    const rotated = rotatedQuadrantsClip(clips, 'rot.mp4', 90);
+  // The expected picture is the upright pattern BY CONSTRUCTION: the helper rotates that pattern's
+  // pixels by the inverse of the display rotation to make the coded frame, then sets the display
+  // matrix. Nothing here comes from looking at what FFmpeg produced.
+  it.each([90, 270] as const)('turns a phone clip with a %i degree display matrix upright (a pixel in each coloured quadrant)', async (rotation) => {
+    const rotated = await rotatedQuadrantsClip(clips, `rot-${rotation}.mp4`, rotation);
     const probed = await probeVideo(rotated, { ffprobePath: 'ffprobe', timeoutMs: 15_000 });
     expect([probed.video!.ancho, probed.video!.alto]).toEqual([810, 1440]); // coded 1440x810, displayed upright
 
     const { storage, fuentes } = await storageWith({ a: rotated });
     const input: ReelRenderInput = { guion: sceneGuion([{ media: 'a' }, { media: 'a' }, { media: 'a' }]), fuentes, kitVisual: KIT, outputSpec: FAST };
     await render(input, depsFor(storage), async (r) => {
-      const png = framePng(r.ruta, 2.5, path.join(root, 'rot-frame.png'));
-      const palette = { red: [255, 0, 0], lime: [0, 255, 0], blue: [0, 0, 255], yellow: [255, 255, 0] } as const;
+      const png = framePng(r.ruta, 2.5, path.join(root, `rot-frame-${rotation}.png`));
       const nearest = async (x: number, y: number) => {
         const p = await pixel(png, x, y);
-        return (Object.entries(palette) as [string, readonly number[]][]).sort((m, n) => distance(p, m[1]) - distance(p, n[1]))[0]![0];
+        return (Object.entries(PATTERN_COLORS) as [string, readonly number[]][]).sort((m, n) => distance(p, m[1]) - distance(p, n[1]))[0]![0];
       };
-      // Display matrix 90 degrees counter-clockwise: top left lime, top right yellow, bottom left red, bottom right blue.
-      expect(await nearest(270, 480)).toBe('lime');
-      expect(await nearest(810, 480)).toBe('yellow');
-      expect(await nearest(270, 1440)).toBe('red');
-      expect(await nearest(810, 1440)).toBe('blue');
+      for (const { name, x, y } of UPRIGHT_PATTERN) expect(await nearest(x, y), `${rotation}: ${name} at ${x},${y}`).toBe(name);
     });
   }, 120_000);
 

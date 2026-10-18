@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import sharp from 'sharp';
 
 // Source clips for the real-FFmpeg tests, made at test time with FFmpeg's own `lavfi` test sources in
 // a temporary folder. Nothing is committed, nothing is a real person or place. Arguments are arrays;
@@ -40,18 +42,48 @@ export function variableFrameRateClip(dir: string, name: string, o: ClipOptions 
   return patternClip(dir, name, { ...o, fps: 60, extraFilter: "select='lt(mod(n\\,7)\\,3)'", extraArgs: ['-fps_mode', 'vfr'] });
 }
 
+/** The four colours of the upright pattern, as RGB. */
+export const PATTERN_COLORS = {
+  blue: [0, 0, 255],
+  red: [255, 0, 0],
+  yellow: [255, 255, 0],
+  lime: [0, 255, 0],
+} as const;
+export type PatternColor = keyof typeof PATTERN_COLORS;
+
 /**
- * A clip CODED landscape (1440x810) whose four quadrants are red (top left), lime (top right),
- * blue (bottom left) and yellow (bottom right), with a display matrix of `rotation` degrees
- * (counter-clockwise, as FFmpeg's -display_rotation). Played upright it is portrait 810x1440.
+ * The pattern a viewer must SEE, upright, whatever the display matrix of the file: top left blue,
+ * top right red, bottom left yellow, bottom right lime. Each entry also gives the point to sample in
+ * a 1080x1920 frame.
  */
-export function rotatedQuadrantsClip(dir: string, name: string, rotation: number, o: ClipOptions = {}): string {
-  const raw = path.join(dir, `coded-${name}`);
-  const file = path.join(dir, name);
+export const UPRIGHT_PATTERN: readonly { name: PatternColor; x: number; y: number }[] = [
+  { name: 'blue', x: 270, y: 480 },
+  { name: 'red', x: 810, y: 480 },
+  { name: 'yellow', x: 270, y: 1440 },
+  { name: 'lime', x: 810, y: 1440 },
+];
+
+/**
+ * A phone-style clip with a display matrix, built so that the expected picture is known BY
+ * CONSTRUCTION, not by looking at FFmpeg's output. The upright pattern (810x1440, UPRIGHT_PATTERN) is
+ * rotated clockwise by `rotation` degrees to make the CODED frame (1440x810); the display matrix then
+ * asks players to turn it back counter-clockwise by `rotation` degrees (FFmpeg's -display_rotation), so
+ * a correct reader shows the upright pattern again. `rotation` is 90 or 270 (that is, -90).
+ */
+export async function rotatedQuadrantsClip(dir: string, name: string, rotation: 90 | 270, o: ClipOptions = {}): Promise<string> {
   const { seconds = 6, fps = 30 } = o;
-  const quadrant = (x: number, y: number, color: string) => `drawbox=x=${x}:y=${y}:w=720:h=405:color=${color}:t=fill`;
-  const filter = ['color=c=black:s=1440x810', `r=${fps}`, `d=${seconds}`].join(':') + ',' + [quadrant(0, 0, 'red'), quadrant(720, 0, 'lime'), quadrant(0, 405, 'blue'), quadrant(720, 405, 'yellow')].join(',');
-  ffmpeg(['-f', 'lavfi', '-i', filter, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', raw]);
+  const rgb = (c: PatternColor) => ({ r: PATTERN_COLORS[c][0], g: PATTERN_COLORS[c][1], b: PATTERN_COLORS[c][2] });
+  const quadrant = (color: PatternColor, left: number, top: number) => ({ input: { create: { width: 405, height: 720, channels: 3 as const, background: rgb(color) } }, left, top });
+  const upright = await sharp({ create: { width: 810, height: 1440, channels: 3, background: '#000000' } })
+    .composite([quadrant('blue', 0, 0), quadrant('red', 405, 0), quadrant('yellow', 0, 720), quadrant('lime', 405, 720)])
+    .png()
+    .toBuffer();
+  const coded = await sharp(upright).rotate(rotation).png().toBuffer(); // clockwise
+  const codedPng = path.join(dir, `coded-${name}.png`);
+  const raw = path.join(dir, `coded-${name}`);
+  await writeFile(codedPng, coded);
+  ffmpeg(['-loop', '1', '-framerate', String(fps), '-i', codedPng, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', raw]);
+  const file = path.join(dir, name);
   ffmpeg(['-display_rotation', String(rotation), '-i', raw, '-c', 'copy', file]);
   return file;
 }

@@ -15,8 +15,9 @@ describe('selectCandidateMedia', () => {
     expect(ids('reel')).toHaveLength(2);
     expect(new Set(ids('carrusel'))).toEqual(new Set(['foto']));
     expect(new Set(ids('post'))).toEqual(new Set(['foto']));
-    expect(new Set(ids('historia'))).toEqual(new Set(['foto', 'video']));
-    expect(ids('historia')).toHaveLength(8);
+    // A story takes photos only until stories with video are produced.
+    expect(new Set(ids('historia'))).toEqual(new Set(['foto']));
+    expect(ids('historia')).toHaveLength(6);
   });
 
   it('returns nothing when the library has nothing that fits', () => {
@@ -97,9 +98,20 @@ describe('selectCandidateMedia: photos too small for the slide (production would
     expect(ids(selectCandidateMedia({ media: [wideButShort, wideAndTall], pieza: para('carrusel'), reglas: [] }))).toEqual([wideAndTall.id]);
   });
 
-  it('does not judge the videos of a story (still pieces only)', () => {
-    const tinyVideo = makeMedia({ n: 5, tipo: 'video', ancho: 160, alto: 90 });
-    expect(ids(selectCandidateMedia({ media: [tinyVideo, foto(640, 480)], pieza: para('historia'), reglas: [] }))).toEqual([tinyVideo.id]);
+  it('offers only photos for a story, however good the videos are (no brief may pick a video production would refuse)', () => {
+    const vertical = makeMedia({ n: 5, tipo: 'video', ancho: 1080, alto: 1920, duracion_ms: 20_000, etiquetas: ['café', 'origen'] });
+    const uhd = makeMedia({ n: 6, tipo: 'video', ancho: 3840, alto: 2160, duracion_ms: 20_000 });
+    const photoOk = foto(3000, 2000, 1);
+    const photoSmall = foto(640, 480, 2);
+    for (const red of ['instagram', 'facebook'] as const) {
+      expect(ids(selectCandidateMedia({ media: [vertical, uhd, photoSmall, photoOk], pieza: para('historia', red), reglas: [] })), red).toEqual([photoOk.id]);
+    }
+    // Also without a network, and when there are only videos: nothing is offered.
+    const { red: _red, ...sinRed } = para('historia');
+    expect(ids(selectCandidateMedia({ media: [vertical, uhd, photoOk], pieza: sinRed, reglas: [] }))).toEqual([photoOk.id]);
+    expect(selectCandidateMedia({ media: [vertical, uhd], pieza: para('historia'), reglas: [] })).toEqual([]);
+    // Reels still take only videos.
+    expect(new Set(ids(selectCandidateMedia({ media: [vertical, uhd, photoOk], pieza: para('reel'), reglas: [] })))).toEqual(new Set([vertical.id, uhd.id]));
   });
 
   it('does not filter when the network is not given or the pair has no size', () => {

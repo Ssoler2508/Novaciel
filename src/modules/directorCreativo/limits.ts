@@ -34,8 +34,10 @@ export const LIMITES_FORMATO: Record<Formato, FormatLimits> = {
   // Spec 9.6: 5 to 10 slides.
   carrusel: { escenasMin: 5, escenasMax: 10, tiposMedia: ['foto'], requiereTextoAlternativo: true },
   // Spec 9.6: "post de imagen e historia: misma logica". House caps: one image; up to 3 story frames.
+  // A story takes PHOTOS only for now: a story with a video is not produced yet (Step 7b makes reels),
+  // so no brief may pick a video that production would refuse. Add 'video' when stories are produced.
   post: { escenasMin: 1, escenasMax: 1, tiposMedia: ['foto'], requiereTextoAlternativo: true },
-  historia: { escenasMin: 1, escenasMax: 3, tiposMedia: ['foto', 'video'], requiereTextoAlternativo: true },
+  historia: { escenasMin: 1, escenasMax: 3, tiposMedia: ['foto'], requiereTextoAlternativo: true },
 };
 
 /** House caps in characters (VERIFICAR): same for the four networks for now. */

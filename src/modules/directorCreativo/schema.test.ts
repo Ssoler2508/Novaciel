@@ -136,13 +136,12 @@ describe('media', () => {
     expectIssue(reelContext, (b) => (b.escenas[0].toma = { media_id: photo.id }), BRIEF_ISSUES.mediaTypeMismatch);
   });
 
-  it('a story may use a photo or a video', () => {
+  it('a story takes a photo; a video is refused until stories with video are produced', () => {
     const context = makeBriefContext({ formato: 'historia' });
     const photo = context.candidatos.find((m) => m.tipo === 'foto')!;
     const video = context.candidatos.find((m) => m.tipo === 'video')!;
-    for (const media of [photo, video]) {
-      expect(issuesOf(context, variant(context, (b) => (b.escenas[0].toma = { media_id: media.id })))).toEqual([]);
-    }
+    expect(issuesOf(context, variant(context, (b) => (b.escenas[0].toma = { media_id: photo.id })))).toEqual([]);
+    expectIssue(context, (b) => (b.escenas[0].toma = { media_id: video.id }), BRIEF_ISSUES.mediaTypeMismatch);
   });
 
   it('marks: only on videos, both or neither, out after in, inside the clip', () => {

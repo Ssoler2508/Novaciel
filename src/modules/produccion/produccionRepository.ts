@@ -4,6 +4,14 @@ import type { ClienteId } from '../shared/clienteId.js';
 // Reads of productions (producciones) with their files (producciones_archivos). Every query filters by
 // cliente_id. Hashes are shown as lower-case hex. Signed URLs for the files are made by the routes.
 
+/** The clip and the stretch of it behind one scene of a reel's video file. */
+export interface FuenteView {
+  escena: number;
+  media_id: string;
+  entrada_ms: number;
+  salida_ms: number;
+}
+
 export interface ArchivoView {
   orden: number;
   clave_almacenamiento: string;
@@ -13,8 +21,15 @@ export interface ArchivoView {
   tamano_bytes: number;
   /** SHA-256 of the file, lower-case hex. */
   sha256: string;
-  /** The client's real media the file was made from. */
+  /** The client's real media the file was made from (for a reel, the clip of its first scene). */
   media_id: string;
+  /** Videos only (null for an image). */
+  duracion_ms: number | null;
+  fps: number | null;
+  codec_video: string | null;
+  codec_audio: string | null;
+  /** Every clip behind a video file, scene by scene. Empty for an image. */
+  fuentes: FuenteView[];
 }
 
 export interface ProduccionView {
@@ -58,17 +73,29 @@ async function loadViews(db: Db, clienteId: ClienteId, piezaId: string, soloActu
     [clienteId, piezaId, !soloActual, options.includeDescartados ?? false],
   );
   if (rows.length === 0) return [];
-  const { rows: archivos } = await db.query<ArchivoView & { produccion_id: string; tamano_bytes: string }>(
+  const ids = rows.map((r) => r.id);
+  const { rows: archivos } = await db.query<Omit<ArchivoView, 'fuentes'> & { produccion_id: string; tamano_bytes: string }>(
     `SELECT produccion_id, orden, clave_almacenamiento, mime, ancho, alto, tamano_bytes::text AS tamano_bytes,
-            encode(sha256, 'hex') AS sha256, media_id
+            encode(sha256, 'hex') AS sha256, media_id, duracion_ms, fps::float8 AS fps, codec_video, codec_audio
      FROM producciones_archivos WHERE cliente_id = $1 AND produccion_id = ANY($2::uuid[]) ORDER BY produccion_id, orden`,
-    [clienteId, rows.map((r) => r.id)],
+    [clienteId, ids],
+  );
+  const { rows: fuentes } = await db.query<FuenteView & { produccion_id: string; orden_archivo: number }>(
+    `SELECT produccion_id, orden_archivo, escena, media_id, entrada_ms, salida_ms
+     FROM producciones_fuentes WHERE cliente_id = $1 AND produccion_id = ANY($2::uuid[]) ORDER BY produccion_id, orden_archivo, escena`,
+    [clienteId, ids],
   );
   return rows.map((row) => ({
     ...row,
     archivos: archivos
       .filter((a) => a.produccion_id === row.id)
-      .map(({ produccion_id: _produccion, tamano_bytes, ...archivo }) => ({ ...archivo, tamano_bytes: Number(tamano_bytes) })),
+      .map(({ produccion_id: _produccion, tamano_bytes, ...archivo }) => ({
+        ...archivo,
+        tamano_bytes: Number(tamano_bytes),
+        fuentes: fuentes
+          .filter((f) => f.produccion_id === row.id && f.orden_archivo === archivo.orden)
+          .map(({ produccion_id: _p, orden_archivo: _o, ...fuente }) => fuente),
+      })),
   }));
 }
 

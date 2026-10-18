@@ -261,3 +261,11 @@ export class FuenteDeVideoIlegibleError extends Error {
     this.name = 'FuenteDeVideoIlegibleError';
   }
 }
+
+/** A reel was asked for in a process that has no FFmpeg configured. A deployment fault, not a refusal. */
+export class ReelNoConfiguradoError extends Error {
+  constructor() {
+    super('Reel production is not configured in this process (no FFmpeg runtime)');
+    this.name = 'ReelNoConfiguradoError';
+  }
+}

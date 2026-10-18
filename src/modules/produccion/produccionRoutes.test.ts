@@ -182,8 +182,8 @@ describe('POST /clientes/:clienteId/piezas/:piezaId/produccion', () => {
       const faltante = await producibleWorld(ctx.db, { faltantes: [2, 4], base: { clienteId: ctx.w.clienteId, planId: ctx.w.planId, perfilId: ctx.w.perfilId, storage: ctx.w.storage } });
       await refuse(piezaUrl(ctx, faltante.piezaId), 409, { error: 'brief_con_faltantes', ordenes: [2, 4] });
 
-      const reel = await producibleWorld(ctx.db, { formato: 'reel', base: { clienteId: ctx.w.clienteId, planId: ctx.w.planId, perfilId: ctx.w.perfilId, storage: ctx.w.storage } });
-      await refuse(piezaUrl(ctx, reel.piezaId), 409, { error: 'formato_no_soportado' });
+      const sinTamano = await producibleWorld(ctx.db, { red: 'tiktok', base: { clienteId: ctx.w.clienteId, planId: ctx.w.planId, perfilId: ctx.w.perfilId, storage: ctx.w.storage } });
+      await refuse(piezaUrl(ctx, sinTamano.piezaId), 409, { error: 'formato_no_soportado' });
 
       const sinBrief = await createPieza(ctx.db, { clienteId: ctx.w.clienteId, planId: ctx.w.planId, estado: 'plan_aprobado' });
       await refuse(piezaUrl(ctx, sinBrief.id), 409, { error: 'estado_invalido', estado: 'plan_aprobado' });

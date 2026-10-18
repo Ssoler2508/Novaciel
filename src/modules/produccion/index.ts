@@ -100,3 +100,5 @@ export type { ReelRenderDeps, ReelRenderInput, ReelRenderResult } from './reelRe
 export { ETIQUETAS_FORMATO_PERMITIDAS, ETIQUETAS_STREAM_PERMITIDAS, MAX_REEL_BYTES, TOLERANCIA_DURACION_MS, verifyReelOutput } from './reelVerify.js';
 export { dibujarTexto } from './renderer.js';
 export type { TextoSobreLienzo } from './renderer.js';
+export { ReelNoConfiguradoError } from './errors.js';
+export type { ReelRuntime } from './produccionService.js';

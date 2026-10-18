@@ -40,8 +40,6 @@ function score(media: MediaCandidate, words: ReadonlySet<string>): number {
 /** True when a photo, or the video of a reel, is big enough for the size of the piece. Stored sizes are the DISPLAYED ones (rotation applied at upload). */
 function bigEnough(media: MediaCandidate, red: Red | undefined, formato: Formato): boolean {
   if (red === undefined) return true;
-  // Videos of a story are not produced yet (still pieces only): only the videos of a reel are judged.
-  if (media.tipo === 'video' && formato !== 'reel') return true;
   try {
     computeCoverCrop({ ancho: media.ancho, alto: media.alto }, dimensionDe(red, formato));
     return true;
