@@ -4,8 +4,10 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { stat, unlink } from 'node:fs/promises';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Storage } from './types.js';
 
@@ -64,6 +66,18 @@ export class S3Storage implements Storage {
     const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     if (!res.Body) throw new Error(`Empty body for object: ${key}`);
     return Buffer.from(await res.Body.transformToByteArray());
+  }
+
+  /** Streams the object to a file; a failed copy leaves no partial file. */
+  async getFile(key: string, destPath: string): Promise<void> {
+    const res = await this.sender.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    if (!res.Body) throw new Error(`Empty body for object: ${key}`);
+    try {
+      await pipeline(res.Body as Readable, createWriteStream(destPath));
+    } catch (err) {
+      await unlink(destPath).catch(() => undefined);
+      throw err;
+    }
   }
 
   async delete(key: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -49,5 +49,36 @@ describe('S3Storage.putFile', () => {
     const storage = new S3Storage({ bucket: 'b', accessKeyId: 'a', secretAccessKey: 'b', client: fake.client });
     await expect(storage.putFile('k', path.join(dir, 'missing.bin'))).rejects.toThrow();
     expect(fake.sent).toHaveLength(0);
+  });
+});
+
+describe('S3Storage.getFile', () => {
+  const storageWith = (send: (command: unknown) => Promise<unknown>) =>
+    new S3Storage({ bucket: 'bucket-x', accessKeyId: 'a', secretAccessKey: 'b', client: { send } as never });
+
+  it('streams the object body into the file', async () => {
+    const content = Buffer.from(Array.from({ length: 200_000 }, (_v, i) => (i * 13) % 256));
+    const sent: { input: unknown }[] = [];
+    const storage = storageWith(async (command) => {
+      sent.push(command as { input: unknown });
+      return { Body: Readable.from([content.subarray(0, 100_000), content.subarray(100_000)]) };
+    });
+    const dest = path.join(dir, 'out.bin');
+    await storage.getFile('c/media/v.mp4', dest);
+    expect(sent[0]!.input).toMatchObject({ Bucket: 'bucket-x', Key: 'c/media/v.mp4' });
+    expect((await readFile(dest)).equals(content)).toBe(true);
+  });
+
+  it('fails on a missing body or a broken stream and leaves no partial file', async () => {
+    const dest = path.join(dir, 'partial.bin');
+    await expect(storageWith(async () => ({})).getFile('k', dest)).rejects.toThrow(/Empty body/);
+    const broken = new Readable({
+      read() {
+        this.push(Buffer.alloc(1000, 1));
+        this.destroy(new Error('connection reset'));
+      },
+    });
+    await expect(storageWith(async () => ({ Body: broken })).getFile('k', dest)).rejects.toThrow();
+    await expect(stat(dest)).rejects.toThrow();
   });
 });

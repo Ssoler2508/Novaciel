@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { describeFfprobe } from '../../tests/utils/ffmpeg.js';
 import { withTestTransaction } from '../../tests/utils/transaction.js';
 import { auditRowsFor } from '../../tests/utils/auditRows.js';
 import { FakeMediaProbe } from '../lib/media/probe/fakeMediaProbe.js';
@@ -86,7 +87,7 @@ describe('isFfprobeAvailable', () => {
 });
 
 // Optional: the committed seed photos must be valid for the REAL ffprobe. Skipped when it is missing.
-describe.skipIf(!isFfprobeAvailable('ffprobe'))('seed photos with the real ffprobe (optional integration)', () => {
+describeFfprobe('seed photos with the real ffprobe (optional integration)', () => {
   it('isFfprobeAvailable is true for the real ffprobe', () => {
     expect(isFfprobeAvailable('ffprobe')).toBe(true);
   });

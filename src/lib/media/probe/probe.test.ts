@@ -2,8 +2,8 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
-import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
+import { describeFfprobe } from '../../../../tests/utils/ffmpeg.js';
 import { loadConfig } from '../../../config/index.js';
 import { FakeMediaProbe } from './fakeMediaProbe.js';
 import { FfprobeMediaProbe, type SpawnFn } from './ffprobeMediaProbe.js';
@@ -232,10 +232,8 @@ describe('media config', () => {
   });
 });
 
-// Optional: runs the REAL ffprobe on a committed fixture. Skipped automatically when ffprobe is not on the PATH.
-const ffprobeOnPath = spawnSync('ffprobe', ['-version'], { stdio: 'ignore' }).status === 0;
-
-describe.skipIf(!ffprobeOnPath)('real ffprobe (optional integration)', () => {
+// Runs the REAL ffprobe on a committed fixture. Fails if ffprobe is missing, unless NOVACIEL_SKIP_FFMPEG_TESTS=1.
+describeFfprobe('real ffprobe (optional integration)', () => {
   const real = new FfprobeMediaProbe({ path: 'ffprobe', timeoutMs: 15_000 });
 
   it.each([

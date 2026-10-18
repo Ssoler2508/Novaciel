@@ -91,3 +91,12 @@ export { buildReelTimeline, REEL_ALTO, REEL_ANCHO, REEL_FPS } from './reelTimeli
 export type { ReelGuionInput, ReelSegment, ReelSourceMeta, ReelTimeline } from './reelTimeline.js';
 export { buildFfmpegArgs, DEFAULT_REEL_OUTPUT } from './reelFfmpegArgs.js';
 export type { ReelOutputSpec, ReelPaths } from './reelFfmpegArgs.js';
+export { FuenteDeVideoIlegibleError, SalidaInvalidaError } from './errors.js';
+export type { SalidaInvalidaRazon } from './errors.js';
+export { renderReelOverlay } from './reelOverlay.js';
+export type { ReelOverlay } from './reelOverlay.js';
+export { renderReel } from './reelRenderer.js';
+export type { ReelRenderDeps, ReelRenderInput, ReelRenderResult } from './reelRenderer.js';
+export { ETIQUETAS_FORMATO_PERMITIDAS, ETIQUETAS_STREAM_PERMITIDAS, MAX_REEL_BYTES, TOLERANCIA_DURACION_MS, verifyReelOutput } from './reelVerify.js';
+export { dibujarTexto } from './renderer.js';
+export type { TextoSobreLienzo } from './renderer.js';

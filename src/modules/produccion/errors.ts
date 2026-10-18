@@ -217,3 +217,47 @@ export class RutaInvalidaError extends Error {
     this.name = 'RutaInvalidaError';
   }
 }
+
+export type SalidaInvalidaRazon =
+  | 'salida_no_creada'
+  | 'formato_contenedor'
+  | 'tamano'
+  | 'codec_video'
+  | 'perfil'
+  | 'pix_fmt'
+  | 'fps'
+  | 'fotogramas'
+  | 'duracion'
+  | 'audio'
+  | 'color'
+  | 'tamano_maximo'
+  | 'faststart'
+  | 'streams_inesperados'
+  | 'etiqueta_no_permitida'
+  | 'atomo_no_permitido'
+  | 'moov_demasiado_grande';
+
+/**
+ * The MP4 FFmpeg wrote is not what was asked for, or carries metadata that must not be published.
+ * `detalle` is a tag KEY or a box type, never a value, and never client content. Nothing is stored.
+ */
+export class SalidaInvalidaError extends Error {
+  constructor(
+    readonly razon: SalidaInvalidaRazon,
+    readonly detalle?: string,
+  ) {
+    super(`The rendered reel is not valid: ${razon}${detalle === undefined ? '' : ` (${detalle})`}`);
+    this.name = 'SalidaInvalidaError';
+  }
+}
+
+/** A source video could not be read, or has no video stream. Carries the media id only. */
+export class FuenteDeVideoIlegibleError extends Error {
+  constructor(
+    readonly mediaId: string,
+    readonly razon: 'no_se_pudo_leer' | 'sin_video',
+  ) {
+    super(`The source video ${mediaId} cannot be used: ${razon}`);
+    this.name = 'FuenteDeVideoIlegibleError';
+  }
+}

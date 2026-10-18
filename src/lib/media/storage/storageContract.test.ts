@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -124,6 +124,39 @@ describe.each(factories)('Storage contract, putFile: %s', (_name, make) => {
     const s = make();
     const file = await sourceFile(Buffer.from('x'));
     await expect(s.putFile(key, file)).rejects.toThrow(/Invalid storage key/);
+  });
+});
+
+describe.each(factories)('Storage contract, getFile: %s', (_name, make) => {
+  it('copies the object to a file, byte for byte, and keeps the object', async () => {
+    const s = make();
+    const content = Buffer.from(Array.from({ length: 70_000 }, (_v, i) => (i * 11) % 256));
+    await s.put('a/b/clip.mp4', content);
+    const dest = path.join(dir, 'copy.bin');
+    await s.getFile('a/b/clip.mp4', dest);
+    expect((await readFile(dest)).equals(content)).toBe(true);
+    expect((await s.get('a/b/clip.mp4')).equals(content)).toBe(true);
+  });
+
+  it('overwrites an existing destination', async () => {
+    const s = make();
+    await s.put('k.bin', Buffer.from('new'));
+    const dest = path.join(dir, 'copy.bin');
+    await writeFile(dest, 'old content that is longer');
+    await s.getFile('k.bin', dest);
+    expect((await readFile(dest)).toString()).toBe('new');
+  });
+
+  it('fails for a missing key without creating the file', async () => {
+    const s = make();
+    const dest = path.join(dir, 'missing.bin');
+    await expect(s.getFile('nope.bin', dest)).rejects.toThrow(/not found/);
+    await expect(stat(dest)).rejects.toThrow();
+  });
+
+  it.each(badKeys)('rejects a bad key: %s', async (_label, key) => {
+    const s = make();
+    await expect(s.getFile(key, path.join(dir, 'x.bin'))).rejects.toThrow(/Invalid storage key/);
   });
 });
 

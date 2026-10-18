@@ -161,10 +161,11 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
     'yuv420p',
     '-colorspace',
     'bt709',
-    // The VUI colour tags of the stream (BT.709, limited range). FFmpeg's own -color_* options do not
-    // reach x264's header, so a bitstream filter writes them.
+    // Two bitstream filters on the video: remove every SEI message (x264 writes its version and
+    // settings into one), then write the VUI colour tags (BT.709, limited range), which FFmpeg's own
+    // -color_* options do not get into x264's header.
     '-bsf:v',
-    'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0',
+    'filter_units=remove_types=6,h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0',
     '-r',
     String(REEL_FPS),
     '-fps_mode',

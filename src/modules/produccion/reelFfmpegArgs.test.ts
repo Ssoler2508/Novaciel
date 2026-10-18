@@ -29,7 +29,7 @@ const HEAD = 'setpts=PTS-STARTPTS,fps=30,trim=end_frame=150,setpts=PTS-STARTPTS'
 const OUTPUT_FLAGS = [
   '-map', '[vout]', '-map', '4:a',
   '-c:v', 'libx264', '-profile:v', 'high', '-level:v', '4.1', '-crf', '20', '-preset', 'medium', '-maxrate', '12M', '-bufsize', '24M', '-g', '60', '-pix_fmt', 'yuv420p',
-  '-colorspace', 'bt709', '-bsf:v', 'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0',
+  '-colorspace', 'bt709', '-bsf:v', 'filter_units=remove_types=6,h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0',
   '-r', '30', '-fps_mode', 'cfr', '-frames:v', '450',
   '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2',
   '-map_metadata', '-1', '-map_chapters', '-1',
@@ -224,7 +224,7 @@ describe('buildFfmpegArgs: no client text reaches an argument', () => {
     const graph = args[args.indexOf('-filter_complex') + 1]!;
     for (const arg of args) {
       if (arg === graph) continue;
-      expect(passed.has(arg) || /^-[a-zA-Z_:0-9]+$/.test(arg) || /^[0-9.+-]+$/.test(arg) || /^(\+?[a-z0-9_.:=\[\]-]+|[0-9]+:a|-1|[0-9]+[kM]|\+faststart|\+bitexact|anullsrc=r=48000:cl=stereo|encoder=|h264_metadata=[a-z_=0-9:]+)$/i.test(arg), arg).toBe(true);
+      expect(passed.has(arg) || /^-[a-zA-Z_:0-9]+$/.test(arg) || /^[0-9.+-]+$/.test(arg) || /^(\+?[a-z0-9_.:=\[\]-]+|[0-9]+:a|-1|[0-9]+[kM]|\+faststart|\+bitexact|anullsrc=r=48000:cl=stereo|encoder=|filter_units=remove_types=6,h264_metadata=[a-z_=0-9:]+)$/i.test(arg), arg).toBe(true);
     }
     // The graph is made only of stream labels, filter names, numbers and the fixed punctuation.
     expect(graph).toMatch(/^[\w\[\]:=.,;|+\-]*$/);

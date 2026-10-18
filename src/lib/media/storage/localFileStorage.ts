@@ -71,6 +71,23 @@ export class LocalFileStorage implements Storage {
     }
   }
 
+  async getFile(key: string, destPath: string): Promise<void> {
+    const source = this.resolvePath(key);
+    try {
+      await stat(source);
+    } catch (err) {
+      if (isNotFound(err)) throw new Error(`Object not found: ${key}`);
+      throw err;
+    }
+    try {
+      await pipeline(createReadStream(source), createWriteStream(destPath));
+    } catch (err) {
+      await unlink(destPath).catch(() => undefined);
+      if (isNotFound(err) && (err as NodeJS.ErrnoException).path === source) throw new Error(`Object not found: ${key}`);
+      throw err;
+    }
+  }
+
   async get(key: string): Promise<Buffer> {
     try {
       return await readFile(this.resolvePath(key));

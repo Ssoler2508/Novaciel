@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
-import { spawnSync } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
+import { describeFfmpeg } from '../../../../tests/utils/ffmpeg.js';
 import {
   checkFfmpegTooling,
   createFfmpegToolingGuard,
@@ -159,9 +159,7 @@ describe('createFfmpegToolingGuard (once per process)', () => {
   });
 });
 
-const ffmpegOnPath = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0 && spawnSync('ffprobe', ['-version'], { stdio: 'ignore' }).status === 0;
-
-describe.skipIf(!ffmpegOnPath)('checkFfmpegTooling (the real FFmpeg on this machine)', () => {
+describeFfmpeg('checkFfmpegTooling (the real FFmpeg on this machine)', () => {
   it('finds everything reel production needs', async () => {
     const tooling = await checkFfmpegTooling({ ffmpegPath: 'ffmpeg', ffprobePath: 'ffprobe' });
     expect(tooling.version).toMatch(/^\S+$/);
