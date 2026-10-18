@@ -77,3 +77,17 @@ export { registerProduccionRoutes } from './produccionRoutes.js';
 export type { ProduccionRoutesOptions } from './produccionRoutes.js';
 export { toProduccionPublica } from './produccionView.js';
 export type { ArchivoPublico, ProduccionPublica } from './produccionView.js';
+export {
+  DuracionTotalFueraDeRangoError,
+  EscenaMasLargaQueLaFuenteError,
+  EscenaSinVideoError,
+  HdrNoSoportadoError,
+  MarcasFueraDeRangoError,
+  RutaInvalidaError,
+  TimelineInvalidoError,
+} from './errors.js';
+export type { RutaInvalidaReason, TimelineInvalidoReason } from './errors.js';
+export { buildReelTimeline, REEL_ALTO, REEL_ANCHO, REEL_FPS } from './reelTimeline.js';
+export type { ReelGuionInput, ReelSegment, ReelSourceMeta, ReelTimeline } from './reelTimeline.js';
+export { buildFfmpegArgs, DEFAULT_REEL_OUTPUT } from './reelFfmpegArgs.js';
+export type { ReelOutputSpec, ReelPaths } from './reelFfmpegArgs.js';
