@@ -3,7 +3,7 @@ import { DimensionNoSoportadaError, dimensionDe } from '../produccion/dimensione
 import { SourceTooSmallError } from '../produccion/errors.js';
 import type { Formato, ReglaPlanner, Red } from '../planificador/types.js';
 import { containsText, fold } from '../planificador/textMatch.js';
-import { LIMITES_FORMATO, MAX_CANDIDATOS } from './limits.js';
+import { LIMITES_FORMATO, MAX_CANDIDATOS, MIN_DURACION_VIDEO_MS } from './limits.js';
 import type { MediaCandidate } from './types.js';
 
 // Media preselection, in code and not by the model: the model only chooses among the ids this
@@ -14,8 +14,8 @@ import type { MediaCandidate } from './types.js';
 export interface SelectCandidateParams {
   media: readonly MediaCandidate[];
   /**
-   * `red` is optional: with it, photos that production would refuse because they would have to be
-   * enlarged by more than MAX_UPSCALE for this network and format are not offered.
+   * `red` is optional: with it, photos (and the videos of a reel) that production would refuse because
+   * they would have to be enlarged by more than MAX_UPSCALE for this network and format are not offered.
    */
   pieza: { red?: Red; formato: Formato; pilar: string; idea: string };
   reglas: readonly ReglaPlanner[];
@@ -37,9 +37,11 @@ function score(media: MediaCandidate, words: ReadonlySet<string>): number {
   return points;
 }
 
-/** True when a photo is big enough for the slide size of the piece (videos are not judged: they are 7b). */
+/** True when a photo, or the video of a reel, is big enough for the size of the piece. Stored sizes are the DISPLAYED ones (rotation applied at upload). */
 function bigEnough(media: MediaCandidate, red: Red | undefined, formato: Formato): boolean {
-  if (red === undefined || media.tipo !== 'foto') return true;
+  if (red === undefined) return true;
+  // Videos of a story are not produced yet (still pieces only): only the videos of a reel are judged.
+  if (media.tipo === 'video' && formato !== 'reel') return true;
   try {
     computeCoverCrop({ ancho: media.ancho, alto: media.alto }, dimensionDe(red, formato));
     return true;
@@ -50,6 +52,11 @@ function bigEnough(media: MediaCandidate, red: Red | undefined, formato: Formato
   }
 }
 
+/** A reel scene needs a useful stretch of source: shorter videos are not offered for a reel. */
+function longEnough(media: MediaCandidate, formato: Formato): boolean {
+  return formato !== 'reel' || media.tipo !== 'video' || (media.duracion_ms ?? 0) >= MIN_DURACION_VIDEO_MS;
+}
+
 /** The client's usable media that fit the piece: right type, big enough, no banned visual element, best first, bounded. */
 export function selectCandidateMedia({ media, pieza, reglas, limit = MAX_CANDIDATOS }: SelectCandidateParams): MediaCandidate[] {
   const tipos = LIMITES_FORMATO[pieza.formato].tiposMedia;
@@ -58,6 +65,7 @@ export function selectCandidateMedia({ media, pieza, reglas, limit = MAX_CANDIDA
 
   return media
     .filter((m) => tipos.includes(m.tipo))
+    .filter((m) => longEnough(m, pieza.formato))
     .filter((m) => bigEnough(m, pieza.red, pieza.formato))
     .filter((m) => {
       const haystack = [...m.etiquetas, m.descripcion ?? ''].join(' ');

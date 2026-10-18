@@ -7,6 +7,12 @@ import type { MediaTipo } from './types.js';
 //  - everything else is a HOUSE CAP chosen below the public maximum of each network so a wrong guess
 //    is harmless. VERIFICAR each one against the networks' own documentation before production.
 
+/**
+ * Shortest source video offered for a reel, in ms. HOUSE VALUE, VERIFICAR: spec 9.4 asks for a cut or
+ * visual change every 2 to 4 seconds, so a scene is rarely shorter than 2 s.
+ */
+export const MIN_DURACION_VIDEO_MS = 2000;
+
 /** Candidate media shown to the model per piece. */
 export const MAX_CANDIDATOS = 12;
 

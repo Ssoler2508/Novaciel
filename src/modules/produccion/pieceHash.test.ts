@@ -23,6 +23,8 @@ const VECTORS: [string, PieceHashInput, string][] = [
   ['V4', { ...BASE, textoPublicacion: 'Café' }, '0f83fb79f4d3a828ee4c0ed0b7dbe6b207b6d382458971023321b98e67cba55d'],
   ['V5', { ...BASE, archivos: [B, A] }, '61f0b6ba85be1309fc11a36f0e0ee5776461d5743184839330f09e99dffbfea9'],
   ['V6', { ...BASE, hashtags: ['cafe', 'origen'] }, '317067b8f93d2d93a3e6b7f39d56d50690014d62fbcc459a8d73bb5ae7ed181a'],
+  // Step 7b: a reel is one video file with one empty alt text. Added later; V1 to V6 are untouched.
+  ['V7', { red: 'instagram', archivos: [A], textoPublicacion: 'Así tostamos el café.', hashtags: ['#cafe', '#tostado'], textosAlternativos: [''] }, '5405e09572b0622a5420abafe33779834233d3d3fcb1b62bcc9248832913f93f'],
 ];
 
 describe('computePieceHash: the frozen test vectors', () => {
@@ -30,10 +32,10 @@ describe('computePieceHash: the frozen test vectors', () => {
     expect(computePieceHashHex(input)).toBe(expected);
   });
 
-  it('the vectors in docs/HASH_PIEZA_NP1.md are still exactly these six (drift guard)', () => {
+  it('the vectors in docs/HASH_PIEZA_NP1.md are still exactly these seven (drift guard)', () => {
     const doc = readFileSync(new URL('../../../docs/HASH_PIEZA_NP1.md', import.meta.url), 'utf8');
     const rows = doc.split(/\r?\n/).filter((line) => /^\| V\d /.test(line));
-    expect(rows.map((row) => /^\| (V\d) /.exec(row)![1])).toEqual(['V1', 'V2', 'V3', 'V4', 'V5', 'V6']);
+    expect(rows.map((row) => /^\| (V\d) /.exec(row)![1])).toEqual(['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7']);
     const inDoc = rows.map((row) => /`([0-9a-f]{64})`/.exec(row)![1]);
     expect(inDoc).toEqual(VECTORS.map(([, , expected]) => expected));
     // And the doc still states the two rules of the precisions.

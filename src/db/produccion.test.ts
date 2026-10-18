@@ -9,6 +9,7 @@ import {
   createPlanSemanal,
   createProduccion,
   createProduccionArchivo,
+  createProduccionFuente,
   moverPieza,
 } from '../../tests/utils/factories/index.js';
 import type { Db } from './types.js';
@@ -321,6 +322,198 @@ describe('producciones: complete at commit', () => {
 
       await createProduccion(db, { piezaId: w.piezaId, archivos: [{}, {}, {}] });
       await check(); // complete: passes
+    });
+  });
+});
+
+describe('producciones_archivos: the technical record of a video (Step 7b)', () => {
+  it('stores a reel as one MP4 with its duration, frame rate and codecs', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await readyPiece(db);
+      const clip = await createMedia(db, { clienteId: w.clienteId, tipo: 'video', ancho: 1080, alto: 1920, duracionMs: 12_000 });
+      const produccion = await createProduccion(db, {
+        piezaId: w.piezaId,
+        archivos: [{ mime: 'video/mp4', mediaId: clip.id, duracionMs: 22_500, fps: 30, fuentes: [{ entradaMs: 1000, salidaMs: 4500 }] }],
+        textosAlternativos: [''],
+      });
+      const { rows } = await db.query('SELECT * FROM producciones_archivos WHERE produccion_id = $1', [produccion.id]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ mime: 'video/mp4', ancho: 1080, alto: 1920, duracion_ms: 22_500, codec_video: 'h264', codec_audio: 'aac', media_id: clip.id });
+      expect(Number(rows[0].fps)).toBe(30);
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE'); // complete: file, one empty alt text, and its source
+    });
+  });
+
+  it('needs all four fields for a video, with real values', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await readyPiece(db);
+      const produccion = await createProduccion(db, { piezaId: w.piezaId, archivos: [] });
+      const video = (extra: Partial<Parameters<typeof createProduccionArchivo>[1]>) =>
+        createProduccionArchivo(db, { produccionId: produccion.id, clienteId: w.clienteId, orden: 1, mime: 'video/mp4', fuentes: [], ...extra });
+
+      await expectFails(db, CHECK_VIOLATION, () => video({ duracionMs: null }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ fps: null }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ codecVideo: null }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ codecAudio: null }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ duracionMs: 0 }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ fps: 0 }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ codecVideo: 'hevc' }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ codecAudio: 'opus' }));
+      await expectFails(db, CHECK_VIOLATION, () => video({ tamanoBytes: 0 }));
+      await video({}); // the defaults are a valid video
+    });
+  });
+
+  it('forbids those fields on an image', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await readyPiece(db);
+      const produccion = await createProduccion(db, { piezaId: w.piezaId, archivos: [] });
+      for (const mime of ['image/jpeg', 'image/png', 'image/webp']) {
+        for (const extra of [{ duracionMs: 1000 }, { fps: 30 }, { codecVideo: 'h264' }, { codecAudio: 'aac' }]) {
+          await expectFails(db, CHECK_VIOLATION, () => createProduccionArchivo(db, { produccionId: produccion.id, clienteId: w.clienteId, orden: 1, mime, ...extra }));
+        }
+      }
+      const image = await createProduccionArchivo(db, { produccionId: produccion.id, clienteId: w.clienteId, orden: 1 });
+      expect([image.duracion_ms, image.fps, image.codec_video, image.codec_audio]).toEqual([null, null, null, null]);
+    });
+  });
+});
+
+describe('producciones_fuentes: the clips behind a reel (Step 7b)', () => {
+  /** A current production with one video file and no sources yet. */
+  async function reelWithoutSources(db: Db) {
+    const w = await readyPiece(db);
+    const clip = await createMedia(db, { clienteId: w.clienteId, tipo: 'video', duracionMs: 30_000 });
+    const produccion = await createProduccion(db, { piezaId: w.piezaId, archivos: [{ mime: 'video/mp4', mediaId: clip.id, fuentes: [] }], textosAlternativos: [''] });
+    return { ...w, produccion, clip };
+  }
+  interface Marks {
+    ordenArchivo?: number;
+    entradaMs?: number;
+    salidaMs?: number;
+  }
+  const fuente = (db: Db, r: { produccion: { id: string }; clienteId: string }, escena: number, mediaId: string, marks: Marks = {}) =>
+    createProduccionFuente(db, {
+      produccionId: r.produccion.id,
+      clienteId: r.clienteId,
+      ordenArchivo: marks.ordenArchivo ?? 1,
+      escena,
+      mediaId,
+      ...(marks.entradaMs !== undefined ? { entradaMs: marks.entradaMs } : {}),
+      ...(marks.salidaMs !== undefined ? { salidaMs: marks.salidaMs } : {}),
+    });
+
+  it('records every scene with its clip and marks, in scene order', async () => {
+    await withTestTransaction(async (db) => {
+      const r = await reelWithoutSources(db);
+      const second = await createMedia(db, { clienteId: r.clienteId, tipo: 'video', duracionMs: 9000 });
+      await fuente(db, r, 1, r.clip.id, { entradaMs: 500, salidaMs: 4000 });
+      await fuente(db, r, 2, second.id, { entradaMs: 0, salidaMs: 6000 });
+      await fuente(db, r, 3, r.clip.id, { entradaMs: 10_000, salidaMs: 14_000 }); // the same clip again, another stretch
+      const { rows } = await db.query('SELECT escena, media_id, entrada_ms, salida_ms FROM producciones_fuentes WHERE produccion_id = $1 ORDER BY escena', [r.produccion.id]);
+      expect(rows).toEqual([
+        { escena: 1, media_id: r.clip.id, entrada_ms: 500, salida_ms: 4000 },
+        { escena: 2, media_id: second.id, entrada_ms: 0, salida_ms: 6000 },
+        { escena: 3, media_id: r.clip.id, entrada_ms: 10_000, salida_ms: 14_000 },
+      ]);
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+    });
+  });
+
+  it('refuses bad marks and a repeated scene', async () => {
+    await withTestTransaction(async (db) => {
+      const r = await reelWithoutSources(db);
+      await expectFails(db, CHECK_VIOLATION, () => fuente(db, r, 1, r.clip.id, { entradaMs: 3000, salidaMs: 3000 }));
+      await expectFails(db, CHECK_VIOLATION, () => fuente(db, r, 1, r.clip.id, { entradaMs: 4000, salidaMs: 1000 }));
+      await expectFails(db, CHECK_VIOLATION, () => fuente(db, r, 1, r.clip.id, { entradaMs: -1, salidaMs: 1000 }));
+      await expectFails(db, CHECK_VIOLATION, () => fuente(db, r, 0, r.clip.id));
+      await fuente(db, r, 1, r.clip.id);
+      await expectFails(db, UNIQUE_VIOLATION, () => fuente(db, r, 1, r.clip.id));
+    });
+  });
+
+  it("refuses a photo, another client's clip, an image file, or a file that does not exist", async () => {
+    await withTestTransaction(async (db) => {
+      const r = await reelWithoutSources(db);
+      const other = await readyPiece(db);
+      const photo = await createMedia(db, { clienteId: r.clienteId, tipo: 'foto' });
+      const clipOfOther = await createMedia(db, { clienteId: other.clienteId, tipo: 'video' });
+      await expectFails(db, /must be a video of the client/, () => fuente(db, r, 1, photo.id));
+      await expectFails(db, /must be a video of the client/, () => fuente(db, r, 1, clipOfOther.id));
+      await expectFails(db, /belong to a video file/, () => fuente(db, r, 1, r.clip.id, { ordenArchivo: 2 }));
+
+      const imagePiece = await readyPiece(db);
+      const imageProduccion = await createProduccion(db, { piezaId: imagePiece.piezaId }); // one JPEG file
+      const clip = await createMedia(db, { clienteId: imagePiece.clienteId, tipo: 'video' });
+      await expectFails(db, /belong to a video file/, () => fuente(db, { produccion: imageProduccion, clienteId: imagePiece.clienteId }, 1, clip.id));
+      // The production of A written under B's client id.
+      await expectFails(db, /only be added to the current production/, () => fuente(db, { produccion: r.produccion, clienteId: other.clienteId }, 1, clipOfOther.id));
+    });
+  });
+
+  it('adds sources only to the current production, and never changes them', async () => {
+    await withTestTransaction(async (db) => {
+      const r = await reelWithoutSources(db);
+      await fuente(db, r, 1, r.clip.id);
+      await expectFails(db, /never changed/, () => db.query('UPDATE producciones_fuentes SET salida_ms = 9999 WHERE produccion_id = $1', [r.produccion.id]));
+      await expectFails(db, /never changed/, () => db.query('DELETE FROM producciones_fuentes WHERE produccion_id = $1', [r.produccion.id]));
+      await db.query('UPDATE producciones SET es_actual = false WHERE id = $1', [r.produccion.id]);
+      await expectFails(db, /only be added to the current production/, () => fuente(db, r, 2, r.clip.id));
+    });
+  });
+
+  it('restricts deleting a clip that a reel used', async () => {
+    await withTestTransaction(async (db) => {
+      const r = await reelWithoutSources(db);
+      const second = await createMedia(db, { clienteId: r.clienteId, tipo: 'video' });
+      await fuente(db, r, 1, r.clip.id);
+      await fuente(db, r, 2, second.id);
+      await expectFails(db, RESTRICT_VIOLATION, () => db.query('DELETE FROM media WHERE id = $1', [second.id]));
+      await expectFails(db, /never changed/, () => db.query('DELETE FROM producciones_archivos WHERE produccion_id = $1', [r.produccion.id]));
+      await expectFails(db, /cannot be deleted/, () => db.query('DELETE FROM producciones WHERE id = $1', [r.produccion.id]));
+    });
+  });
+
+  it('is complete at commit: a video needs its sources, scenes 1 to n, and the media of its first scene', async () => {
+    await withTestTransaction(async (db) => {
+      const check = () => db.query('SET CONSTRAINTS producciones_archivos_fuentes_completas IMMEDIATE');
+      const w = await readyPiece(db);
+      const scenario = (pattern: RegExp, make: () => Promise<unknown>) =>
+        expectFails(db, pattern, async () => {
+          await make();
+          await check();
+        });
+      const reel = (fuentes: { mediaId?: string }[]) =>
+        createProduccion(db, { piezaId: w.piezaId, archivos: [{ mime: 'video/mp4', fuentes }], textosAlternativos: [''] });
+      const mediaOf = async (produccionId: string) =>
+        (await db.query<{ media_id: string }>('SELECT media_id FROM producciones_archivos WHERE produccion_id = $1', [produccionId])).rows[0]!.media_id;
+
+      await scenario(/needs its sources/, () => reel([]));
+      // A gap in the scenes: 1 and 3.
+      await scenario(/numbered 1 to n without gaps/, async () => {
+        const produccion = await reel([]);
+        const mediaId = await mediaOf(produccion.id);
+        await createProduccionFuente(db, { produccionId: produccion.id, clienteId: w.clienteId, ordenArchivo: 1, escena: 1, mediaId });
+        await createProduccionFuente(db, { produccionId: produccion.id, clienteId: w.clienteId, ordenArchivo: 1, escena: 3, mediaId });
+      });
+      // The file's media is not the clip of scene 1.
+      await scenario(/clip of its first scene/, async () => {
+        const produccion = await reel([]);
+        const another = await createMedia(db, { clienteId: w.clienteId, tipo: 'video' });
+        await createProduccionFuente(db, { produccionId: produccion.id, clienteId: w.clienteId, ordenArchivo: 1, escena: 1, mediaId: another.id });
+      });
+
+      await reel([{}, {}]); // two scenes, both from the file's clip
+      await check(); // complete: passes
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+    });
+  });
+
+  it('leaves images alone: an image file needs no sources and the new check ignores it', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await readyPiece(db);
+      await createProduccion(db, { piezaId: w.piezaId, archivos: [{}, {}] });
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
     });
   });
 });

@@ -70,7 +70,7 @@ import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNot
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -411,6 +411,35 @@ describe('isolation: productions', () => {
       }
       // Filtered by A's client id, B's production cannot be touched.
       expect((await db.query('UPDATE producciones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.produccionId])).rowCount).toBe(0);
+    });
+  });
+
+  it("A never reads B's reel sources, and a source cannot point to B's clip or production (Step 7b)", async () => {
+    await withTwoClients(async (a, b, db) => {
+      // A reel for A on a new piece of A's plan. Nothing is added for B: B must stay unchanged.
+      const { rows } = await db.query<{ plan_id: string }>('SELECT plan_id FROM piezas WHERE id = $1', [a.piezaConGuionId]);
+      const pieza = await createPieza(db, { clienteId: a.clienteId, planId: rows[0]!.plan_id, estado: 'plan_aprobado', formato: 'reel' });
+      await createGuion(db, { piezaId: pieza.id });
+      await moverPieza(db, pieza.id, 'guion_listo');
+      const reelA = await createProduccion(db, { piezaId: pieza.id, archivos: [{ mime: 'video/mp4', fuentes: [{}, {}] }], textosAlternativos: [''] });
+
+      const fuentes = async (clienteId: string, produccionId: string) =>
+        (await db.query('SELECT escena FROM producciones_fuentes WHERE cliente_id = $1 AND produccion_id = $2 ORDER BY escena', [clienteId, produccionId])).rows;
+      expect(await fuentes(a.clienteId, reelA.id)).toHaveLength(2);
+      expect(await fuentes(b.clienteId, reelA.id)).toEqual([]);
+      expect(await fuentes(a.clienteId, b.produccionId)).toEqual([]);
+
+      const insert = 'INSERT INTO producciones_fuentes (produccion_id, cliente_id, orden_archivo, escena, media_id, entrada_ms, salida_ms) VALUES ($1, $2, 1, $3, $4, 0, 1000)';
+      // B's media as a source of A's reel, then A's id on B's production, then B's id on A's production.
+      for (const [name, args] of [
+        ['media_b', [reelA.id, a.clienteId, 3, b.mediaId]],
+        ['produccion_b', [b.produccionId, a.clienteId, 1, a.mediaId]],
+        ['cliente_b', [reelA.id, b.clienteId, 3, a.mediaId]],
+      ] as const) {
+        await db.query(`SAVEPOINT ${name}`);
+        await expect(db.query(insert, [...args]), name).rejects.toThrow();
+        await db.query(`ROLLBACK TO SAVEPOINT ${name}`);
+      }
     });
   });
 });

@@ -38,6 +38,28 @@ export interface ProduccionArchivoRow {
   sha256: Buffer;
   media_id: string;
   creado_en: Date;
+  duracion_ms: number | null;
+  fps: string | null;
+  codec_video: string | null;
+  codec_audio: string | null;
+}
+
+export interface ProduccionFuenteRow {
+  produccion_id: string;
+  cliente_id: string;
+  orden_archivo: number;
+  escena: number;
+  media_id: string;
+  entrada_ms: number;
+  salida_ms: number;
+  creado_en: Date;
+}
+
+export interface FuenteInput {
+  /** Defaults to the media of the file (the clip of the first scene). */
+  mediaId?: string;
+  entradaMs?: number;
+  salidaMs?: number;
 }
 
 export interface ArchivoInput {
@@ -49,6 +71,19 @@ export interface ArchivoInput {
   alto?: number;
   tamanoBytes?: number;
   sha256?: Buffer;
+  /**
+   * Video files (mime video/mp4) default to 20 s, 30 fps, h264 and aac; an image has none of these.
+   * Pass a value to build a combination the database must refuse.
+   */
+  duracionMs?: number | null;
+  fps?: number | null;
+  codecVideo?: string | null;
+  codecAudio?: string | null;
+  /**
+   * The clips of a video file, scene 1 to n. A video defaults to one scene (the file's media);
+   * [] inserts none. Ignored for images.
+   */
+  fuentes?: FuenteInput[];
 }
 
 export interface ProduccionOverrides {
@@ -81,17 +116,32 @@ export interface ProduccionOverrides {
   archivos?: ArchivoInput[];
 }
 
+export async function createProduccionFuente(
+  db: Db,
+  params: { produccionId: string; clienteId: string; ordenArchivo: number; escena: number; mediaId: string } & Omit<FuenteInput, 'mediaId'>,
+): Promise<ProduccionFuenteRow> {
+  const { rows } = await db.query<ProduccionFuenteRow>(
+    `INSERT INTO producciones_fuentes (produccion_id, cliente_id, orden_archivo, escena, media_id, entrada_ms, salida_ms)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [params.produccionId, params.clienteId, params.ordenArchivo, params.escena, params.mediaId, params.entradaMs ?? 0, params.salidaMs ?? 3000],
+  );
+  return rows[0]!;
+}
+
 export async function createProduccionArchivo(
   db: Db,
   params: { produccionId: string; clienteId: string; orden: number } & ArchivoInput,
 ): Promise<ProduccionArchivoRow> {
   const mime = params.mime ?? 'image/jpeg';
+  const esVideo = mime === 'video/mp4';
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4' }[mime] ?? 'jpg';
-  const mediaId = params.mediaId ?? (await createMedia(db, { clienteId: params.clienteId, tipo: 'foto' })).id;
+  const mediaId = params.mediaId ?? (await createMedia(db, { clienteId: params.clienteId, tipo: esVideo ? 'video' : 'foto' })).id;
+  const ficha = <T>(value: T | null | undefined, porDefecto: T): T | null => (value !== undefined ? value : esVideo ? porDefecto : null);
   const { rows } = await db.query<ProduccionArchivoRow>(
     `INSERT INTO producciones_archivos
-       (produccion_id, cliente_id, orden, clave_almacenamiento, mime, ancho, alto, tamano_bytes, sha256, media_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+       (produccion_id, cliente_id, orden, clave_almacenamiento, mime, ancho, alto, tamano_bytes, sha256, media_id,
+        duracion_ms, fps, codec_video, codec_audio)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
     [
       params.produccionId,
       params.clienteId,
@@ -99,13 +149,32 @@ export async function createProduccionArchivo(
       params.claveAlmacenamiento ?? `${params.clienteId}/producidos/${randomUUID()}.${ext}`,
       mime,
       params.ancho ?? 1080,
-      params.alto ?? 1350,
+      params.alto ?? (esVideo ? 1920 : 1350),
       params.tamanoBytes ?? 2048,
       params.sha256 ?? randomBytes(32),
       mediaId,
+      ficha(params.duracionMs, 20_000),
+      ficha(params.fps, 30),
+      ficha(params.codecVideo, 'h264'),
+      ficha(params.codecAudio, 'aac'),
     ],
   );
-  return rows[0]!;
+  const archivo = rows[0]!;
+  if (esVideo) {
+    const fuentes = params.fuentes ?? [{}];
+    for (const [i, fuente] of fuentes.entries()) {
+      await createProduccionFuente(db, {
+        produccionId: params.produccionId,
+        clienteId: params.clienteId,
+        ordenArchivo: params.orden,
+        escena: i + 1,
+        mediaId: fuente.mediaId ?? mediaId,
+        ...(fuente.entradaMs !== undefined ? { entradaMs: fuente.entradaMs } : {}),
+        ...(fuente.salidaMs !== undefined ? { salidaMs: fuente.salidaMs } : {}),
+      });
+    }
+  }
+  return archivo;
 }
 
 /** Inserts a production (and its files). */

@@ -94,6 +94,9 @@ const schema = z
     // Media library: ffprobe location and limits.
     FFPROBE_PATH: z.string().min(1).default('ffprobe'),
     FFPROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+    // FFmpeg (reel production, Step 7b): the executable and the time limit of one render.
+    FFMPEG_PATH: z.string().min(1).default('ffmpeg'),
+    FFMPEG_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(1_800_000).default(600_000),
     // Default 200 MiB; bounds 1 MiB to 2 GiB.
     MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
@@ -169,6 +172,9 @@ export interface LlmConfig {
 export interface MediaConfig {
   ffprobePath: string;
   ffprobeTimeoutMs: number;
+  ffmpegPath: string;
+  /** Time limit of one FFmpeg render, in ms. */
+  ffmpegTimeoutMs: number;
   /** Largest accepted upload, in bytes. */
   maxBytes: number;
 }
@@ -249,6 +255,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     media: {
       ffprobePath: result.data.FFPROBE_PATH,
       ffprobeTimeoutMs: result.data.FFPROBE_TIMEOUT_MS,
+      ffmpegPath: result.data.FFMPEG_PATH,
+      ffmpegTimeoutMs: result.data.FFMPEG_TIMEOUT_MS,
       maxBytes: result.data.MEDIA_MAX_BYTES,
     },
   };

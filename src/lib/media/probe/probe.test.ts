@@ -216,15 +216,17 @@ describe('media config', () => {
   };
 
   it('has defaults: ffprobe on the PATH, 15 s, 200 MiB', () => {
-    expect(loadConfig(base).media).toEqual({ ffprobePath: 'ffprobe', ffprobeTimeoutMs: 15_000, maxBytes: 209_715_200 });
+    expect(loadConfig(base).media).toEqual({ ffprobePath: 'ffprobe', ffprobeTimeoutMs: 15_000, ffmpegPath: 'ffmpeg', ffmpegTimeoutMs: 600_000, maxBytes: 209_715_200 });
     expect(loadConfig({ ...base, FFPROBE_PATH: '', FFPROBE_TIMEOUT_MS: '', MEDIA_MAX_BYTES: '' }).media.maxBytes).toBe(209_715_200);
   });
 
   it('accepts overrides and rejects out-of-range values', () => {
     expect(loadConfig({ ...base, FFPROBE_PATH: 'C:\\tools\\ffprobe.exe', FFPROBE_TIMEOUT_MS: '5000', MEDIA_MAX_BYTES: '10485760' }).media).toEqual({
-      ffprobePath: 'C:\\tools\\ffprobe.exe', ffprobeTimeoutMs: 5000, maxBytes: 10_485_760,
+      ffprobePath: 'C:\\tools\\ffprobe.exe', ffprobeTimeoutMs: 5000, ffmpegPath: 'ffmpeg', ffmpegTimeoutMs: 600_000, maxBytes: 10_485_760,
     });
-    for (const [name, bad] of [['FFPROBE_TIMEOUT_MS', '999'], ['FFPROBE_TIMEOUT_MS', '120001'], ['FFPROBE_TIMEOUT_MS', 'abc'], ['MEDIA_MAX_BYTES', '1048575'], ['MEDIA_MAX_BYTES', '2147483649'], ['MEDIA_MAX_BYTES', '1.5']] as const) {
+    expect(loadConfig({ ...base, FFMPEG_PATH: 'C:\\tools\\ffmpeg.exe', FFMPEG_TIMEOUT_MS: '120000' }).media).toMatchObject({ ffmpegPath: 'C:\\tools\\ffmpeg.exe', ffmpegTimeoutMs: 120_000 });
+    expect(loadConfig({ ...base, FFMPEG_PATH: '', FFMPEG_TIMEOUT_MS: '' }).media).toMatchObject({ ffmpegPath: 'ffmpeg', ffmpegTimeoutMs: 600_000 });
+    for (const [name, bad] of [['FFMPEG_TIMEOUT_MS', '9999'], ['FFMPEG_TIMEOUT_MS', '1800001'], ['FFMPEG_TIMEOUT_MS', 'abc'], ['FFPROBE_TIMEOUT_MS', '999'], ['FFPROBE_TIMEOUT_MS', '120001'], ['FFPROBE_TIMEOUT_MS', 'abc'], ['MEDIA_MAX_BYTES', '1048575'], ['MEDIA_MAX_BYTES', '2147483649'], ['MEDIA_MAX_BYTES', '1.5']] as const) {
       expect(() => loadConfig({ ...base, [name]: bad })).toThrow(new RegExp(name));
     }
   });
