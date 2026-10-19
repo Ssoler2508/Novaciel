@@ -97,7 +97,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 
 ### Step 7 — Production with real media (carousels first)
 - ✅ 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
-- 7b: video cuts and assembly with FFmpeg (native).
+- ✅ 7b: video cuts and assembly with FFmpeg (native).
 - 7c: animated templates and word-level subtitles with Remotion. **Blocked until the license is confirmed.**
 - 7d: voice. Provider chosen before this sub-step.
 - AI never generates the product, premises or real people of the client.
