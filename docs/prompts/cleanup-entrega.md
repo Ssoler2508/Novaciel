@@ -51,8 +51,20 @@ Report the test count before and after (it must not drop, except for tests of re
 ## Checkpoint C — Delivery documentation (wait for approval)
 
 Present the outline, then write:
-1. **README.md**: what the system does (one paragraph); requirements (Windows, Node version, PostgreSQL 18, FFmpeg/ffprobe with `zscale`/`tonemap`, the Remotion browser download); setup step by step (databases, `.env` from `.env.example`, migrations, seed, create admin, `npm run remotion:browser`); how to run (`npm run dev`), test (`npm test`, `npm run test:fast`, the skip flags) and the dev scripts in the order of the weekly flow (plan → approve → briefs → produce → approve → publicable check).
-2. **docs/ENTREGA.md** (delivery notes for NovaCiel and the Senior):
+1. **The main `README.md` at the repository root** (replace the current one, or create it), in English like the rest of the repository. It is the first thing NovaCiel opens, so it must stand on its own:
+   - **title and one-paragraph summary**: a multi-client content engine for social media (US market) that plans the week, writes the scripts, produces carousels, posts, stories and reels from the client's **real** media, and gets two-level human approval of the exact file before anything can be published;
+   - **status table**: each step with done / paused / blocked / pending (Steps 0–7c and 9 done; 7d blocked; 8, 10, 11, 12 pending), linking `docs/ENTREGA.md` for details;
+   - **architecture in short**: stack (TypeScript, Node, Fastify, PostgreSQL 18, pg-boss, zod, sharp, @napi-rs/canvas, FFmpeg, Remotion), the module map of `src/modules/` with one line per module, and the adapters (LLM, vision, storage, notifier, text layer) with which implementation is real and which is a fake;
+   - **non-negotiable rules** in one short list, each pointing to where it is enforced;
+   - **requirements**: Windows without Docker, the Node version from `package.json`, PostgreSQL 18, FFmpeg/ffprobe with `zscale`/`tonemap` on PATH, the one-time `npm run remotion:browser`;
+   - **setup step by step** (copy-paste PowerShell): create both databases, `.env` from `.env.example` (filled by hand, never committed), `npm ci`, migrations, seed, `create-admin`, `remotion:browser`;
+   - **run and test**: `npm run dev`, `npm test` (full, about 14 min), `npm run test:fast`, `npm run typecheck`, the skip flags, and the note about keeping the laptop awake during the full suite;
+   - **the weekly flow with the dev scripts**, in order: `plan:generate` → `plan:approve` → `brief:generate` → `piece:produce` → `piece:approve` (internal, then client) → `piece:publicable`, with one line each;
+   - **repository layout**: `src/`, `remotion/`, `assets/fonts/`, `docs/` (spec, PLAN, ADRs, prompts, ENTREGA, hash spec), `tests/`; and one line saying that `web/` is the web interface, maintained separately, with its own README if it has one (do not read or modify `web/` to write this);
+   - **security notes**: secrets only in `.env`, passwords never in files or command lines, test databases must end in `_test`;
+   - **license and third-party notices**: link `THIRD_PARTY_NOTICES.md` and ADR-06 (Remotion free-plan conditions).
+   Keep it scannable: short sections, commands in code blocks, no internal chat history.
+2. **docs/ENTREGA.md** (delivery notes for NovaCiel and the Senior, written in Spanish because the spec and its readers are Spanish-speaking):
    - what is built, step by step, with what is real and what is a fake/adapter (LLM fake by default, vision fake, notifier fake, storage local, no publishing);
    - the non-negotiable rules and where each is enforced (approval of the exact file, verified facts, `cliente_id`, adapters, budget authorization, encrypted credentials, fictional test data);
    - what is **not** built: Step 8 (QC; the TEMPORARY bridge in approvals), Step 10 (publishing; must call `assertPublicable` with the piece locked and reschedule reminders), Step 11 (dashboard and real alerts), 7d (voice);
