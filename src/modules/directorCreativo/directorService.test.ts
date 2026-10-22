@@ -5,7 +5,8 @@ import { createCliente, createGuion, createMedia, createMediaAutorizacion, creat
 import { FakeLLMProvider } from '../../lib/ai/fakeLLMProvider.js';
 import { SchemaValidationError } from '../ai/generateStructured.js';
 import { getHistorial, getPieza, PiezaNotFoundError, PlanDescartadoError, pausarPieza } from '../piezas/index.js';
-import { aprobarPlanInterno, PlanNoAprobadoError } from '../planificador/index.js';
+import { PlanNoAprobadoError } from '../planificador/index.js';
+import { aprobarPlanComoCliente } from '../../../tests/utils/approvePlan.js';
 import { microToUsd } from '../presupuesto/money.js';
 import { BudgetRefusedError } from '../presupuesto/presupuestoService.js';
 import { asClienteId } from '../shared/clienteId.js';
@@ -92,14 +93,14 @@ describe('generarBrief: the brief is stored', () => {
     });
   });
 
-  it('the first brief of a plan approved through aprobarPlanInterno', async () => {
+  it('the first brief of a plan approved by the client', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
       const draft = await createPlanSemanal(db, { clienteId: w.clienteId, perfilMarcaId: w.perfilId, semanaInicio: '2026-11-16' });
       const pieza = await createPieza(db, { clienteId: w.clienteId, planId: draft.id, formato: 'carrusel' });
       // Still a draft: no brief, no call.
       await expect(generarBrief(w.deps, w.clienteId, pieza.id, SISTEMA)).rejects.toBeInstanceOf(PlanNoAprobadoError);
-      await aprobarPlanInterno(db, w.clienteId, draft.id, SISTEMA);
+      await aprobarPlanComoCliente(db, w.clienteId, draft.id);
       w.provider.enqueue(briefJson(w));
       const { pieza: after } = await generarBrief(w.deps, w.clienteId, pieza.id, SISTEMA);
       expect(after.estado).toBe('guion_listo');

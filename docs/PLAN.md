@@ -116,6 +116,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
 - Publishes only approved pieces; recomputes and verifies the piece-level hash before sending.
+- Calls `assertPublicable` (Step 9) with the piece LOCKED, or re-checks immediately before sending: the gate checks but does not lock (ADR-05, known debt).
 - Network credentials come from `conexiones_redes` (Step 2b), decrypted only at the moment of use.
 - Metrics collection after publishing.
 - **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.

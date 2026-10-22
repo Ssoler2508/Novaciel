@@ -129,6 +129,22 @@ export async function assertProducible(db: Db, clienteId: ClienteId, piezaId: st
  */
 async function verificarRecursos(db: Db, clienteId: ClienteId, brief: GuionView, pieza: PiezaRow, lock: boolean, ademas: readonly string[] = []): Promise<void> {
   const mediaIds = [...new Set([...brief.tomas.flatMap((t) => (t.media_id ? [t.media_id] : [])), ...ademas])];
+  await verificarMediaYHechos(db, clienteId, mediaIds, brief.hecho_ids, pieza.fecha_hora, lock);
+}
+
+/**
+ * The checks themselves, on plain ids: every media usable now and every fact valid now AND at
+ * `instante`. Shared with the publish gate (assertPublicable), which asks the same questions again at
+ * publish time. Refuses with ids only.
+ */
+export async function verificarMediaYHechos(
+  db: Db,
+  clienteId: ClienteId,
+  mediaIds: readonly string[],
+  hechoIds: readonly string[],
+  instante: Date,
+  lock: boolean,
+): Promise<void> {
   if (mediaIds.length > 0) {
     const { rows } = await db.query<{ id: string }>(
       `SELECT m.id FROM media m WHERE m.cliente_id = $1 AND m.id = ANY($2::uuid[]) AND ${usableCondition('now()')} ${lock ? 'FOR SHARE OF m' : ''}`,
@@ -138,23 +154,23 @@ async function verificarRecursos(db: Db, clienteId: ClienteId, brief: GuionView,
     const perdidos = mediaIds.filter((id) => !ok.has(id));
     if (perdidos.length > 0) throw new ProduccionMediaNoUsableError(perdidos);
   }
-  if (brief.hecho_ids.length > 0) {
+  if (hechoIds.length > 0) {
     const { rows } = await db.query<{ id: string }>(
       `SELECT id FROM hechos_verificados
        WHERE cliente_id = $1 AND id = ANY($2::uuid[])
          AND vigente_desde <= now() AND (vigente_hasta IS NULL OR vigente_hasta > now())
          AND vigente_desde <= $3 AND (vigente_hasta IS NULL OR vigente_hasta > $3)
        ${lock ? 'FOR SHARE' : ''}`,
-      [clienteId, brief.hecho_ids, pieza.fecha_hora],
+      [clienteId, hechoIds, instante],
     );
     const ok = new Set(rows.map((r) => r.id));
-    const vencidos = brief.hecho_ids.filter((id) => !ok.has(id));
+    const vencidos = hechoIds.filter((id) => !ok.has(id));
     if (vencidos.length > 0) throw new ProduccionHechoVencidoError(vencidos);
   }
 }
 
 /** Streams a file once for its SHA-256 and byte size. */
-async function hashFile(filePath: string): Promise<{ sha256: Buffer; size: number }> {
+export async function hashFile(filePath: string): Promise<{ sha256: Buffer; size: number }> {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filePath) as AsyncIterable<Buffer>) hash.update(chunk);
   return { sha256: hash.digest(), size: (await stat(filePath)).size };

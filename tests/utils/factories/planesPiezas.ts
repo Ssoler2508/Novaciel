@@ -123,11 +123,19 @@ export async function insertHistorial(
   clienteId: string,
   row: { version: number; desde: string | null; hacia: string; actor: HistorialActor; motivo?: string | null },
 ): Promise<void> {
-  await db.query(
-    `INSERT INTO historial_estados_pieza (cliente_id, pieza_id, version, desde, hacia, actor_tipo, actor_usuario_id, motivo)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [clienteId, piezaId, row.version, row.desde, row.hacia, row.actor.tipo, row.actor.tipo === 'usuario' ? row.actor.usuarioId : null, row.motivo ?? null],
-  );
+  // Many tests walk pieces through `aprobada`/`programada` without approvals. The database guard of Step 9
+  // (historial_estados_pieza_aprobacion) has a test-only switch, transaction-scoped, that this helper turns
+  // on for its own insert and puts back the previous value right after, so it never stays on for the rest of a test.
+  await runInTransaction(db, async (tx) => {
+    const previo = (await tx.query<{ v: string }>(`SELECT coalesce(current_setting('novaciel.omitir_guarda_aprobacion', true), 'no') AS v`)).rows[0]!.v;
+    await tx.query(`SELECT set_config('novaciel.omitir_guarda_aprobacion', 'si', true)`);
+    await tx.query(
+      `INSERT INTO historial_estados_pieza (cliente_id, pieza_id, version, desde, hacia, actor_tipo, actor_usuario_id, motivo)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [clienteId, piezaId, row.version, row.desde, row.hacia, row.actor.tipo, row.actor.tipo === 'usuario' ? row.actor.usuarioId : null, row.motivo ?? null],
+    );
+    await tx.query(`SELECT set_config('novaciel.omitir_guarda_aprobacion', $1, true)`, [previo]);
+  });
 }
 
 /** Moves a piece one step: writes the history row, then updates the state (both go through the triggers). */

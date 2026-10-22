@@ -69,7 +69,8 @@ import { generarBrief, getBriefActual, listBriefVersions } from './directorCreat
 import { getProduccionActual, listProduccionVersions } from './produccion/produccionRepository.js';
 import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/produccionJobs.js';
 import { assertProducible, producirPieza } from './produccion/produccionService.js';
-import { aprobarPlanInterno, getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
+import { decidirPlan, proponerPlan, reabrirPieza, registrarDecision } from './aprobaciones/index.js';
+import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
@@ -527,7 +528,12 @@ describe('isolation: creative director service', () => {
       expect((await getBriefActual(db, b.clienteId, b.piezaConGuionId))!.id).toBe(b.guionId);
       await expect(generarBrief(deps, a.clienteId, b.piezaConGuionId, SISTEMA, { regenerar: true })).rejects.toBeInstanceOf(PiezaNotFoundError);
       await expect(generarBrief(deps, a.clienteId, b.piezaId, SISTEMA)).rejects.toBeInstanceOf(PiezaNotFoundError);
-      await expect(aprobarPlanInterno(db, a.clienteId, b.planId, SISTEMA)).rejects.toBeInstanceOf(PlanNotFoundError);
+      const approverA = { usuarioId: a.usuarioSoloId, roles: [{ rol: 'dueno_cliente', clienteId: a.clienteId }] };
+      const staff = { usuarioId: a.creadoPor, roles: [{ rol: 'administrador_novaciel', clienteId: null }] };
+      await expect(proponerPlan({ db }, a.clienteId, b.planId, staff)).rejects.toBeInstanceOf(PlanNotFoundError);
+      await expect(decidirPlan({ db }, a.clienteId, b.planPropuestoId, approverA, { decision: 'aprobado', huellaVista: '0'.repeat(64) })).rejects.toBeInstanceOf(PlanNotFoundError);
+      await expect(registrarDecision({ db }, a.clienteId, b.aprobacionPiezaId, staff, { nivel: 'interno', decision: 'aprobada', hashVisto: '0'.repeat(64) })).rejects.toBeInstanceOf(PiezaNotFoundError);
+      await expect(reabrirPieza({ db }, a.clienteId, b.aprobacionPiezaId, staff, 'prueba')).rejects.toBeInstanceOf(PiezaNotFoundError);
       expect(provider.calls).toHaveLength(0);
     });
   });

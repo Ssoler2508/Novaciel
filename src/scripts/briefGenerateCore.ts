@@ -81,7 +81,7 @@ export async function runBriefGenerate(deps: DirectorDeps, args: BriefGenerateAr
 function failureLine(error: unknown): string {
   if (error instanceof PlanNotFoundError) return 'That plan does not exist for this client';
   if (error instanceof PiezaNotFoundError) return 'That piece does not exist for this client';
-  if (error instanceof PlanNoAprobadoError) return `The plan is not approved (state ${error.estado}); approve it first (npm run plan:approve-internal)`;
+  if (error instanceof PlanNoAprobadoError) return `The plan is not approved (state ${error.estado}); the client must approve it first`;
   if (error instanceof PlanDescartadoError) return 'The plan is discarded';
   if (error instanceof PiezaEstadoInvalidoError) return `A brief cannot be made for a piece in state ${error.estado}`;
   if (error instanceof BriefExistenteError) return `The piece already has a current brief (version ${error.version}). Use --regenerar to make a new version.`;

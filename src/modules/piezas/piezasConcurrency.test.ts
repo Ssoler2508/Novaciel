@@ -27,11 +27,12 @@ describe('concurrent transitions of the same piece', () => {
   }
 
   it('two parallel transitions to different targets: exactly one wins, the other sees the new state', async () => {
+    // Targets that the approval guard of Step 9 does not cover (it guards aprobada and programada).
     const { pool, clienteId, pieza } = await pieceIn('esperando_aprobacion');
     const before = await getHistorial(pool, clienteId, pieza.id);
 
     const results = await Promise.allSettled([
-      transitionPieza(pool, clienteId, pieza.id, 'aprobada', SISTEMA),
+      transitionPieza(pool, clienteId, pieza.id, 'con_cambios', SISTEMA),
       transitionPieza(pool, clienteId, pieza.id, 'rechazada', SISTEMA),
     ]);
     const winners = results.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof transitionPieza>>> => r.status === 'fulfilled');
@@ -43,7 +44,7 @@ describe('concurrent transitions of the same piece', () => {
     const winner = winners[0]!.value;
     const after = (await getPieza(pool, clienteId, pieza.id))!;
     expect(after.estado).toBe(winner.estado);
-    expect(['aprobada', 'rechazada']).toContain(after.estado);
+    expect(['con_cambios', 'rechazada']).toContain(after.estado);
     expect(after.version_estado).toBe(pieza.version_estado + 1);
     const history = await getHistorial(pool, clienteId, pieza.id);
     expect(history).toHaveLength(before.length + 1);
@@ -51,27 +52,27 @@ describe('concurrent transitions of the same piece', () => {
   });
 
   it('several parallel identical transitions: exactly one succeeds', async () => {
-    const { pool, clienteId, pieza } = await pieceIn('aprobada');
+    const { pool, clienteId, pieza } = await pieceIn('esperando_aprobacion');
     const results = await Promise.allSettled(
-      Array.from({ length: 4 }, () => transitionPieza(pool, clienteId, pieza.id, 'programada', SISTEMA)),
+      Array.from({ length: 4 }, () => transitionPieza(pool, clienteId, pieza.id, 'con_cambios', SISTEMA)),
     );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     for (const r of results) if (r.status === 'rejected') expect(r.reason).toBeInstanceOf(InvalidTransitionError);
     const after = (await getPieza(pool, clienteId, pieza.id))!;
-    expect(after).toMatchObject({ estado: 'programada', version_estado: pieza.version_estado + 1 });
+    expect(after).toMatchObject({ estado: 'con_cambios', version_estado: pieza.version_estado + 1 });
     expect(await getHistorial(pool, clienteId, pieza.id)).toHaveLength(pieza.version_estado + 2);
   });
 
   it('a pause racing a transition leaves a consistent piece, and resume still returns to where it was paused', async () => {
-    const { pool, clienteId, pieza } = await pieceIn('aprobada');
+    const { pool, clienteId, pieza } = await pieceIn('en_produccion');
     const results = await Promise.allSettled([
       pausarPieza(pool, clienteId, pieza.id, SISTEMA),
-      transitionPieza(pool, clienteId, pieza.id, 'programada', SISTEMA),
+      transitionPieza(pool, clienteId, pieza.id, 'en_control_calidad', SISTEMA),
     ]);
-    // Both are valid from 'aprobada', so whichever runs second may also succeed (programada -> pausada,
-    // or pausada can no longer go to programada). Either way the piece is consistent.
+    // Both are valid from 'en_produccion', so whichever runs second may also succeed (en_control_calidad -> pausada,
+    // or pausada can no longer go to en_control_calidad). Either way the piece is consistent.
     const after = (await getPieza(pool, clienteId, pieza.id))!;
-    expect(['pausada', 'programada']).toContain(after.estado);
+    expect(['pausada', 'en_control_calidad']).toContain(after.estado);
     const history = await getHistorial(pool, clienteId, pieza.id);
     expect(history.map((h) => h.version)).toEqual(Array.from({ length: history.length }, (_v, i) => i));
     expect(after.version_estado).toBe(history.length - 1);

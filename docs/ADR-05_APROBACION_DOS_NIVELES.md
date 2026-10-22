@@ -42,3 +42,13 @@ Automatic QC does not exist, so pieces wait in `en_control_calidad`. Until Step 
 
 ## Open question (also in docs/PLAN.md)
 When should the internal review be retired (spec 11.1: after 4 weeks per client, or 20 pieces of a type approved without changes)? Not built in Step 9.
+
+## Checkpoint C: services and the publish gate
+- `registrarDecision` records the decision and moves the piece in one transaction (lock order: plan, then piece). The internal approval from `en_control_calidad` also performs `en_control_calidad → revision_novaciel` and then `revision_novaciel → esperando_aprobacion`; the first step is the TEMPORARY Step 8 bridge and its history row says `puente_temporal_paso_8`. An internal change request sends the piece to `en_produccion`.
+- `reabrirPieza` (NovaCiel, `manage_plans`) is the service for `aprobada`/`programada → con_cambios`.
+- `proponerPlan` and `decidirPlan` replace `aprobarPlanInterno`; the `plan:approve-internal` script was removed. Until checkpoint E there is no development script to approve a plan.
+- The database guard `historial_estados_pieza_aprobacion` refuses any entry into `aprobada` or `programada` without both approvals of the current production (id, version, hash_version, hash_pieza by bytes). Its test-only switch `novaciel.omitir_guarda_aprobacion` is transaction-scoped (`set_config(..., true)`) and honoured only in a `*_test` database.
+- `assertPublicable` accepts a piece in `aprobada` or `programada`.
+
+## Known debt
+- **`assertPublicable` checks but does not lock.** Between the check and the publish something could change (a file, a fact, a revocation). Step 10 must call it with the piece locked, or re-check immediately before sending, so nothing changes between the check and the publish.

@@ -101,7 +101,7 @@ export async function runPieceProduce(deps: PieceProduceDeps, args: PieceProduce
 export function failureLine(error: unknown): string {
   if (error instanceof PlanNotFoundError) return 'That plan does not exist for this client';
   if (error instanceof PiezaNotFoundError) return 'That piece does not exist for this client';
-  if (error instanceof PlanNoAprobadoError) return `The plan is not approved (state ${error.estado}); approve it first (npm run plan:approve-internal)`;
+  if (error instanceof PlanNoAprobadoError) return `The plan is not approved (state ${error.estado}); the client must approve it first`;
   if (error instanceof PlanDescartadoError) return 'The plan is discarded';
   if (error instanceof ProduccionEstadoInvalidoError) return `A piece in state ${error.estado} cannot be produced`;
   if (error instanceof FormatoNoSoportadoError) return `The format ${error.formato} has no defined size for ${error.red}, so it cannot be produced`;

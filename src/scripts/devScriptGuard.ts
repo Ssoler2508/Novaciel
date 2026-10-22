@@ -1,7 +1,7 @@
 import type { Db } from '../db/types.js';
 
 // The guard of the development-only scripts that write data or spend budget (plan:generate,
-// plan:approve-internal, brief:generate). It refuses production and any database whose name ends in
+// brief:generate). It refuses production and any database whose name ends in
 // _test, before and after connecting. Messages name the script and the database, never the URL.
 
 function databaseNameFromUrl(script: string, databaseUrl: string): string {

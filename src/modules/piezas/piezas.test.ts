@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withTestTransaction } from '../../../tests/utils/transaction.js';
+import { withTestTransaction as withTx } from '../../../tests/utils/transaction.js';
 import { auditRowsFor } from '../../../tests/utils/auditRows.js';
 import {
   createCliente,
@@ -10,6 +10,10 @@ import {
   createUsuario,
 } from '../../../tests/utils/factories/index.js';
 import type { Db } from '../../db/types.js';
+
+// These tests are about the generic state machine, not about approvals: they may enter `aprobada` and
+// `programada` without approval records (the approval guard has its own tests in aprobaciones.test.ts).
+const withTestTransaction = <T>(fn: Parameters<typeof withTx<T>>[0]) => withTx(fn, { sinGuardaDeAprobacion: true });
 import { asClienteId, type ClienteId } from '../shared/clienteId.js';
 import {
   ALLOWED_TRANSITIONS,

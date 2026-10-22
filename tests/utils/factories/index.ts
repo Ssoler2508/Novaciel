@@ -26,9 +26,13 @@ export { createGuion, createToma, createGuionHecho, guionContenido } from './gui
 export { createProduccion, createProduccionArchivo, createProduccionFuente } from './producciones.js';
 export {
   createAprobableWorld,
+  createActores,
+  createPiezaAprobable,
+  CONTENIDO_PRODUCCION,
   createAprobacion,
   createAprobacionPlan,
   createAprobadoresCliente,
   createUsuarioConRol,
   planHuella,
 } from './aprobaciones.js';
+export type { PiezaAprobable, Actores } from './aprobaciones.js';

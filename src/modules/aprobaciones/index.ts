@@ -5,3 +5,13 @@ export type { Recordatorio, ReglasRecordatorios, TipoRecordatorio } from './reco
 export { decidirEscalada, MAX_RONDAS_CAMBIOS, rondasDeCambios } from './rondas.js';
 export type { DecisionEscalada } from './rondas.js';
 export type { ProduccionActual, RegistroAprobacion, Seq } from './types.js';
+export { esPersonalNovaciel, requireAction, rolParaNivel } from './actor.js';
+export type { AprobadorActor } from './actor.js';
+export { getHuellaPlan, getProduccionActualBasica, listRegistros } from './aprobacionesRepository.js';
+export { MOTIVO_PUENTE_PASO_8, reabrirPieza, registrarDecision } from './aprobacionesService.js';
+export type { AprobacionRegistrada, DecisionInput, DecisionRegistrada } from './aprobacionesService.js';
+export * from './errors.js';
+export { decidirPlan, MOTIVO_APROBACION_CLIENTE, proponerPlan } from './planAprobacionService.js';
+export type { PlanConPiezas, PlanDecisionInput } from './planAprobacionService.js';
+export { assertPublicable, ESTADOS_PUBLICABLES } from './publicable.js';
+export type { PiezaPublicable, PublicableDeps } from './publicable.js';

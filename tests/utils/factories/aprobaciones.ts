@@ -1,5 +1,12 @@
+import { createHash, randomUUID } from 'node:crypto';
 import type { Db } from '../../../src/db/types.js';
+import type { Storage } from '../../../src/lib/media/storage/types.js';
+import type { AprobadorActor } from '../../../src/modules/aprobaciones/actor.js';
+import { computePieceHash } from '../../../src/modules/produccion/pieceHash.js';
+import { asClienteId } from '../../../src/modules/shared/clienteId.js';
 import { createCliente } from './clientes.js';
+import { createHechoVerificado } from './hechosVerificados.js';
+import { createMedia, createMediaAutorizacion } from './media.js';
 import { createGuion } from './guiones.js';
 import { createProduccion } from './producciones.js';
 import { createPieza, createPlanSemanal, moverPieza } from './planesPiezas.js';
@@ -196,4 +203,124 @@ export async function createAprobableWorld(db: Db, o: { estado?: string; cliente
     await moverPieza(db, pieza.id, estado);
   }
   return { clienteId, planId: plan.id, piezaId: pieza.id, produccionId: produccion.id };
+}
+
+// ---- Step 9, checkpoint C: a piece whose production is REAL (files in storage, true np1 hash) --------
+
+export interface PiezaAprobableOverrides {
+  clienteId?: string;
+  semanaInicio?: string;
+  /** How many final files (images) the production has. Default 2. */
+  archivos?: number;
+  /** Stop in this state. Default en_control_calidad (ready for the internal level). */
+  estado?: 'en_control_calidad';
+}
+
+export interface PiezaAprobable {
+  clienteId: string;
+  planId: string;
+  piezaId: string;
+  guionId: string;
+  produccionId: string;
+  hechoId: string;
+  mediaIds: string[];
+  autorizacionIds: string[];
+  claves: string[];
+  /** The bytes stored for each file, in order. */
+  cuerpos: Buffer[];
+  hashPieza: Buffer;
+  hashHex: string;
+}
+
+/** The content of a production, used both to store it and to compute its np1 hash. */
+export const CONTENIDO_PRODUCCION = {
+  textoPublicacion: 'Texto de publicación ficticio para aprobar',
+  hashtags: ['#ficticio', '#aprobacion'],
+  ubicacion: 'Lugar ficticio',
+} as const;
+
+/**
+ * A client with an approved plan and a piece in en_control_calidad whose production is real: every file
+ * exists in `storage` with its true SHA-256, and hash_pieza is the np1 hash of what is stored. The media
+ * show people and are linked to a valid authorization, and the brief cites a valid fact, so the checks of
+ * rule 2 have something to check.
+ */
+export async function createPiezaAprobable(db: Db, storage: Storage, o: PiezaAprobableOverrides = {}): Promise<PiezaAprobable> {
+  const clienteId = o.clienteId ?? (await createCliente(db)).id;
+  const plan = await createPlanSemanal(db, { clienteId, estado: 'aprobado', ...(o.semanaInicio ? { semanaInicio: o.semanaInicio } : {}) });
+  const pieza = await createPieza(db, { clienteId, planId: plan.id, estado: 'plan_aprobado', red: 'instagram', formato: 'carrusel' });
+  const hecho = await createHechoVerificado(db, { clienteId });
+  const guion = await createGuion(db, { piezaId: pieza.id, hechoIds: [hecho.id] });
+  await moverPieza(db, pieza.id, 'guion_listo');
+  await moverPieza(db, pieza.id, 'en_produccion');
+
+  const cantidad = o.archivos ?? 2;
+  const mediaIds: string[] = [];
+  const autorizacionIds: string[] = [];
+  const claves: string[] = [];
+  const cuerpos: Buffer[] = [];
+  const archivos: { mediaId: string; claveAlmacenamiento: string; sha256: Buffer; tamanoBytes: number }[] = [];
+  for (let i = 0; i < cantidad; i++) {
+    const media = await createMedia(db, { clienteId, tipo: 'foto', aparecenPersonas: true });
+    const vinculo = await createMediaAutorizacion(db, { mediaId: media.id, clienteId });
+    const cuerpo = Buffer.from(`archivo-ficticio-${i + 1}-${randomUUID()}`);
+    const clave = `${clienteId}/producidos/${randomUUID()}.jpg`;
+    await storage.put(clave, cuerpo, 'image/jpeg');
+    mediaIds.push(media.id);
+    autorizacionIds.push(vinculo.autorizacion_id);
+    claves.push(clave);
+    cuerpos.push(cuerpo);
+    archivos.push({ mediaId: media.id, claveAlmacenamiento: clave, sha256: createHash('sha256').update(cuerpo).digest(), tamanoBytes: cuerpo.length });
+  }
+  const textosAlternativos = archivos.map((_a, i) => `Texto alternativo ficticio ${i + 1}`);
+  const hashPieza = computePieceHash({
+    red: 'instagram',
+    archivos: archivos.map((a) => a.sha256),
+    textoPublicacion: CONTENIDO_PRODUCCION.textoPublicacion,
+    hashtags: [...CONTENIDO_PRODUCCION.hashtags],
+    textosAlternativos,
+    ubicacion: CONTENIDO_PRODUCCION.ubicacion,
+  });
+  const produccion = await createProduccion(db, {
+    piezaId: pieza.id,
+    guionId: guion.id,
+    hashPieza,
+    textoPublicacion: CONTENIDO_PRODUCCION.textoPublicacion,
+    hashtags: [...CONTENIDO_PRODUCCION.hashtags],
+    textosAlternativos,
+    ubicacion: CONTENIDO_PRODUCCION.ubicacion,
+    archivos,
+  });
+  await moverPieza(db, pieza.id, 'en_control_calidad');
+  return {
+    clienteId,
+    planId: plan.id,
+    piezaId: pieza.id,
+    guionId: guion.id,
+    produccionId: produccion.id,
+    hechoId: hecho.id,
+    mediaIds,
+    autorizacionIds,
+    claves,
+    cuerpos,
+    hashPieza,
+    hashHex: hashPieza.toString('hex'),
+  };
+}
+
+export interface Actores {
+  novaciel: AprobadorActor;
+  cliente: AprobadorActor;
+  ids: { novaciel: string; cliente: string };
+}
+
+/** A NovaCiel admin and a client approver, as the services see them. */
+export async function createActores(db: Db, clienteId: string): Promise<Actores> {
+  const staff = await createUsuarioConRol(db, 'administrador_novaciel');
+  const approver = await createUsuarioConRol(db, 'aprobador_cliente', clienteId);
+  return {
+    novaciel: { usuarioId: staff.id, roles: [{ rol: 'administrador_novaciel', clienteId: null }] },
+    cliente: { usuarioId: approver.id, roles: [{ rol: 'aprobador_cliente', clienteId: asClienteId(clienteId) }] },
+    ids: { novaciel: staff.id, cliente: approver.id },
+  };
 }
