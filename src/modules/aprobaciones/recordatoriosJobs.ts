@@ -187,12 +187,41 @@ export async function ejecutarJobEscalada(deps: RecordatoriosJobDeps, data: unkn
 
 // ---- pg-boss --------------------------------------------------------------------------------------
 
-/** Registers both queues (exclusive, no automatic retries) and their workers. Call after boss.start(). */
-export async function registerRecordatoriosJobs(boss: PgBoss, deps: RecordatoriosJobDeps): Promise<void> {
+/**
+ * Creates both queues (exclusive, no automatic retries). Idempotent. The server, the development scripts
+ * and the workers all call it, so a notice can be queued by whoever needs to, before any worker exists.
+ * Call after boss.start().
+ */
+export async function crearColasRecordatorios(boss: PgBoss): Promise<void> {
   await boss.createQueue(RECORDATORIO_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 900 });
   await boss.createQueue(ESCALADA_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 900 });
+}
+
+/** Registers both queues and their workers. Call after boss.start(). */
+export async function registerRecordatoriosJobs(boss: PgBoss, deps: RecordatoriosJobDeps): Promise<void> {
+  await crearColasRecordatorios(boss);
   await boss.work<unknown, SalidaAviso>(RECORDATORIO_QUEUE, { batchSize: 1 }, async (jobs) => ejecutarJobRecordatorio(deps, jobs[0]!.data, jobs[0]!.id));
   await boss.work<unknown, SalidaAviso>(ESCALADA_QUEUE, { batchSize: 1 }, async (jobs) => ejecutarJobEscalada(deps, jobs[0]!.data, jobs[0]!.id));
+}
+
+export interface AvisoEncolado {
+  jobId: string;
+  estado: string;
+  aviso: string;
+  cuando: Date;
+}
+
+/**
+ * The reminder jobs queued for an approval target (a piece or a plan), oldest first. Read-only; for the
+ * development scripts and the final check. `schema` is the pg-boss schema (default "pgboss").
+ */
+export async function listarAvisosEncolados(db: Db, objetoId: string, schema = 'pgboss'): Promise<AvisoEncolado[]> {
+  if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error('Invalid pg-boss schema name');
+  const { rows } = await db.query<{ id: string; state: string; aviso: string; start_after: Date }>(
+    `SELECT id, state, data->>'aviso' AS aviso, start_after FROM ${schema}.job WHERE name = $1 AND data->>'objetoId' = $2 ORDER BY start_after, id`,
+    [RECORDATORIO_QUEUE, objetoId],
+  );
+  return rows.map((r) => ({ jobId: r.id, estado: r.state, aviso: r.aviso, cuando: r.start_after }));
 }
 
 /**

@@ -112,6 +112,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Any change to the files, their order, caption, hashtags, alt text or network invalidates the approval.
 - Requires Step 2b (sessions and role checks).
 - **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
+- Built on branch `step-09` (checkpoints A to E); design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`. Pending the developer's manual check and merge.
 
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.

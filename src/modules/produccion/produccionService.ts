@@ -71,7 +71,7 @@ export interface ProduccionDeps {
 }
 
 export interface ProducirOptions {
-  /** Make a new version of an existing production. Allowed while the piece is in en_control_calidad or en_produccion. */
+  /** Make a new version of an existing production. Allowed while the piece is in en_control_calidad, en_produccion or con_cambios. */
   reproducir?: boolean;
 }
 
@@ -82,8 +82,11 @@ export interface PiezaProducida {
 
 /** Image formats (7a) and reels (7b). */
 const FORMATOS_PRODUCIBLES = ['carrusel', 'post', 'historia', 'reel'] as const;
-/** States a production can start from: ready (guion_listo), sent back (en_produccion) or already produced (en_control_calidad). */
-const ESTADOS_DE_INICIO = ['guion_listo', 'en_produccion', 'en_control_calidad'] as const;
+/**
+ * States a production can start from: ready (guion_listo), sent back (en_produccion), already produced
+ * (en_control_calidad) or sent back by the client (con_cambios, Step 9: the next version after a change request).
+ */
+const ESTADOS_DE_INICIO = ['guion_listo', 'en_produccion', 'en_control_calidad', 'con_cambios'] as const;
 
 export interface Contexto {
   pieza: PiezaRow;

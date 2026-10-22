@@ -17,6 +17,11 @@
     "plan:generate": "tsx src/scripts/planGenerate.ts",
     "brief:generate": "tsx src/scripts/briefGenerate.ts",
     "piece:produce": "tsx src/scripts/pieceProduce.ts",
+    "plan:approve": "tsx src/scripts/planApprove.ts",
+    "piece:approve": "tsx src/scripts/pieceApprove.ts",
+    "piece:reopen": "tsx src/scripts/pieceReopen.ts",
+    "piece:publicable": "tsx src/scripts/piecePublicable.ts",
+    "password:set-dev": "tsx src/scripts/passwordSetDev.ts",
     "migrate:up": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m src/db/migrations",
     "migrate:down": "node --env-file=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m src/db/migrations"
   },

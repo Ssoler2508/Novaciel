@@ -14,6 +14,7 @@ import type { CompletenessResult } from '../modules/perfilMarca/completeness.js'
 import { createNewVersion, getCurrentPerfilMarca } from '../modules/perfilMarca/perfilMarcaRepository.js';
 import { getCompleteness } from '../modules/perfilMarca/puedePlanificar.js';
 import { createRegla, listReglas, type ReglaTipo } from '../modules/reglasProhibidas/reglasRepository.js';
+import { getAprobadores, setAprobadores } from '../modules/aprobaciones/aprobadoresRepository.js';
 import {
   assignClientRole,
   assignNovaCielRole,
@@ -33,6 +34,10 @@ import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
 // Every value below is fictional.
 export const SEED_ADMIN_EMAIL = 'admin.novaciel@example.test';
 export const SEED_OWNER_EMAIL = 'dueno.aurora@example.test';
+// The fictional client approver and substitute of Step 9. NEVER NovaCiel users: the client level can only
+// be recorded by users with a client approval role for THIS client.
+export const SEED_APPROVER_EMAIL = 'aprobador.aurora@example.test';
+export const SEED_SUBSTITUTE_EMAIL = 'suplente.aurora@example.test';
 export const SEED_PRICE_PROVIDER = 'fake';
 export const SEED_PRICE_MODEL = 'fake-model';
 export const SEED_PRICE_NOTE = 'FAKE — replace with real prices';
@@ -133,6 +138,26 @@ export async function seedDevelopment(db: Db, now: Date = new Date(), options: S
   const ownerHasRole = clientUsers.some((u) => u.usuario_id === ownerId && u.roles.includes('dueno_cliente'));
   note(!ownerHasRole, 'rol dueno_cliente');
   if (!ownerHasRole) await assignClientRole(db, clienteId, { usuarioId: ownerId, rolCodigo: 'dueno_cliente' }, SISTEMA);
+
+  // Client approver and substitute (Step 9, spec 11.3): two fictional client users with the approval
+  // role for this client, named as the client's approvers. The seed sets no passwords.
+  const approverIds: string[] = [];
+  for (const [email, nombre, what] of [
+    [SEED_APPROVER_EMAIL, 'Aprobadora Aurora Ficticia', 'aprobador del cliente'],
+    [SEED_SUBSTITUTE_EMAIL, 'Suplente Aurora Ficticio', 'suplente del aprobador'],
+  ] as const) {
+    let user = await getUsuarioByEmail(db, email);
+    note(!user, `usuario ${what}`);
+    user ??= await createUsuario(db, { email, nombre }, SISTEMA);
+    const hasRole = (await listClientUsers(db, clienteId)).some((u) => u.usuario_id === user.id && u.roles.includes('aprobador_cliente'));
+    note(!hasRole, `rol aprobador_cliente (${what})`);
+    if (!hasRole) await assignClientRole(db, clienteId, { usuarioId: user.id, rolCodigo: 'aprobador_cliente' }, SISTEMA);
+    approverIds.push(user.id);
+  }
+  // Only when none are named: approvers changed by hand are never overwritten.
+  const hadApprovers = (await getAprobadores(db, clienteId)) !== null;
+  note(!hadApprovers, 'aprobadores del cliente (principal y suplente)');
+  if (!hadApprovers) await setAprobadores(db, clienteId, { principalUsuarioId: approverIds[0]!, suplenteUsuarioId: approverIds[1]! }, SISTEMA);
 
   // Brand profile. A new version fills only the required fields that are missing, so hand edits are
   // kept and history keeps the older version. A complete profile is left alone (no new version).

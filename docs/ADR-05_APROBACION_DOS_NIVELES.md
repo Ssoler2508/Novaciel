@@ -58,7 +58,15 @@ When should the internal review be retired (spec 11.1: after 4 weeks per client,
 - A plan's deadline is the earliest scheduled time of its pieces (the spec defines none; open question in docs/PLAN.md).
 - Escalation: only the client change request that makes the count reach 3 queues `escalada_cambios` for every active NovaCiel administrator and operator.
 
+## Checkpoint E: routes, scripts, seed
+- Routes (`aprobacionesRoutes.ts`): `GET .../aprobaciones/pendientes`, `GET .../piezas/:piezaId/revision`, `POST .../piezas/:piezaId/decision`, `GET .../planes/:planId/revision`, `POST .../planes/:planId/proponer`, `POST .../planes/:planId/decision`. Every decision carries the hash (or plan fingerprint) the approver was shown; a different current one answers 409. A NovaCiel user at the client level, another client's approver and `colaborador_cliente` get 403.
+- **Comment visibility.** NovaCiel roles see every record and comment. Client roles see the comments of the CLIENT level of their own client. Comments of the INTERNAL level are never shown to client roles. User ids are never returned (a record only says whether it is `propia`). Comments are never logged or audited.
+- **Reminders are really queued.** The server wires `createPgBossRecordatorios(boss)` into the routes; the development scripts open a pg-boss of their own (same `pgboss` schema), create the queues and enqueue only, so the jobs wait for the server's workers (with the notifier) to deliver them.
+- Migration 1900 lets a piece in `con_cambios` be produced again (version N+1) and `assertProducible` accepts it; before, nobody could produce the next version after a client change request.
+- Development scripts (guarded, never on `*_test`): `plan:approve` (replaces `plan:approve-internal`; approves as the seeded CLIENT approver), `piece:approve`, `piece:reopen`, `piece:publicable`, `password:set-dev` (fictional `@example.test` users only). The seed creates the fictional client approver and substitute and names them in `aprobadores_cliente`, never overwriting approvers changed by hand.
+
 ## Known debt
 - **`assertPublicable` checks but does not lock.** Between the check and the publish something could change (a file, a fact, a revocation). Step 10 must call it with the piece locked, or re-check immediately before sending, so nothing changes between the check and the publish.
 - **Step 10 must schedule the reminders again when it changes a piece's `fecha_hora` (rescheduling).** The jobs already queued carry the old deadline; they see the change and do nothing, so without a new schedule nobody is reminded.
 - Spec 11.3 "no approval by the scheduled time: reschedule the piece and warn NovaCiel" belongs to publishing (Step 10).
+- Routes for `reabrirPieza` and for changing a client's approvers (NovaCiel dashboard, Step 11); today only the development scripts reopen a piece.
