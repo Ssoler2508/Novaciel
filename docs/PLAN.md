@@ -145,6 +145,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Image consent in the US: is "end date required + revocation" enough legally?
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
+- Retirement of NovaCiel's internal review (spec 11.1: after 4 weeks per client, then per piece type after 20 pieces approved without changes): Step 9 keeps it always required (see docs/ADR-05_APROBACION_DOS_NIVELES.md). When do we build the retirement?
 
 ## Decided
 - Table and column names in Spanish (Senior, 2026-10-07).

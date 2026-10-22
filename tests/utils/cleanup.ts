@@ -1,3 +1,4 @@
+import { runInTransaction } from '../../src/db/transaction.js';
 import type { Db } from '../../src/db/types.js';
 import { assertTestDatabase } from './guard.js';
 
@@ -13,6 +14,10 @@ export const DOMAIN_TABLES: readonly string[] = [
   'autorizaciones_gasto',
   'topes',
   'conexiones_redes',
+  // Append-only tables: the TRUNCATE below sets the flag that lets them be emptied (test databases only).
+  'aprobaciones_plan',
+  'aprobaciones',
+  'aprobadores_cliente',
   'producciones_fuentes',
   'producciones_archivos',
   'producciones',
@@ -41,5 +46,10 @@ export async function cleanupDomainTables(db: Db): Promise<void> {
   await assertTestDatabase(db);
   if (DOMAIN_TABLES.length === 0) return;
   const list = DOMAIN_TABLES.map((table) => `"${table}"`).join(', ');
-  await db.query(`TRUNCATE ${list} CASCADE`);
+  // aprobaciones and aprobaciones_plan are append-only and refuse TRUNCATE unless this flag is set in the
+  // transaction AND the database name ends in _test. Only this helper sets it.
+  await runInTransaction(db, async (tx) => {
+    await tx.query(`SELECT set_config('novaciel.permitir_truncate', 'si', true)`);
+    await tx.query(`TRUNCATE ${list} CASCADE`);
+  });
 }
