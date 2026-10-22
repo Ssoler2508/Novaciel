@@ -98,7 +98,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 ### Step 7 — Production with real media (carousels first)
 - ✅ 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
 - ✅ 7b: video cuts and assembly with FFmpeg (native).
-- 7c: animated templates and word-level subtitles with Remotion. **Unblocked on a condition (2026-10-21):** NovaCiel is 3 people, so the free license applies; the contractor question (3 or 4 people) is open for NovaCiel before production use. Design, license gate and decisions in `docs/ADR-06_REMOTION_LICENCIA.md`; `REMOTION_LICENCIA` has no default (unset = Remotion disabled, reels keep the 7b overlays).
+- 7c: animated templates and word-level subtitles with Remotion. **Unblocked (2026-10-22):** NovaCiel is 3 people and its Remotion account is on the free plan (confirmed by the developer); use `REMOTION_LICENCIA=gratuita`, no `licenseKey`, nothing is sent to Remotion. The contractor question (3 or 4 people) is open for NovaCiel before production use. Design, license gate and decisions in `docs/ADR-06_REMOTION_LICENCIA.md`; `REMOTION_LICENCIA` has no default (unset = Remotion disabled, reels keep the 7b overlays).
 - 7d: voice. Provider chosen before this sub-step.
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
@@ -140,7 +140,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Is the shared Claude Pro account allowed, or should we use a team plan?
 - Production PostgreSQL version and operating system (to align with local 18 and the compose file's 16).
 - Production S3-compatible storage service (AWS S3, Cloudflare R2, Backblaze B2…).
-- Remotion license (ADR-06): NovaCiel is 3 people as of 2026-10-21, so the free license applies. **Open:** the developer is a freelance contractor; if a contractor counts as a person, NovaCiel is 4 and needs the company license (decides 3 vs 4; before production use). Also open: whether NovaCiel has a Remotion account, and whether running Remotion for clients' videos is covered (before selling the system). Review triggers: a 4th person, selling the system, upgrading past 4.0.x.
+- Remotion license (ADR-06): NovaCiel is 3 people and its account is on the free plan (confirmed 2026-10-22; no `licenseKey`, nothing sent to Remotion). **Open:** the developer is a freelance contractor; if a contractor counts as a person, NovaCiel is 4 and needs the company license (3 vs 4; before production use). Review triggers: a 4th person, selling the system, upgrading past 4.0.x.
 - Does "the system in Spanish" also cover code, comments and commits, or only domain names and interface? (Today: code in English.)
 - Content language per client: will any client need English? (before onboarding the first client)
 - Confirm the `clientes` and `usuarios` columns, the JSON keys of the profile blocks and the required fields per block (proposed in Step 2, see ADR-04).
