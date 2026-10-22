@@ -103,6 +103,8 @@ const schema = z
     // Absolute path of the Chrome Headless Shell that Remotion renders with. Optional: by default the one that
     // `npm run remotion:browser` downloaded into node_modules/.remotion is used.
     REMOTION_NAVEGADOR: z.string().min(1).optional(),
+    // Time limit of the render of ONE scene's text layer.
+    REMOTION_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(1_800_000).default(300_000),
     // Default 200 MiB; bounds 1 MiB to 2 GiB.
     MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
@@ -190,6 +192,8 @@ export interface RemotionConfig {
   licencia: 'gratuita' | 'empresa' | undefined;
   /** Absolute path of the browser executable, or undefined: the downloaded one. */
   navegador: string | undefined;
+  /** Time limit of one scene's text-layer render. */
+  timeoutMs: number;
 }
 
 export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
@@ -273,7 +277,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       ffmpegTimeoutMs: result.data.FFMPEG_TIMEOUT_MS,
       maxBytes: result.data.MEDIA_MAX_BYTES,
     },
-    remotion: { licencia: result.data.REMOTION_LICENCIA, navegador: result.data.REMOTION_NAVEGADOR },
+    remotion: { licencia: result.data.REMOTION_LICENCIA, navegador: result.data.REMOTION_NAVEGADOR, timeoutMs: result.data.REMOTION_TIMEOUT_MS },
   };
 }
 

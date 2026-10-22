@@ -6,6 +6,7 @@ import { FfmpegRunError } from '../lib/media/ffmpeg/runFfmpeg.js';
 import { FfmpegToolingError } from '../lib/media/ffmpeg/tooling.js';
 import { getPieza } from '../modules/piezas/index.js';
 import {
+  CapaTextoError,
   DuracionTotalFueraDeRangoError,
   EscenaMasLargaQueLaFuenteError,
   EscenaSinVideoError,
@@ -14,6 +15,8 @@ import {
   HdrNoSoportadoError,
   MarcasFueraDeRangoError,
   ReelNoConfiguradoError,
+  RemotionLicenciaNoConfiguradaError,
+  RemotionNoDisponibleError,
   SalidaInvalidaError,
   TimelineInvalidoError,
 } from '../modules/produccion/index.js';
@@ -159,6 +162,9 @@ describe('piece:produce: one clear line for every reel error, never the text, a 
     ['FfmpegRun', new FfmpegRunError('filtro', 1), /^FFmpeg failed \(filtro, exit code 1\); nothing was kept$/],
     ['FfmpegTooling', new FfmpegToolingError('missing', ['libx264']), /^FFmpeg is missing what reel production needs: libx264 \(check FFMPEG_PATH/],
     ['ReelNoConfigurado', new ReelNoConfiguradoError(), /^Reel production is not configured in this process$/],
+    ['RemotionLicenciaNoConfigurada', new RemotionLicenciaNoConfiguradaError(), /^Remotion is disabled: REMOTION_LICENCIA is not set/],
+    ['RemotionNoDisponible', new RemotionNoDisponibleError('navegador_ausente'), /^The animated text engine is not available \(navegador_ausente\); run npm run remotion:browser/],
+    ['CapaTexto', new CapaTextoError('tiempo_agotado'), /^The animated text layer could not be rendered \(tiempo_agotado\); nothing was kept$/],
     ['FormatoNoSoportado', new FormatoNoSoportadoError('tiktok', 'carrusel'), /^The format carrusel has no defined size for tiktok/],
   ];
   it.each(cases)('%s', (_name, error, expected) => {

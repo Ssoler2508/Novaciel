@@ -6,6 +6,9 @@ import { PlanNoAprobadoError, PlanNotFoundError } from '../modules/planificador/
 import { getPlan } from '../modules/planificador/planesRepository.js';
 import {
   BriefConFaltantesError,
+  CapaTextoError,
+  RemotionLicenciaNoConfiguradaError,
+  RemotionNoDisponibleError,
   DuracionTotalFueraDeRangoError,
   EscenaMasLargaQueLaFuenteError,
   EscenaSinVideoError,
@@ -50,6 +53,7 @@ function describe(deps: PieceProduceDeps, done: PiezaProducida): string[] {
     const where = deps.localPath ? deps.localPath(a.clave_almacenamiento) : a.clave_almacenamiento;
     lines.push(`  ${a.orden}. ${a.ancho}x${a.alto} ${a.mime} ${a.tamano_bytes} bytes sha256 ${a.sha256}`);
     if (a.duracion_ms !== null) {
+      lines.push(`     template: ${produccion.plantilla === null ? 'none (PNG overlays)' : `${produccion.plantilla} v${produccion.plantilla_version}`}`);
       lines.push(`     video: ${(a.duracion_ms / 1000).toFixed(1)} s, ${a.fps} fps, ${a.codec_video}/${a.codec_audio}`);
       for (const f of a.fuentes) lines.push(`     scene ${f.escena}: media ${f.media_id} ${f.entrada_ms}-${f.salida_ms} ms`);
     }
@@ -128,6 +132,10 @@ export function failureLine(error: unknown): string {
   if (error instanceof SalidaInvalidaError) return `The rendered reel was refused and nothing was kept (${error.razon}${error.detalle === undefined ? '' : `: ${error.detalle}`})`;
   if (error instanceof FfmpegRunError) return `FFmpeg failed (${error.categoria}${error.exitCode === undefined ? '' : `, exit code ${error.exitCode}`}); nothing was kept`;
   if (error instanceof FfmpegToolingError) return `${error.message} (check FFMPEG_PATH and FFPROBE_PATH, see .env.example)`;
+  // Animated text (Step 7c): fixed messages only, never the text.
+  if (error instanceof RemotionLicenciaNoConfiguradaError) return 'Remotion is disabled: REMOTION_LICENCIA is not set (see docs/ADR-06_REMOTION_LICENCIA.md)';
+  if (error instanceof RemotionNoDisponibleError) return `The animated text engine is not available (${error.razon}); run npm run remotion:browser once (needs the network) and check REMOTION_NAVEGADOR`;
+  if (error instanceof CapaTextoError) return `The animated text layer could not be rendered (${error.razon}); nothing was kept`;
   if (error instanceof ReelNoConfiguradoError) return 'Reel production is not configured in this process';
   return `Production failed (${error instanceof Error ? error.name : 'unknown error'})`;
 }
