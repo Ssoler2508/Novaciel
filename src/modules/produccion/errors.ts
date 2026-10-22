@@ -208,7 +208,7 @@ export class HdrNoSoportadoError extends Error {
   }
 }
 
-export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control';
+export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control' | 'ruta_con_patron';
 
 /** A path given to the argument builder is missing, extra, relative, or has control characters. Paths are never echoed. */
 export class RutaInvalidaError extends Error {

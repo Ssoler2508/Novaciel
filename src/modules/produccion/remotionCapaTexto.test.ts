@@ -11,7 +11,7 @@ import { FakeCapaTextoAnimado, nombreFotogramaCapa, renderizarCapaEscena } from 
 import { elegirColores } from './colors.js';
 import { CapaTextoError, RemotionLicenciaNoConfiguradaError, RemotionNoDisponibleError, UnsupportedGlyphsError } from './errors.js';
 import { construirPropsPlantilla, type PropsPlantilla } from './propsPlantilla.js';
-import { claveDeBundle, FORMATO_BUNDLE, obtenerBundle, POLITICA_CSP, type OpcionesBundle } from './remotionBundle.js';
+import { claveDeBundle, FORMATO_BUNDLE, obtenerBundle, META_DNS_PREFETCH, POLITICA_CSP, type OpcionesBundle } from './remotionBundle.js';
 import {
   borrarCapas,
   crearCapaTextoRemotion,
@@ -261,7 +261,45 @@ describe('the adapter: a render', () => {
     expect(proyecto.empaquetados).toBe(1);
     const carpetas = (await readdir(proyecto.cache)).filter((n) => n.startsWith('bundle-'));
     expect(carpetas).toHaveLength(1);
-    expect(await readFile(path.join(proyecto.cache, carpetas[0]!, 'index.html'), 'utf8')).toContain(POLITICA_CSP);
+    const html = await readFile(path.join(proyecto.cache, carpetas[0]!, 'index.html'), 'utf8');
+    expect(html).toContain(POLITICA_CSP);
+    expect(html).toContain(META_DNS_PREFETCH);
+    expect(META_DNS_PREFETCH).toBe('<meta http-equiv="x-dns-prefetch-control" content="off" />');
+  });
+
+  describe('the bundle policy', () => {
+    const directivas = new Map(POLITICA_CSP.split('; ').map((d) => [d.split(' ')[0]!, d.split(' ').slice(1)] as const));
+    const permitidos = new Set(["'self'", 'blob:', 'data:', "'unsafe-inline'", "'unsafe-eval'", "'none'"]);
+
+    it('is based on default-src, which allows only the bundle origin, data: and blob:', () => {
+      expect(POLITICA_CSP.startsWith("default-src 'self' blob: data:")).toBe(true);
+      expect(directivas.get('default-src')).toEqual(["'self'", 'blob:', 'data:']);
+    });
+
+    it.each(['script-src', 'font-src', 'img-src', 'connect-src', 'worker-src', 'frame-src'])('covers %s without any external host', (nombre) => {
+      const valores = directivas.get(nombre);
+      expect(valores).toBeDefined();
+      expect(valores!.length).toBeGreaterThan(0);
+      for (const v of valores!) expect(permitidos.has(v), `${nombre} allows ${v}`).toBe(true);
+      expect(valores!.some((v) => v === '*' || /^(https?|wss?|ftp):/.test(v) || v.includes('.'))).toBe(false);
+    });
+
+    it('declares worker-src explicitly and frames as none', () => {
+      expect(directivas.get('worker-src')).toEqual(["'self'", 'blob:']);
+      expect(directivas.get('frame-src')).toEqual(["'none'"]);
+    });
+
+    it('never reuses a cached bundle that lacks the DNS prefetch switch or the policy', async () => {
+      // A cached folder with the policy but WITHOUT the DNS switch (what an older build left) is replaced.
+      const destino = path.join(proyecto.cache, `bundle-${(await claveDeBundle(proyecto.opciones)).slice(0, 20)}`);
+      await mkdir(destino, { recursive: true });
+      const indice = path.join(destino, 'index.html');
+      await writeFile(indice, `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${POLITICA_CSP}" /></head></html>`);
+      await obtenerBundle(proyecto.opciones);
+      expect(proyecto.empaquetados).toBe(1);
+      expect(await readFile(indice, 'utf8')).toContain(META_DNS_PREFETCH);
+      expect(FORMATO_BUNDLE).toBeGreaterThanOrEqual(2);
+    });
   });
 
   it('logs ids, the template and counts, never the text', async () => {

@@ -34,6 +34,9 @@ import {
 } from './errors.js';
 import { computePieceHash, HASH_VERSION } from './pieceHash.js';
 import { getProduccionActual, type ProduccionView } from './produccionRepository.js';
+import { elegirPlantilla } from './plantillas.js';
+import type { CapaTextoAnimado } from './capaTexto.js';
+import type { LicenciaRemotion } from './remotionLicencia.js';
 import { renderReel, type ReelRenderDeps, type ReelRenderInput } from './reelRenderer.js';
 import { renderSlide } from './renderer.js';
 
@@ -60,6 +63,12 @@ export interface ReelRuntime {
   /** For tests. */
   runFfmpeg?: ReelRenderDeps['runFfmpeg'];
   probeVideo?: ReelRenderDeps['probeVideo'];
+  /**
+   * The animated text templates (Step 7c). Absent, or with no license declared: no template is picked and the
+   * reel keeps the 7b PNG overlays. Present and a template picked: the template is used and any failure of it
+   * fails the piece (no silent downgrade).
+   */
+  remotion?: { licencia: LicenciaRemotion | undefined; capaTexto: CapaTextoAnimado; timeoutMs?: number };
 }
 
 export interface ProduccionDeps {
@@ -202,6 +211,8 @@ interface Guardado {
   video?: { duracionMs: number; fps: number; codecVideo: string; codecAudio: string };
   /** Video files only: the stretch of each clip used, scene by scene. */
   fuentes?: { escena: number; mediaId: string; entradaMs: number; salidaMs: number }[];
+  /** Reels only: the template the text was drawn with, or null for the PNG overlays. */
+  plantilla?: { id: string; version: number } | null;
 }
 
 /**
@@ -214,6 +225,7 @@ async function renderizarYGuardarReel(args: {
   deps: ProduccionDeps;
   log: Logger;
   clienteId: ClienteId;
+  pieza: PiezaRow;
   brief: GuionView;
   kitVisual: unknown;
   claves: ReadonlyMap<string, string>;
@@ -239,10 +251,19 @@ async function renderizarYGuardarReel(args: {
     ...(runtime.tempRoot !== undefined ? { tempRoot: runtime.tempRoot } : {}),
     ...(runtime.runFfmpeg !== undefined ? { runFfmpeg: runtime.runFfmpeg } : {}),
     ...(runtime.probeVideo !== undefined ? { probeVideo: runtime.probeVideo } : {}),
+    ...(runtime.remotion ? { capaTexto: runtime.remotion.capaTexto, ...(runtime.remotion.timeoutMs !== undefined ? { capaTimeoutMs: runtime.remotion.timeoutMs } : {}) } : {}),
   };
+  // CODE picks the template (the brief does not): the client's default or the piece's "trabajo". No runtime or no license: none.
+  const plantilla = runtime.remotion ? elegirPlantilla({ licencia: runtime.remotion.licencia, kitVisual: args.kitVisual, trabajo: args.pieza.trabajo }) : null;
   return renderReel(
     renderDeps,
-    { guion: brief, fuentes: Object.fromEntries(claves), kitVisual: args.kitVisual, ...(runtime.outputSpec !== undefined ? { outputSpec: runtime.outputSpec } : {}) },
+    {
+      guion: brief,
+      fuentes: Object.fromEntries(claves),
+      kitVisual: args.kitVisual,
+      ...(plantilla ? { plantilla: { id: plantilla.id, version: plantilla.version } } : {}),
+      ...(runtime.outputSpec !== undefined ? { outputSpec: runtime.outputSpec } : {}),
+    },
     async (reel) => {
       const clave = `${clienteId}/producidos/${randomUUID()}.mp4`;
       await deps.storage.putFile(clave, reel.ruta, 'video/mp4');
@@ -263,6 +284,7 @@ async function renderizarYGuardarReel(args: {
           codecAudio: reel.facts.audio!.codec,
         },
         fuentes: reel.timeline.segmentos.map((s) => ({ escena: s.escena, mediaId: s.mediaId, entradaMs: s.inicioMs, salidaMs: s.inicioMs + s.duracionMs })),
+        plantilla: reel.plantilla,
       };
     },
   );
@@ -314,6 +336,7 @@ export async function producirPieza(
           deps,
           log,
           clienteId,
+          pieza,
           brief,
           kitVisual,
           claves,
@@ -413,8 +436,8 @@ export async function producirPieza(
       }
       const { rows: produccionRows } = await tx.query<{ id: string }>(
         `INSERT INTO producciones
-           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por)
-         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version)
+         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
         [
           clienteId,
           piezaId,
@@ -428,6 +451,8 @@ export async function producirPieza(
           HASH_VERSION,
           hashPieza,
           actor.tipo === 'usuario' ? actor.usuarioId : null,
+          guardados[0]?.plantilla?.id ?? null,
+          guardados[0]?.plantilla?.version ?? null,
         ],
       );
       const produccionId = produccionRows[0]!.id;

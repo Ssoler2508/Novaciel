@@ -231,3 +231,41 @@ describe('buildFfmpegArgs: no client text reaches an argument', () => {
     expect(graph).not.toContain('drawtext');
   });
 });
+
+describe('buildFfmpegArgs: a PNG sequence overlay (Step 7c)', () => {
+  const timeline = buildReelTimeline(guion(['Hello', '', '']), LIBRARY);
+  const carpeta = abs('work', 'capa-1');
+
+  it('reads the sequence as an image2 input at 30 fps from frame 0, with the same overlay filter', () => {
+    const args = buildFfmpegArgs(timeline, { ...PATHS, overlays: { 1: { carpeta, patron: 'capa-%05d.png' } } });
+    const joined = args.join(' ');
+    expect(joined).toContain(`-framerate 30 -start_number 0 -f image2 -i file:${carpeta}/capa-%05d.png`);
+    expect(joined).not.toContain('-loop 1');
+    expect(joined).toContain('[b1][o1]overlay=0:0:format=auto:shortest=1[v1]');
+    // Same scenes, same output flags as the PNG version.
+    const png = buildFfmpegArgs(timeline, PATHS);
+    expect(args.slice(args.indexOf('-map'))).toEqual(png.slice(png.indexOf('-map')));
+  });
+
+  it('refuses a folder with % or control characters, a foreign pattern and a missing sequence', () => {
+    const reason = (overlays: ReelPaths['overlays']) => {
+      try {
+        buildFfmpegArgs(timeline, { ...PATHS, overlays });
+      } catch (error) {
+        return (error as RutaInvalidaError).reason;
+      }
+      throw new Error('expected a refusal');
+    };
+    expect(reason({ 1: { carpeta: abs('work', '50%'), patron: 'capa-%05d.png' } })).toBe('ruta_con_patron');
+    expect(reason({ 1: { carpeta: `${abs('work')}${path.sep}a\nb`, patron: 'capa-%05d.png' } })).toBe('ruta_con_caracter_de_control');
+    expect(reason({ 1: { carpeta: 'relative', patron: 'capa-%05d.png' } })).toBe('ruta_no_absoluta');
+    expect(reason({ 1: { carpeta, patron: '%d.png' } })).toBe('overlay_faltante');
+    expect(reason({})).toBe('overlay_faltante');
+    expect(reason({ 1: { carpeta, patron: 'capa-%05d.png' }, 2: { carpeta, patron: 'capa-%05d.png' } })).toBe('overlay_sobrante');
+  });
+
+  it('carries no client text: only the folder is a free string', () => {
+    const args = buildFfmpegArgs(buildReelTimeline(guion(['SECRET copy', '', '']), LIBRARY), { ...PATHS, overlays: { 1: { carpeta, patron: 'capa-%05d.png' } } });
+    expect(args.join('\n')).not.toContain('SECRET');
+  });
+});

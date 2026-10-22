@@ -11,10 +11,14 @@ import { FfmpegRunError, runFfmpeg as defaultRunFfmpeg } from '../../lib/media/f
 import type { FfmpegTooling } from '../../lib/media/ffmpeg/tooling.js';
 import { MediaProbeError } from '../../lib/media/probe/types.js';
 import type { Storage } from '../../lib/media/storage/types.js';
-import { FuenteDeVideoIlegibleError, SalidaInvalidaError } from './errors.js';
-import { buildFfmpegArgs, DEFAULT_REEL_OUTPUT, type ReelOutputSpec } from './reelFfmpegArgs.js';
+import { type CapaTextoAnimado, renderizarCapaEscena } from './capaTexto.js';
+import { elegirColores } from './colors.js';
+import { CapaTextoError, FuenteDeVideoIlegibleError, RemotionNoDisponibleError, SalidaInvalidaError } from './errors.js';
+import { crearMedidor } from './medidor.js';
+import { construirPropsPlantilla, type PropsPlantilla } from './propsPlantilla.js';
+import { buildFfmpegArgs, DEFAULT_REEL_OUTPUT, type ReelOutputSpec, type ReelOverlayInput } from './reelFfmpegArgs.js';
 import { renderReelOverlay } from './reelOverlay.js';
-import { buildReelTimeline, type ReelGuionInput, type ReelSourceMeta, type ReelTimeline } from './reelTimeline.js';
+import { buildReelTimeline, REEL_ALTO, REEL_ANCHO, REEL_FPS, type ReelGuionInput, type ReelSourceMeta, type ReelTimeline } from './reelTimeline.js';
 import { verifyReelOutput } from './reelVerify.js';
 
 // The reel renderer (Step 7b): real video clips in, one verified MP4 out.
@@ -24,7 +28,10 @@ import { verifyReelOutput } from './reelVerify.js';
 // REAL MEDIA ONLY: FFmpeg cuts, crops, scales, joins and encodes the client's own clips and overlays
 // the PNGs; nothing is generated. Everything happens in a temporary folder of its own that is ALWAYS
 // removed. The output file only exists while `alRenderizar` runs, so the caller stores it there.
-// FFmpeg's stderr is never logged or returned; the log has the exit code and a fixed category.
+// With a TEMPLATE (Step 7c) the text overlays are transparent PNG sequences drawn by the CapaTextoAnimado port
+// (Remotion) instead of the static PNGs; FFmpeg overlays them the same way, and the timeline, the encoding, the
+// metadata stripping and the verification are unchanged. A chosen template never degrades silently: any failure
+// of the layer fails the render. FFmpeg's stderr is never logged or returned; the log has the exit code and a fixed category.
 
 export interface ReelRenderDeps {
   storage: Pick<Storage, 'getFile'>;
@@ -42,7 +49,13 @@ export interface ReelRenderDeps {
   /** For tests. */
   runFfmpeg?: typeof defaultRunFfmpeg;
   probeVideo?: typeof defaultProbeVideo;
+  /** The animated text layer (Remotion adapter). Required when the input names a template. */
+  capaTexto?: CapaTextoAnimado;
+  /** Time limit of each scene's layer, in ms. */
+  capaTimeoutMs?: number;
 }
+
+const CAPA_TIMEOUT_POR_DEFECTO_MS = 120_000;
 
 export interface ReelRenderInput {
   guion: ReelGuionInput;
@@ -51,6 +64,8 @@ export interface ReelRenderInput {
   /** The profile's kit_visual (read only for its brand colors). */
   kitVisual: unknown;
   fuente?: string;
+  /** The animated template to draw the text with (id and version from the registry). Absent: the 7b PNG overlays. */
+  plantilla?: { id: string; version: number };
   /** Overrides of the encoding values (tests). The tone-mapping capability always comes from the tooling check. */
   outputSpec?: Partial<Omit<ReelOutputSpec, 'hdrToneMap'>>;
 }
@@ -63,6 +78,8 @@ export interface ReelRenderResult {
   /** What ffprobe reports about the output (already verified). */
   facts: VideoFacts;
   timeline: ReelTimeline;
+  /** The template the text was drawn with, or null for the PNG overlays. */
+  plantilla: { id: string; version: number } | null;
 }
 
 async function hashFile(filePath: string): Promise<Buffer> {
@@ -88,10 +105,26 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
 
   // 1. Cheap refusals first, before a byte is downloaded: FFmpeg capabilities, then the text of every scene.
   const tooling = await deps.tooling();
+  const plantilla = input.plantilla ?? null;
   const overlays = new Map<number, Buffer>();
-  for (const escena of input.guion.contenido.escenas) {
-    const overlay = renderReelOverlay(escena.texto_en_pantalla, input.kitVisual, input.fuente);
-    if (overlay) overlays.set(escena.orden, overlay.png);
+  const propsDe = new Map<number, PropsPlantilla>();
+  if (plantilla === null) {
+    for (const escena of input.guion.contenido.escenas) {
+      const overlay = renderReelOverlay(escena.texto_en_pantalla, input.kitVisual, input.fuente);
+      if (overlay) overlays.set(escena.orden, overlay.png);
+    }
+  } else {
+    if (!deps.capaTexto) throw new RemotionNoDisponibleError('paquete_ausente');
+    // The props of every scene (glyphs, fit, word timing) are checked here, before anything is downloaded. The
+    // frames of a scene are the same number the timeline will compute from its duration.
+    const colores = elegirColores(input.kitVisual);
+    const medir = crearMedidor(input.fuente);
+    for (const escena of input.guion.contenido.escenas) {
+      const fotogramas = typeof escena.duracion_s === 'number' && Number.isFinite(escena.duracion_s) ? Math.round(escena.duracion_s * REEL_FPS) : 0;
+      if (fotogramas < 1) continue; // the timeline refuses this scene with its own typed error
+      const props = construirPropsPlantilla({ plantilla, escena: { orden: escena.orden, texto: escena.texto_en_pantalla, fotogramas }, fps: REEL_FPS, colores, ancho: REEL_ANCHO, alto: REEL_ALTO, medir });
+      if (props) propsDe.set(escena.orden, props);
+    }
   }
 
   const carpeta = await mkdtemp(path.join(deps.tempRoot ?? os.tmpdir(), 'novaciel-reel-'));
@@ -119,12 +152,28 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
 
     // 3. Timeline, overlays on disk, arguments.
     const timeline = buildReelTimeline(input.guion, meta);
-    const rutasOverlay: Record<number, string> = {};
+    const rutasOverlay: Record<number, ReelOverlayInput> = {};
+    let msRemotion = 0;
     for (const segmento of timeline.segmentos) {
       if (!segmento.overlay) continue;
-      const ruta = path.join(carpeta, `ov-${segmento.escena}.png`);
-      await writeFile(ruta, overlays.get(segmento.escena)!);
-      rutasOverlay[segmento.escena] = ruta;
+      if (plantilla === null) {
+        const ruta = path.join(carpeta, `ov-${segmento.escena}.png`);
+        await writeFile(ruta, overlays.get(segmento.escena)!);
+        rutasOverlay[segmento.escena] = ruta;
+        continue;
+      }
+      // One layer per scene with text, in a folder of its own inside the temp folder (removed with it).
+      const props = propsDe.get(segmento.escena);
+      if (!props || props.fotogramas !== segmento.frames) throw new CapaTextoError('salida_incompleta');
+      const inicio = Date.now();
+      const capa = await renderizarCapaEscena(
+        deps.capaTexto!,
+        { plantilla: plantilla.id, version: plantilla.version, props, ancho: timeline.ancho, alto: timeline.alto, fps: REEL_FPS, fotogramas: segmento.frames },
+        { carpeta: path.join(carpeta, `capa-${segmento.escena}`), timeoutMs: deps.capaTimeoutMs ?? CAPA_TIMEOUT_POR_DEFECTO_MS },
+      );
+      msRemotion += Date.now() - inicio;
+      if (!capa || capa.fotogramas !== segmento.frames) throw new CapaTextoError('salida_incompleta');
+      rutasOverlay[segmento.escena] = { carpeta: capa.carpeta, patron: capa.patron };
     }
     const salida = path.join(carpeta, 'salida.mp4');
     const args = buildFfmpegArgs(timeline, { fuentes: rutasFuente, overlays: rutasOverlay, salida }, { ...DEFAULT_REEL_OUTPUT, ...input.outputSpec, hdrToneMap: tooling.hdr });
@@ -159,9 +208,9 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
       throw error;
     }
     const sha256 = await hashFile(salida);
-    log?.info({ escenas: timeline.segmentos.length, fotogramas: timeline.totalFrames, tamanoBytes: tamano, overlays: overlays.size }, 'reel rendered');
+    log?.info({ escenas: timeline.segmentos.length, fotogramas: timeline.totalFrames, tamanoBytes: tamano, overlays: plantilla === null ? overlays.size : propsDe.size, plantilla: plantilla?.id ?? null, plantillaVersion: plantilla?.version ?? null, remotionMs: msRemotion }, 'reel rendered');
 
-    return await alRenderizar({ ruta: salida, sha256, tamano, facts, timeline });
+    return await alRenderizar({ ruta: salida, sha256, tamano, facts, timeline, plantilla });
   } finally {
     await rm(carpeta, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }

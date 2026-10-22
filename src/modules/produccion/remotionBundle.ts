@@ -16,7 +16,7 @@ import { CapaTextoError, RemotionNoDisponibleError } from './errors.js';
 // with it, never.)
 
 /** Bump when the post-build steps below change, so older cached bundles are not reused. */
-export const FORMATO_BUNDLE = 1;
+export const FORMATO_BUNDLE = 2;
 
 /** Only the bundle's own origin, data: and blob:. No other host for anything (scripts, styles, images, fonts, fetch). */
 export const POLITICA_CSP = [
@@ -27,6 +27,7 @@ export const POLITICA_CSP = [
   "font-src 'self' data: blob:",
   "connect-src 'self' data: blob:",
   "media-src 'self' data: blob:",
+  "worker-src 'self' blob:",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -34,6 +35,9 @@ export const POLITICA_CSP = [
 ].join('; ');
 
 const META_CSP = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_CSP}" />`;
+/** The CSP does not cover DNS prefetch (a lookup leaks a host name without a request), so it is switched off too. */
+export const META_DNS_PREFETCH = '<meta http-equiv="x-dns-prefetch-control" content="off" />';
+const METAS_RED = `${META_CSP}${META_DNS_PREFETCH}`;
 const PAQUETES_CLAVE = ['remotion', '@remotion/renderer', '@remotion/bundler', 'react', 'react-dom'] as const;
 const FUENTES = ['inter-latin-400-normal.woff2', 'inter-latin-700-normal.woff2'] as const;
 
@@ -109,7 +113,7 @@ async function empaquetarConRemotion(o: { entryPoint: string; rootDir: string; o
 /** True when the folder holds a finished bundle WITH the policy (a bundle without it is never reused). */
 async function bundleValido(carpeta: string): Promise<boolean> {
   try {
-    return (await readFile(path.join(carpeta, 'index.html'), 'utf8')).includes(META_CSP);
+    return (await readFile(path.join(carpeta, 'index.html'), 'utf8')).includes(METAS_RED);
   } catch {
     return false;
   }
@@ -123,11 +127,11 @@ async function construir(o: OpcionesBundle, destino: string): Promise<void> {
     for (const fuente of FUENTES) await cp(path.join(o.carpetaFuentes, fuente), path.join(publico, 'fonts', fuente));
     const empaquetar = o.empaquetar ?? empaquetarConRemotion;
     const salida = await empaquetar({ entryPoint: puntoDeEntrada(o.raizRemotion), rootDir: o.raizProyecto, outDir: temporal, publicDir: publico });
-    // The post-build step: the policy goes into the page. Refuse a bundle where it did not take.
+    // The post-build step: the policy and the DNS prefetch switch go into the page. Refuse a bundle where it did not take.
     const indice = path.join(salida, 'index.html');
     const html = await readFile(indice, 'utf8');
     if (!html.includes('<head>')) throw new CapaTextoError('fallo_de_bundle');
-    await writeFile(indice, html.replace('<head>', `<head>${META_CSP}`));
+    await writeFile(indice, html.replace('<head>', `<head>${METAS_RED}`));
     if (!(await bundleValido(salida))) throw new CapaTextoError('fallo_de_bundle');
     try {
       await rename(salida, destino);
