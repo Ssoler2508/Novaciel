@@ -22,6 +22,9 @@ export interface ProduccionRow {
   ubicacion: string | null;
   hash_version: string;
   hash_pieza: Buffer;
+  /** The animated text template (Step 7c), or null. */
+  plantilla: string | null;
+  plantilla_version: number | null;
   creado_por: string | null;
   creado_en: Date;
 }
@@ -112,6 +115,9 @@ export interface ProduccionOverrides {
   hashVersion?: string;
   hashPieza?: Buffer;
   creadoPor?: string | null;
+  /** The animated text template and its version (both or neither). */
+  plantilla?: string | null;
+  plantillaVersion?: number | null;
   /** The final files, in order (orden 1, 2, ...). Defaults to one file; [] inserts none. */
   archivos?: ArchivoInput[];
 }
@@ -198,8 +204,8 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
   const archivos = overrides.archivos ?? [{}];
   const { rows } = await db.query<ProduccionRow>(
     `INSERT INTO producciones
-       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por)
-     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version)
+     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
     [
       clienteId,
       piezaId,
@@ -213,6 +219,8 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
       overrides.hashVersion ?? 'np1',
       overrides.hashPieza ?? randomBytes(32),
       overrides.creadoPor ?? null,
+      overrides.plantilla ?? null,
+      overrides.plantillaVersion ?? null,
     ],
   );
   const produccion = rows[0]!;

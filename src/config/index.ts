@@ -97,6 +97,9 @@ const schema = z
     // FFmpeg (reel production, Step 7b): the executable and the time limit of one render.
     FFMPEG_PATH: z.string().min(1).default('ffmpeg'),
     FFMPEG_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(1_800_000).default(600_000),
+    // Remotion (Step 7c): the operator's declaration of which Remotion license applies. NO default: unset
+    // means Remotion is disabled (reels keep the 7b PNG overlays). See docs/ADR-06_REMOTION_LICENCIA.md.
+    REMOTION_LICENCIA: z.enum(['gratuita', 'empresa']).optional(),
     // Default 200 MiB; bounds 1 MiB to 2 GiB.
     MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
@@ -179,11 +182,17 @@ export interface MediaConfig {
   maxBytes: number;
 }
 
+export interface RemotionConfig {
+  /** The declared Remotion license, or undefined: Remotion is disabled. */
+  licencia: 'gratuita' | 'empresa' | undefined;
+}
+
 export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
   storage: StorageConfig;
   secrets: SecretsConfig;
   llm: LlmConfig;
   media: MediaConfig;
+  remotion: RemotionConfig;
 };
 
 /** "fake" by default outside production; in production there is no default. */
@@ -259,6 +268,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       ffmpegTimeoutMs: result.data.FFMPEG_TIMEOUT_MS,
       maxBytes: result.data.MEDIA_MAX_BYTES,
     },
+    remotion: { licencia: result.data.REMOTION_LICENCIA },
   };
 }
 

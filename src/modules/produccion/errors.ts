@@ -262,6 +262,35 @@ export class FuenteDeVideoIlegibleError extends Error {
   }
 }
 
+/**
+ * A Remotion code path was called while REMOTION_LICENCIA is unset (Step 7c). The license gate: Remotion
+ * is disabled and the reel falls back to the 7b PNG overlays; nothing is rendered by Remotion.
+ */
+export class RemotionLicenciaNoConfiguradaError extends Error {
+  constructor() {
+    super('Remotion is disabled: REMOTION_LICENCIA is not set (see docs/ADR-06_REMOTION_LICENCIA.md)');
+    this.name = 'RemotionLicenciaNoConfiguradaError';
+  }
+}
+
+/** The animated-text engine or its browser is not available in this process (a deployment fault). */
+export class RemotionNoDisponibleError extends Error {
+  constructor(readonly razon: 'paquete_ausente' | 'navegador_ausente') {
+    super(`The animated text engine is not available: ${razon}`);
+    this.name = 'RemotionNoDisponibleError';
+  }
+}
+
+export type CapaTextoRazon = 'entrada_invalida' | 'fallo_de_render' | 'tiempo_agotado' | 'salida_incompleta';
+
+/** The text layer of a scene could not be drawn. Ids and a fixed reason only: never the text. */
+export class CapaTextoError extends Error {
+  constructor(readonly razon: CapaTextoRazon) {
+    super(`The animated text layer could not be rendered: ${razon}`);
+    this.name = 'CapaTextoError';
+  }
+}
+
 /** A reel was asked for in a process that has no FFmpeg configured. A deployment fault, not a refusal. */
 export class ReelNoConfiguradoError extends Error {
   constructor() {
