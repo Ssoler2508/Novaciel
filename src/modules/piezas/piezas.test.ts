@@ -70,6 +70,7 @@ describe('ALLOWED_TRANSITIONS', () => {
 });
 
 describe('transitionPieza', () => {
+  // Measured 3.2 s idle (all allowed transitions in one test); 15 s leaves room when the machine is busy.
   it('every allowed transition succeeds through the service, with one history row and one audit row', async () => {
     await withTestTransaction(async (db) => {
       const clienteId = await newClient(db);
@@ -107,8 +108,9 @@ describe('transitionPieza', () => {
         expect(audit.length).toBeGreaterThanOrEqual(1); // the service wrote one audit row for this change
       }
     });
-  });
+  }, 15_000);
 
+  // Measured 2.2 s idle (16 x 16 pairs in one test); 15 s leaves room when the machine is busy.
   it('rejects every disallowed pair in the service, before the database (all 16 x 16)', async () => {
     await withTestTransaction(async (db) => {
       const clienteId = await newClient(db);
@@ -143,7 +145,7 @@ describe('transitionPieza', () => {
       }
       expect(wrong).toEqual([]);
     });
-  });
+  }, 15_000);
 
   it('the error and the state it leaves behind contain no content', async () => {
     await withTestTransaction(async (db) => {

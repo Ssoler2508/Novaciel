@@ -216,6 +216,7 @@ describeFfmpeg('probeVideo (the real ffprobe)', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  // Measured 5.0 to 5.7 s idle (builds three real clips with ffmpeg, then runs ffprobe); 15 s leaves room.
   it('reads a clip in a folder with a space and an accent, and the displayed size of a rotated one', async () => {
     const clip = patternClip(dir, 'clip ñá.mp4', { seconds: 2, fps: 25 });
     const facts = await probeVideo(clip, { ffprobePath: 'ffprobe', timeoutMs: 15_000 });
@@ -227,7 +228,7 @@ describeFfmpeg('probeVideo (the real ffprobe)', () => {
       const rotated = await rotatedQuadrantsClip(dir, `rotado-${rotation}.mp4`, rotation, { seconds: 2 });
       expect(await probeVideo(rotated, { ffprobePath: 'ffprobe', timeoutMs: 15_000 })).toMatchObject({ video: { ancho: 810, alto: 1440 } });
     }
-  });
+  }, 15_000);
 
   it('fails with a typed error for a file that is not a video', async () => {
     const bad = path.join(dir, 'bad.mp4');
