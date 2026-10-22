@@ -107,7 +107,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Checks: dimensions and formats per network, text length, banned words, facts against `hechos_verificados`, brand rules.
 - **Done when:** a failing piece is blocked with clear reasons.
 
-### Step 9 — Two-level approval
+### Step 9 — Two-level approval ✅ (merge ` `)
 - Internal review, then client approval, recorded against the exact piece (piece-level hash).
 - Any change to the files, their order, caption, hashtags, alt text or network invalidates the approval.
 - Requires Step 2b (sessions and role checks).
