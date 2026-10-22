@@ -60,11 +60,23 @@ describe('REMOTION_LICENCIA (the license gate)', () => {
     expect(new CapaTextoError('tiempo_agotado')).toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
   });
 
-  it('the assumption behind "gratuita" is written down in one place, with the date and the ADR', () => {
+  it('the assumption behind "gratuita" is written down in one place and matches ADR-06', () => {
     expect(SUPUESTO_LICENCIA.supuesto).toMatch(/at most 3 people/);
-    expect(SUPUESTO_LICENCIA.verificadoEl).toBe('2026-10-21');
+    expect(SUPUESTO_LICENCIA.supuesto).toMatch(/free plan/);
+    expect(SUPUESTO_LICENCIA.planConfirmado).toBe('gratuita');
+    expect(SUPUESTO_LICENCIA.planConfirmadoEl).toBe('2026-10-22');
+    expect(SUPUESTO_LICENCIA.terminosVerificadosEl).toBe('2026-10-21');
+    expect(SUPUESTO_LICENCIA.preguntaAbierta).toMatch(/contractor/);
+    // The confirmed plan is a value the configuration accepts.
+    expect(loadConfig({ ...baseEnv, REMOTION_LICENCIA: SUPUESTO_LICENCIA.planConfirmado }).remotion.licencia).toBe('gratuita');
+    // The ADR says the same: free plan confirmed on that date, the value to use, the open contractor question.
     const adr = readFileSync(new URL(`../../../${SUPUESTO_LICENCIA.adr}`, import.meta.url), 'utf8');
-    expect(adr).toMatch(/Remotion/);
+    expect(adr).toContain(SUPUESTO_LICENCIA.planConfirmadoEl);
+    expect(adr).toContain(SUPUESTO_LICENCIA.terminosVerificadosEl);
+    expect(adr).toContain('REMOTION_LICENCIA=gratuita');
+    expect(adr).toMatch(/freelance contractor/);
+    expect(adr).toMatch(/3 and 4 people/);
+    expect(adr).toMatch(/free plan/);
   });
 });
 

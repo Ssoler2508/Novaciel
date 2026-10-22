@@ -10,13 +10,22 @@ import { RemotionLicenciaNoConfiguradaError } from './errors.js';
 export type LicenciaRemotion = 'gratuita' | 'empresa';
 
 /**
- * The assumption behind "gratuita", written down so it is easy to find and to revisit. It is not checked
- * by any code: when it stops being true, set REMOTION_LICENCIA to "empresa" (after buying the license) or
- * leave it unset.
+ * What "gratuita" rests on, written down so it is easy to find and to revisit (it matches ADR-06). It is
+ * not checked by any code: when it stops being true, set REMOTION_LICENCIA to "empresa" (after buying the
+ * license) or leave it unset. No licenseKey is used and nothing is sent to Remotion.
  */
 export const SUPUESTO_LICENCIA = {
-  supuesto: 'NovaCiel is a for-profit organization of at most 3 people, so the Remotion free license applies',
-  verificadoEl: '2026-10-21',
+  supuesto: 'NovaCiel is a for-profit organization of at most 3 people and its Remotion account is on the free plan',
+  planConfirmado: 'gratuita',
+  /** The developer confirmed that NovaCiel's account is on the free plan. */
+  planConfirmadoEl: '2026-10-22',
+  /** The license terms were last read on the official pages. */
+  terminosVerificadosEl: '2026-10-21',
+  /**
+   * OPEN, for NovaCiel to answer before production use: the developer is a freelance contractor. If a
+   * contractor counts as a person, NovaCiel is 4 people and needs the company license.
+   */
+  preguntaAbierta: 'Does the freelance contractor count as a person of NovaCiel (3 or 4 people)?',
   adr: 'docs/ADR-06_REMOTION_LICENCIA.md',
 } as const;
 

@@ -111,3 +111,12 @@ export { elegirPlantilla, FORMATO_ID_PLANTILLA, getPlantilla, PLANTILLA_POR_TRAB
 export type { Plantilla, TrabajoPieza } from './plantillas.js';
 export { FakeCapaTextoAnimado, nombreFotogramaCapa, PATRON_CAPA } from './capaTexto.js';
 export type { CapaRenderizada, CapaTextoAnimado, EntradaCapa, OpcionesCapa } from './capaTexto.js';
+export { PlantillaInvalidaError, TiemposInvalidosError } from './errors.js';
+export type { PlantillaInvalidaRazon, TiemposInvalidosRazon } from './errors.js';
+export { calcularTiemposPalabras, palabrasDe, REGLAS_TIEMPOS } from './tiemposPalabras.js';
+export type { ReglasTiempos, TiempoPalabra } from './tiemposPalabras.js';
+export { distribuirPalabras } from './lineasPalabras.js';
+export type { EntradaLineas, LineasDistribuidas, PalabraEnLinea } from './lineasPalabras.js';
+export { ALTO_MAXIMO_DEL_TEXTO, posicionDelBloque, RELLENO } from './bloqueTexto.js';
+export { construirPropsPlantilla, esquemaPropsPlantilla } from './propsPlantilla.js';
+export type { EntradaPropsPlantilla, PropsPlantilla } from './propsPlantilla.js';

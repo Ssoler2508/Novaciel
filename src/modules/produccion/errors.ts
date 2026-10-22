@@ -281,6 +281,32 @@ export class RemotionNoDisponibleError extends Error {
   }
 }
 
+export type TiemposInvalidosRazon = 'duracion_invalida' | 'duracion_insuficiente' | 'reglas_invalidas';
+
+/** The word timing cannot be computed for this duration or these rules. A reason only: never the text. */
+export class TiemposInvalidosError extends Error {
+  constructor(readonly razon: TiemposInvalidosRazon) {
+    super(`The word timing is invalid: ${razon}`);
+    this.name = 'TiemposInvalidosError';
+  }
+}
+
+export type PlantillaInvalidaRazon = 'plantilla_desconocida' | 'entrada_invalida' | 'palabras_no_coinciden' | 'props_invalidas';
+
+/**
+ * The props of a text template cannot be built. `campos` are the NAMES of the failing fields (only for
+ * `props_invalidas`), never their values: a value could be client text.
+ */
+export class PlantillaInvalidaError extends Error {
+  constructor(
+    readonly razon: PlantillaInvalidaRazon,
+    readonly campos: readonly string[] = [],
+  ) {
+    super(`The template props are invalid: ${razon}${campos.length > 0 ? ` (${campos.join(', ')})` : ''}`);
+    this.name = 'PlantillaInvalidaError';
+  }
+}
+
 export type CapaTextoRazon = 'entrada_invalida' | 'fallo_de_render' | 'tiempo_agotado' | 'salida_incompleta';
 
 /** The text layer of a scene could not be drawn. Ids and a fixed reason only: never the text. */
