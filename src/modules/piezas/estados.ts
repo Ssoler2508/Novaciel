@@ -55,10 +55,15 @@ const SIDE_EXITS: readonly Pair[] = [
   ['esperando_aprobacion', 'rechazada'],
   ['programada', 'fallo_publicacion'],
   ['fallo_publicacion', 'programada'],
+  // Step 9 (docs/ADR-05_APROBACION_DOS_NIVELES.md): spec 11.3 says any change after approval voids it, but section 15 has no way
+  // back from `aprobada` or `programada`. Only NovaCiel uses them (the database refuses a client
+  // user; the service asks for manage_plans).
+  ['aprobada', 'con_cambios'],
+  ['programada', 'con_cambios'],
 ];
 
 /**
- * All allowed (desde, hacia) pairs: 11 + 6 + 13 into `pausada` + 13 out of it = 43. Leaving
+ * All allowed (desde, hacia) pairs: 11 + 8 + 13 into `pausada` + 13 out of it = 45. Leaving
  * `pausada` is further restricted to the piece's own `estado_previo` (see canTransition).
  */
 export const ALLOWED_TRANSITIONS: readonly Pair[] = [

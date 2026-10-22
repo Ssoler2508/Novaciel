@@ -112,10 +112,13 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Any change to the files, their order, caption, hashtags, alt text or network invalidates the approval.
 - Requires Step 2b (sessions and role checks).
 - **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
+- Built on branch `step-09` (checkpoints A to E); design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`. Pending the developer's manual check and merge.
 
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
 - Publishes only approved pieces; recomputes and verifies the piece-level hash before sending.
+- When it changes a piece's `fecha_hora` (rescheduling), it must schedule the approval reminders again (Step 9 jobs carry the old deadline and become no-ops; ADR-05, known debt).
+- Calls `assertPublicable` (Step 9) with the piece LOCKED, or re-checks immediately before sending: the gate checks but does not lock (ADR-05, known debt).
 - Network credentials come from `conexiones_redes` (Step 2b), decrypted only at the moment of use.
 - Metrics collection after publishing.
 - **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.
@@ -145,6 +148,9 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Image consent in the US: is "end date required + revocation" enough legally?
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
+- Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
+- Exact time of the substitute approver's turn (spec 11.3 says only "after the reminders"): Step 9 uses 2 h before the scheduled time, configurable in the reminder rules (`suplenteHoras`). Confirm with the Senior.
+- Retirement of NovaCiel's internal review (spec 11.1: after 4 weeks per client, then per piece type after 20 pieces approved without changes): Step 9 keeps it always required (see docs/ADR-05_APROBACION_DOS_NIVELES.md). When do we build the retirement?
 
 ## Decided
 - Table and column names in Spanish (Senior, 2026-10-07).

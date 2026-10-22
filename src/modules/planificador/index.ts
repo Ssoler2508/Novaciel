@@ -12,8 +12,6 @@ export {
   PlannerContextError,
   PlanSinPiezasError,
 } from './errors.js';
-export { aprobarPlanInterno, MOTIVO_APROBACION_INTERNA } from './aprobacionInterna.js';
-export type { PlanAprobado } from './aprobacionInterna.js';
 export type { InvalidLocalTimeReason } from './errors.js';
 export {
   addDays,

@@ -206,7 +206,7 @@ describe('producciones: where a production can be born', () => {
 
       // plan_aprobado (the brief exists, the piece has not moved yet), paused, and past the produced state.
       const early = await createGuion(db);
-      await expectFails(db, /needs the piece in guion_listo, en_produccion or en_control_calidad, not plan_aprobado/, () =>
+      await expectFails(db, /needs the piece in guion_listo, en_produccion, en_control_calidad or con_cambios, not plan_aprobado/, () =>
         insertProduccion(db, { clienteId: early.cliente_id, piezaId: early.pieza_id, guionId: early.id }),
       );
       const paused = await readyPiece(db);
@@ -215,6 +215,25 @@ describe('producciones: where a production can be born', () => {
       const reviewed = await readyPiece(db);
       for (const estado of ['en_produccion', 'en_control_calidad', 'revision_novaciel'] as const) await moverPieza(db, reviewed.piezaId, estado);
       await expectFails(db, /not revision_novaciel/, () => insert(reviewed));
+    });
+  });
+
+  it('is accepted for a piece the client sent back (con_cambios): version N+1, once the old one is retired', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await readyPiece(db);
+      await moverPieza(db, w.piezaId, 'en_produccion');
+      await insertProduccion(db, { clienteId: w.clienteId, piezaId: w.piezaId, guionId: w.guion.id });
+      for (const estado of ['en_control_calidad', 'revision_novaciel', 'esperando_aprobacion', 'con_cambios'] as const) await moverPieza(db, w.piezaId, estado);
+      // Version 1 is still current: the unique index of "one current production" says no, not the state guard.
+      await expectFails(db, /producciones_actual_key|duplicate key/, () => insertProduccion(db, { clienteId: w.clienteId, piezaId: w.piezaId, guionId: w.guion.id, version: 2 }));
+      await db.query('UPDATE producciones SET es_actual = false WHERE pieza_id = $1', [w.piezaId]);
+      await expectFails(db, /next version of this piece is 2/, () => insertProduccion(db, { clienteId: w.clienteId, piezaId: w.piezaId, guionId: w.guion.id, version: 1 }));
+      const { rows } = await insertProduccion(db, { clienteId: w.clienteId, piezaId: w.piezaId, guionId: w.guion.id, version: 2 });
+      expect(rows).toHaveLength(1);
+      // Other states past the produced one stay refused.
+      const done = await readyPiece(db);
+      for (const estado of ['en_produccion', 'en_control_calidad', 'revision_novaciel', 'esperando_aprobacion', 'rechazada'] as const) await moverPieza(db, done.piezaId, estado);
+      await expectFails(db, /not rechazada/, () => insertProduccion(db, { clienteId: done.clienteId, piezaId: done.piezaId, guionId: done.guion.id }));
     });
   });
 

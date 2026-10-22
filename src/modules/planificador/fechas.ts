@@ -46,6 +46,13 @@ function wallMsAt(instantMs: number, zone: string): number {
   return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
 }
 
+/** The local date (YYYY-MM-DD) and time (HH:mm) of an instant in `zone`. */
+export function localLabel(instant: Date, zone: string): { fecha: string; hora: string } {
+  if (!isValidZone(zone)) throw new InvalidLocalTimeError('zone');
+  const iso = new Date(wallMsAt(instant.getTime(), zone)).toISOString();
+  return { fecha: iso.slice(0, 10), hora: iso.slice(11, 16) };
+}
+
 /** Offset of the zone from UTC at an instant, in milliseconds (negative west of Greenwich). */
 function offsetMsAt(instantMs: number, zone: string): number {
   const whole = Math.floor(instantMs / 1000) * 1000;

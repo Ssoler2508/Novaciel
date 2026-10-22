@@ -487,6 +487,26 @@ describe('producirPieza: re-production', () => {
     });
   });
 
+  it('produces version N+1 from con_cambios (the client asked for changes), moving the piece through en_produccion', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await world(db);
+      const first = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
+      for (const estado of ['revision_novaciel', 'esperando_aprobacion', 'con_cambios'] as const) await moverPieza(db, w.piezaId, estado);
+      // Not without reproducir: version 1 is still the current production.
+      await expect(producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA)).rejects.toMatchObject({ name: ProduccionExistenteError.name, version: 1 });
+      const second = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA, { reproducir: true });
+      expect(second.produccion.version).toBe(2);
+      expect(second.produccion.id).not.toBe(first.produccion.id);
+      expect(second.pieza.estado).toBe('en_control_calidad');
+      expect((await listProduccionVersions(db, w.clienteId, w.piezaId)).map((v) => [v.version, v.es_actual])).toEqual([[1, false], [2, true]]);
+      expect((await getHistorial(db, w.clienteId, w.piezaId)).map((h) => `${h.desde}>${h.hacia}`).slice(-3)).toEqual([
+        'esperando_aprobacion>con_cambios',
+        'con_cambios>en_produccion',
+        'en_produccion>en_control_calidad',
+      ]);
+    });
+  });
+
   it('also works when quality control sent the piece back to en_produccion', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);

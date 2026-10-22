@@ -13,8 +13,7 @@ import { asClienteId } from '../modules/shared/clienteId.js';
 import { parseBriefGenerateArgs } from './briefGenerateArgs.js';
 import { runBriefGenerate } from './briefGenerateCore.js';
 import { assertDevScriptAllowed, confirmDevScriptDatabase } from './devScriptGuard.js';
-import { runPlanApproveInternal } from './planApproveInternalCore.js';
-import { parsePlanApproveInternalArgs } from './planApproveInternalArgs.js';
+import { aprobarPlanComoCliente } from '../../tests/utils/approvePlan.js';
 import { SEED_CLIENT_NAME, seedDevelopment } from './seedDevelopment.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
@@ -58,28 +57,11 @@ describe('parseBriefGenerateArgs', () => {
   });
 });
 
-describe('parsePlanApproveInternalArgs', () => {
-  it('accepts --cliente and --plan, and rejects anything else without echoing values', () => {
-    expect(parsePlanApproveInternalArgs(['--cliente', ID, '--plan', ID2])).toEqual({ clienteId: ID, planId: ID2 });
-    expect(parsePlanApproveInternalArgs([`--cliente=${ID}`, `--plan=${ID2}`])).toEqual({ clienteId: ID, planId: ID2 });
-    for (const argv of [[], ['--cliente', ID], ['--plan', ID2], ['--cliente', ID, '--plan', 'secret-x'], ['--cliente', 'secret-x', '--plan', ID2], ['--cliente', ID, '--plan', ID2, '--pieza', ID2], ['--cliente', ID, '--plan', ID2, '--plan', ID2], ['x']]) {
-      let message = '';
-      try {
-        parsePlanApproveInternalArgs(argv);
-      } catch (error) {
-        message = (error as Error).message;
-      }
-      expect(message, JSON.stringify(argv)).not.toBe('');
-      expect(message).not.toContain('secret');
-    }
-  });
-});
-
 describe('the shared development-script guard', () => {
   const url = (name: string) => `postgresql://fakeuser:fakepassword@localhost:5432/${name}`;
 
   it('accepts a development database and names the script in each refusal, never the URL', async () => {
-    for (const script of ['plan:generate', 'plan:approve-internal', 'brief:generate']) {
+    for (const script of ['plan:generate', 'brief:generate']) {
       expect(assertDevScriptAllowed(script, { nodeEnv: 'development', databaseUrl: url('fake_dev') })).toBe('fake_dev');
       for (const params of [
         { nodeEnv: 'production', databaseUrl: url('fake_dev') },
@@ -119,7 +101,7 @@ async function world(db: Db): Promise<World> {
   return { db, clienteId, runtime, alerts, deps: { db, provider: runtime.provider, alerts, withContext: runtime.withBriefContext! } };
 }
 
-/** The whole development flow on the seed client: plan (dev provider), internal approval. */
+/** The whole development flow on the seed client: plan (dev provider), approval by the client. */
 async function approvedPlan(w: World) {
   const plan = await generarPlanSemanal(
     { db: w.db, provider: w.runtime.provider, alerts: w.alerts, withContext: w.runtime.withPlannerContext! },
@@ -127,44 +109,12 @@ async function approvedPlan(w: World) {
     { semana: nextMonday() },
     SISTEMA,
   );
-  const approval = await runPlanApproveInternal(w.db, { clienteId: w.clienteId, planId: plan.plan.id });
-  expect(approval.ok, approval.lines.join('\n')).toBe(true);
-  return { plan: plan.plan, piezas: plan.piezas, approval };
+  await aprobarPlanComoCliente(w.db, w.clienteId, plan.plan.id);
+  return { plan: plan.plan, piezas: plan.piezas };
 }
 
 const ledger = async (db: Db, clienteId: string, purpose: string) =>
   (await db.query(`SELECT 1 FROM libro_gastos WHERE cliente_id = $1 AND proposito = $2`, [clienteId, purpose], )).rows.length;
-
-describe('plan:approve-internal (core)', () => {
-  it('approves the plan and reports only ids and counts', async () => {
-    await withTestTransaction(async (db) => {
-      const w = await world(db);
-      const { plan, piezas, approval } = await approvedPlan(w);
-      const text = approval.lines.join('\n');
-      expect(text).toContain(plan.id);
-      expect(text).toContain('TEMPORARY until Step 9');
-      expect(text).toContain(`${piezas.length} piece(s) moved to plan_aprobado`);
-      for (const p of piezas) {
-        expect(text).toContain(p.id);
-        expect(text).not.toContain(p.idea);
-      }
-      expect((await listPiezas(db, w.clienteId, { planId: plan.id })).every((p) => p.estado === 'plan_aprobado')).toBe(true);
-    });
-  });
-
-  it('refuses each bad case with one content-free line', async () => {
-    await withTestTransaction(async (db) => {
-      const w = await world(db);
-      const { plan } = await approvedPlan(w);
-      const again = await runPlanApproveInternal(db, { clienteId: w.clienteId, planId: plan.id });
-      expect(again.ok).toBe(false);
-      expect(again.lines).toEqual(['Only a draft plan can be approved (state aprobado)']);
-      const stranger = asClienteId((await createCliente(db)).id);
-      expect((await runPlanApproveInternal(db, { clienteId: stranger, planId: plan.id })).lines).toEqual(['That plan does not exist for this client']);
-      expect((await runPlanApproveInternal(db, { clienteId: w.clienteId, planId: ID })).lines).toEqual(['That plan does not exist for this client']);
-    });
-  });
-});
 
 describe('brief:generate (core), with the development provider', () => {
   it('generates the briefs of the whole plan from the seed client, reports counts and never the copy', async () => {
@@ -273,11 +223,11 @@ describe('brief:generate (core), with the development provider', () => {
         SISTEMA,
       );
       const notApproved = await runBriefGenerate(w.deps, { modo: 'plan', clienteId: w.clienteId, planId: draft.plan.id });
-      expect(notApproved.lines).toEqual(['The plan is not approved (state borrador); approve it first (npm run plan:approve-internal)']);
+      expect(notApproved.lines).toEqual(['The plan is not approved (state borrador); the client must approve it first']);
       expect((await runBriefGenerate(w.deps, { modo: 'plan', clienteId: w.clienteId, planId: ID })).lines).toEqual(['That plan does not exist for this client']);
       expect((await runBriefGenerate(w.deps, { modo: 'pieza', clienteId: w.clienteId, piezaId: ID, regenerar: false })).lines).toEqual(['That piece does not exist for this client']);
 
-      await runPlanApproveInternal(db, { clienteId: w.clienteId, planId: draft.plan.id });
+      await aprobarPlanComoCliente(db, w.clienteId, draft.plan.id);
       await db.query('UPDATE topes SET monto_techo = 0 WHERE cliente_id = $1', [w.clienteId]); // the month's ceiling exists since the plan call
       const budget = await runBriefGenerate(w.deps, { modo: 'pieza', clienteId: w.clienteId, piezaId: draft.piezas[0]!.id, regenerar: false });
       expect(budget.ok).toBe(false);

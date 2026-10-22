@@ -24,3 +24,15 @@ export { createMedia, createMediaAutorizacion } from './media.js';
 export { createPlanSemanal, createPieza, createPiezaHecho, insertHistorial, moverPieza, DEFAULT_MONDAY } from './planesPiezas.js';
 export { createGuion, createToma, createGuionHecho, guionContenido } from './guiones.js';
 export { createProduccion, createProduccionArchivo, createProduccionFuente } from './producciones.js';
+export {
+  createAprobableWorld,
+  createActores,
+  createPiezaAprobable,
+  CONTENIDO_PRODUCCION,
+  createAprobacion,
+  createAprobacionPlan,
+  createAprobadoresCliente,
+  createUsuarioConRol,
+  planHuella,
+} from './aprobaciones.js';
+export type { PiezaAprobable, Actores } from './aprobaciones.js';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withTestTransaction } from '../../../tests/utils/transaction.js';
+import { withTestTransaction as withTx } from '../../../tests/utils/transaction.js';
 import { auditRowsFor } from '../../../tests/utils/auditRows.js';
 import {
   createCliente,
@@ -10,6 +10,10 @@ import {
   createUsuario,
 } from '../../../tests/utils/factories/index.js';
 import type { Db } from '../../db/types.js';
+
+// These tests are about the generic state machine, not about approvals: they may enter `aprobada` and
+// `programada` without approval records (the approval guard has its own tests in aprobaciones.test.ts).
+const withTestTransaction = <T>(fn: Parameters<typeof withTx<T>>[0]) => withTx(fn, { sinGuardaDeAprobacion: true });
 import { asClienteId, type ClienteId } from '../shared/clienteId.js';
 import {
   ALLOWED_TRANSITIONS,
@@ -36,6 +40,8 @@ const SPEC_CHAIN = [
   'aprobada>programada', 'programada>publicada', 'publicada>en_medicion', 'en_medicion>cerrada',
   'en_control_calidad>en_produccion', 'esperando_aprobacion>con_cambios', 'con_cambios>en_produccion',
   'esperando_aprobacion>rechazada', 'programada>fallo_publicacion', 'fallo_publicacion>programada',
+  // Added in Step 9 (ADR-05, spec 11.3): a change after approval or scheduling. NovaCiel only.
+  'aprobada>con_cambios', 'programada>con_cambios',
 ];
 const PAUSABLE = ESTADOS.filter((s) => s !== 'pausada' && s !== 'cerrada' && s !== 'rechazada');
 const SPEC_ALLOWED = new Set([...SPEC_CHAIN, ...PAUSABLE.map((s) => `${s}>pausada`), ...PAUSABLE.map((s) => `pausada>${s}`)]);
@@ -45,9 +51,9 @@ async function newClient(db: Db): Promise<ClienteId> {
 }
 
 describe('ALLOWED_TRANSITIONS', () => {
-  it('has the 43 transitions of section 15 and agrees exactly with the database table', async () => {
+  it('has the 45 transitions (section 15 plus aprobada and programada > con_cambios of Step 9) and agrees exactly with the database table', async () => {
     await withTestTransaction(async (db) => {
-      expect(ALLOWED_TRANSITIONS).toHaveLength(43);
+      expect(ALLOWED_TRANSITIONS).toHaveLength(45);
       const inCode = ALLOWED_TRANSITIONS.map(([d, h]) => `${d}>${h}`).sort();
       const { rows } = await db.query('SELECT desde, hacia FROM transiciones_pieza');
       const inDatabase = rows.map((r) => `${r.desde}>${r.hacia}`).sort();
@@ -68,6 +74,7 @@ describe('ALLOWED_TRANSITIONS', () => {
 });
 
 describe('transitionPieza', () => {
+  // Measured 3.2 s idle (all allowed transitions in one test); 15 s leaves room when the machine is busy.
   it('every allowed transition succeeds through the service, with one history row and one audit row', async () => {
     await withTestTransaction(async (db) => {
       const clienteId = await newClient(db);
@@ -105,8 +112,9 @@ describe('transitionPieza', () => {
         expect(audit.length).toBeGreaterThanOrEqual(1); // the service wrote one audit row for this change
       }
     });
-  });
+  }, 15_000);
 
+  // Measured 2.2 s idle (16 x 16 pairs in one test); 15 s leaves room when the machine is busy.
   it('rejects every disallowed pair in the service, before the database (all 16 x 16)', async () => {
     await withTestTransaction(async (db) => {
       const clienteId = await newClient(db);
@@ -141,7 +149,7 @@ describe('transitionPieza', () => {
       }
       expect(wrong).toEqual([]);
     });
-  });
+  }, 15_000);
 
   it('the error and the state it leaves behind contain no content', async () => {
     await withTestTransaction(async (db) => {
