@@ -25,8 +25,22 @@ export const es = {
     email: 'Correo electrónico',
     password: 'Contraseña',
     submit: 'Entrar',
+    submitting: 'Entrando…',
     logout: 'Cerrar sesión',
+    loggingOut: 'Cerrando sesión…',
     invalidCredentials: 'Correo o contraseña incorrectos.',
+    forbidden: 'El servidor rechazó la solicitud. Recarga la página e inténtalo de nuevo.',
+    networkError: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
+    error: 'No se pudo iniciar sesión. Inténtalo de nuevo.',
+  },
+
+  home: {
+    title: 'Inicio',
+    name: 'Nombre',
+    email: 'Correo electrónico',
+    roles: 'Roles',
+    noRoles: 'Sin roles asignados.',
+    noClient: 'Sin cliente',
   },
 
   nav: {
