@@ -307,7 +307,7 @@ export class PlantillaInvalidaError extends Error {
   }
 }
 
-export type CapaTextoRazon = 'entrada_invalida' | 'fallo_de_render' | 'tiempo_agotado' | 'salida_incompleta';
+export type CapaTextoRazon = 'entrada_invalida' | 'fallo_de_bundle' | 'fallo_de_render' | 'tiempo_agotado' | 'salida_incompleta' | 'solicitud_externa';
 
 /** The text layer of a scene could not be drawn. Ids and a fixed reason only: never the text. */
 export class CapaTextoError extends Error {

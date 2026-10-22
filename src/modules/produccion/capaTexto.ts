@@ -53,6 +53,19 @@ export interface CapaTextoAnimado {
 }
 
 /**
+ * The layer of one scene, or null when the scene has no text (`props` is null: B's builder returns null for an
+ * empty text). Nothing is called and nothing is started for a scene without text: empty text gives no layer.
+ */
+export async function renderizarCapaEscena(
+  adaptador: CapaTextoAnimado,
+  entrada: Omit<EntradaCapa, 'props'> & { props: unknown },
+  opciones: OpcionesCapa,
+): Promise<CapaRenderizada | null> {
+  if (entrada.props === null || entrada.props === undefined) return null;
+  return adaptador.renderizar(entrada, opciones);
+}
+
+/**
  * Test adapter: writes fully transparent PNGs of the requested size, one per frame (no engine, no
  * browser, no network). Enough to test the pipeline around the port; the real pixels come from the
  * Remotion adapter of checkpoint C.

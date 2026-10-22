@@ -100,6 +100,9 @@ const schema = z
     // Remotion (Step 7c): the operator's declaration of which Remotion license applies. NO default: unset
     // means Remotion is disabled (reels keep the 7b PNG overlays). See docs/ADR-06_REMOTION_LICENCIA.md.
     REMOTION_LICENCIA: z.enum(['gratuita', 'empresa']).optional(),
+    // Absolute path of the Chrome Headless Shell that Remotion renders with. Optional: by default the one that
+    // `npm run remotion:browser` downloaded into node_modules/.remotion is used.
+    REMOTION_NAVEGADOR: z.string().min(1).optional(),
     // Default 200 MiB; bounds 1 MiB to 2 GiB.
     MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
@@ -185,6 +188,8 @@ export interface MediaConfig {
 export interface RemotionConfig {
   /** The declared Remotion license, or undefined: Remotion is disabled. */
   licencia: 'gratuita' | 'empresa' | undefined;
+  /** Absolute path of the browser executable, or undefined: the downloaded one. */
+  navegador: string | undefined;
 }
 
 export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
@@ -268,7 +273,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       ffmpegTimeoutMs: result.data.FFMPEG_TIMEOUT_MS,
       maxBytes: result.data.MEDIA_MAX_BYTES,
     },
-    remotion: { licencia: result.data.REMOTION_LICENCIA },
+    remotion: { licencia: result.data.REMOTION_LICENCIA, navegador: result.data.REMOTION_NAVEGADOR },
   };
 }
 

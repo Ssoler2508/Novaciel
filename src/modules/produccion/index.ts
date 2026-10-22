@@ -109,7 +109,7 @@ export { exigirLicenciaRemotion, licenciaRemotion, remotionHabilitado, SUPUESTO_
 export type { LicenciaRemotion } from './remotionLicencia.js';
 export { elegirPlantilla, FORMATO_ID_PLANTILLA, getPlantilla, PLANTILLA_POR_TRABAJO, PLANTILLAS, ultimaVersion } from './plantillas.js';
 export type { Plantilla, TrabajoPieza } from './plantillas.js';
-export { FakeCapaTextoAnimado, nombreFotogramaCapa, PATRON_CAPA } from './capaTexto.js';
+export { FakeCapaTextoAnimado, nombreFotogramaCapa, PATRON_CAPA, renderizarCapaEscena } from './capaTexto.js';
 export type { CapaRenderizada, CapaTextoAnimado, EntradaCapa, OpcionesCapa } from './capaTexto.js';
 export { PlantillaInvalidaError, TiemposInvalidosError } from './errors.js';
 export type { PlantillaInvalidaRazon, TiemposInvalidosRazon } from './errors.js';
@@ -120,3 +120,8 @@ export type { EntradaLineas, LineasDistribuidas, PalabraEnLinea } from './lineas
 export { ALTO_MAXIMO_DEL_TEXTO, posicionDelBloque, RELLENO } from './bloqueTexto.js';
 export { construirPropsPlantilla, esquemaPropsPlantilla } from './propsPlantilla.js';
 export type { EntradaPropsPlantilla, PropsPlantilla } from './propsPlantilla.js';
+export { borrarCapas, crearCapaTextoRemotion, idComposicionRemotion, leerCabeceraPng, normalizarCapas, raizDelProyecto, rutaNavegadorDescargado } from './remotionCapaTexto.js';
+export type { LogNavegador, NavegadorRemotion, OpcionesCapaTextoRemotion, RendererRemotion } from './remotionCapaTexto.js';
+export { claveDeBundle, FORMATO_BUNDLE, obtenerBundle, POLITICA_CSP } from './remotionBundle.js';
+export type { OpcionesBundle } from './remotionBundle.js';
+export { crearMedidor } from './medidor.js';

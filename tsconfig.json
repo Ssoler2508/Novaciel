@@ -13,5 +13,7 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src", "tests", "vitest.config.ts"]
+  "include": ["src", "tests", "vitest.config.ts"],
+  // The Remotion test fixtures are React (tsx) and are typechecked by tsconfig.remotion.json.
+  "exclude": ["tests/fixtures/remotion-red"]
 }
