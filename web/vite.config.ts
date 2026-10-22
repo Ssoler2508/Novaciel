@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 // All API calls stay relative: the dev server proxies them to the backend. The Origin header is
 // forwarded untouched (changeOrigin: false), because the backend checks it against PUBLIC_BASE_URL.
-const backend = 'http://localhost:3001';
+const backend = 'http://localhost:3000';
 
 export default defineConfig({
   plugins: [react()],
