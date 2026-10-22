@@ -26,7 +26,7 @@ A pure rule over the records (implemented in checkpoint B as `estadoAprobacion`)
 The database enforces the same order at insert time. A change of the scheduled time (`fecha_hora`) is not in the hash and does not void the approval; it is audited and shown to the client.
 
 ### 5. Change rounds and escalation
-- Rounds = number of `cambios` records of the piece (any level). Maximum 2 (spec 11.3).
+- Rounds = number of `cambios` records of the CLIENT level, over all productions of the piece. Internal `cambios` records and NovaCiel pull-backs (`aprobada`/`programada` → `con_cambios`) never count. Maximum 2 (spec 11.3).
 - The 3rd change request is not refused: it sets a derived `escalada` flag (computed from the records, no new column) and notifies all NovaCiel admins and operators through the `Notifier`. A person from NovaCiel takes over.
 - Piece states: `esperando_aprobacion → con_cambios → en_produccion` as in section 15. Rejection (client only) is `esperando_aprobacion → rechazada` (terminal).
 
