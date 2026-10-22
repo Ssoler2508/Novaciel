@@ -34,11 +34,17 @@ export const DEFAULT_REEL_OUTPUT: ReelOutputSpec = {
   hdrToneMap: true,
 };
 
+/** A scene's text overlay: one transparent PNG held for the whole scene (7b), or a PNG sequence with one file per frame (7c). */
+export type ReelOverlayInput = string | { carpeta: string; patron: string };
+
 export interface ReelPaths {
   /** Absolute path of the downloaded source clip, by media id. */
   fuentes: Readonly<Record<string, string>>;
-  /** Absolute path of the transparent overlay PNG (1080x1920), by scene number. Exactly the scenes with `overlay`. */
-  overlays: Readonly<Record<number, string>>;
+  /**
+   * The transparent overlay (1080x1920), by scene number. Exactly the scenes with `overlay`. A string is the
+   * absolute path of a PNG; `{ carpeta, patron }` is a PNG sequence (`capa-%05d.png`) of exactly the scene's frames.
+   */
+  overlays: Readonly<Record<number, ReelOverlayInput>>;
   /** Absolute path of the MP4 to write. */
   salida: string;
 }
@@ -63,6 +69,13 @@ function filePath(value: string | undefined, missing: 'fuente_faltante' | 'overl
   return `file:${value}`;
 }
 
+/** `file:<folder>/<pattern>` for a PNG sequence. The pattern is a fixed shape and the folder may hold no `%`. */
+function sequencePath(value: { carpeta: string; patron: string }): string {
+  if (value.patron !== 'capa-%05d.png') throw new RutaInvalidaError('overlay_faltante');
+  if (value.carpeta.includes('%')) throw new RutaInvalidaError('ruta_con_patron');
+  return `${filePath(value.carpeta, 'overlay_faltante')}${value.carpeta.endsWith(path.sep) || value.carpeta.endsWith('/') ? '' : '/'}${value.patron}`;
+}
+
 function checkSpec(spec: ReelOutputSpec): void {
   const rate = /^[1-9][0-9]{0,3}[kM]$/;
   if (!Number.isInteger(spec.crf) || spec.crf < 0 || spec.crf > 51 || !Number.isInteger(spec.gop) || spec.gop < 1 || !rate.test(spec.maxrate) || !rate.test(spec.bufsize)) {
@@ -84,10 +97,14 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
   const conOverlay = new Set(timeline.segmentos.filter((s) => s.overlay).map((s) => s.escena));
   for (const key of Object.keys(paths.overlays)) if (!conOverlay.has(Number(key))) throw new RutaInvalidaError('overlay_sobrante');
   const fuentes = new Map<number, string>();
-  const overlays = new Map<number, string>();
+  const overlays = new Map<number, { ruta: string; secuencia: boolean }>();
   for (const segmento of timeline.segmentos) {
     fuentes.set(segmento.escena, filePath(paths.fuentes[segmento.mediaId], 'fuente_faltante'));
-    if (segmento.overlay) overlays.set(segmento.escena, filePath(paths.overlays[segmento.escena], 'overlay_faltante'));
+    if (segmento.overlay) {
+      const capa = paths.overlays[segmento.escena];
+      if (capa === undefined) throw new RutaInvalidaError('overlay_faltante');
+      overlays.set(segmento.escena, typeof capa === 'string' ? { ruta: filePath(capa, 'overlay_faltante'), secuencia: false } : { ruta: sequencePath(capa), secuencia: true });
+    }
   }
   const salida = filePath(paths.salida, 'salida_faltante');
 
@@ -116,7 +133,8 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
       filters.push(`[${fuente}:v]${chain}[v${segmento.escena}]`);
     } else {
       const capa = inputCount++;
-      inputs.push('-loop', '1', '-framerate', String(REEL_FPS), '-t', seconds(segmento.duracionMs + MARGEN_MS), '-i', overlay);
+      if (overlay.secuencia) inputs.push('-framerate', String(REEL_FPS), '-start_number', '0', '-f', 'image2', '-i', overlay.ruta);
+      else inputs.push('-loop', '1', '-framerate', String(REEL_FPS), '-t', seconds(segmento.duracionMs + MARGEN_MS), '-i', overlay.ruta);
       filters.push(`[${fuente}:v]${chain}[b${segmento.escena}]`);
       filters.push(`[${capa}:v]format=rgba[o${segmento.escena}]`);
       filters.push(`[b${segmento.escena}][o${segmento.escena}]overlay=0:0:format=auto:shortest=1[v${segmento.escena}]`);

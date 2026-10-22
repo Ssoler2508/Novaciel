@@ -63,3 +63,10 @@ Tablero de avance: `docs/PLAN.md`.
 - Si algo de la especificación es ambiguo, preguntar antes de inventar.
 - Comandos: `npm run dev`, `npm run build`, `npm run typecheck`, `npm test`, `npm run test:fast`, `npm run migrate:up`, `npm run migrate:down`.
 - `npm test` es la suite completa y es la que cierra un checkpoint. `npm run test:fast` salta los archivos `*.render.test.ts` (los que renderizan video real con FFmpeg) y sirve para iterar; no reemplaza a `npm test`.
+
+## Web interface (opencode)
+- `web/` is owned by opencode, a separate tool that builds the web interface. Never modify it, also after a merge brings it in. The root `package.json` stays ours; `web/` has its own.
+- Never read or touch the clone at `D:\Dev\novacielOP\Novaciel`, its `.env`, or the databases `novaciel_op_db` and `novaciel_op_test`. Never run anything against them.
+- Do not merge `web-*` branches and do not add remotes. The developer does that.
+- The routes `/auth/login`, `/auth/me`, `/auth/logout` and the plan, piece and approval routes keep their paths, methods and response shapes, because the web interface depends on them. Change them only if a plan proposes it and the developer approves it.
+- New backend routes are designed here, in the plan, as always; opencode does not design them.

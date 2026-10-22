@@ -6,6 +6,7 @@ import { elegirColores, type ColoresSlide } from './colors.js';
 import { computeCoverCrop, type CoverCrop } from './crop.js';
 import { dimensionDe } from './dimensiones.js';
 import { ImageDecodeError } from './errors.js';
+import { ALTO_MAXIMO_DEL_TEXTO, ANCHO_REFERENCIA, MAX_LINEAS, posicionDelBloque } from './bloqueTexto.js';
 import { assertGlifosSoportados, FUENTE_POR_DEFECTO, registrarFuentes } from './fonts.js';
 import { zonaSegura } from './safeArea.js';
 import { INTERLINEADO, layoutText, TAMANO_MAX, TAMANO_MIN } from './textLayout.js';
@@ -27,12 +28,6 @@ export const JPEG_CALIDAD = 90;
 export const MAX_PIXELES_ORIGEN = 100_000_000;
 
 const FORMATOS_ORIGEN = new Set(['jpeg', 'png', 'webp']);
-/** The text block takes at most this share of the safe zone's height (a house value, VERIFICAR). */
-const ALTO_MAXIMO_DEL_TEXTO = 0.45;
-/** Space around the text block inside the scrim, as a share of the font size. */
-const RELLENO = 0.6;
-const ANCHO_REFERENCIA = 1080;
-const MAX_LINEAS = 8;
 
 export interface SlideSpec {
   /** The brief's rendered on-screen text. Empty or only whitespace: the photo is output with no scrim and no text. */
@@ -151,11 +146,7 @@ export function dibujarTexto(ctx: SKRSContext2D, spec: TextoSobreLienzo): NonNul
   const colores = elegirColores(spec.kitVisual);
 
   // The text block sits at the bottom of the safe zone; the scrim is a full-width band around it.
-  const relleno = layout.tamano * RELLENO;
-  const bloqueAbajo = zona.y + zona.alto;
-  const bloqueArriba = bloqueAbajo - layout.altoBloque;
-  const bandaArriba = Math.max(0, bloqueArriba - relleno);
-  const bandaAbajo = Math.min(alto, bloqueAbajo + relleno);
+  const { bloqueArriba, bandaArriba, bandaAbajo } = posicionDelBloque(zona, alto, layout);
   ctx.globalAlpha = colores.alfa;
   ctx.fillStyle = colores.scrim;
   ctx.fillRect(0, bandaArriba, ancho, bandaAbajo - bandaArriba);

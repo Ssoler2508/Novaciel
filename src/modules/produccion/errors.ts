@@ -208,7 +208,7 @@ export class HdrNoSoportadoError extends Error {
   }
 }
 
-export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control';
+export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control' | 'ruta_con_patron';
 
 /** A path given to the argument builder is missing, extra, relative, or has control characters. Paths are never echoed. */
 export class RutaInvalidaError extends Error {
@@ -259,6 +259,61 @@ export class FuenteDeVideoIlegibleError extends Error {
   ) {
     super(`The source video ${mediaId} cannot be used: ${razon}`);
     this.name = 'FuenteDeVideoIlegibleError';
+  }
+}
+
+/**
+ * A Remotion code path was called while REMOTION_LICENCIA is unset (Step 7c). The license gate: Remotion
+ * is disabled and the reel falls back to the 7b PNG overlays; nothing is rendered by Remotion.
+ */
+export class RemotionLicenciaNoConfiguradaError extends Error {
+  constructor() {
+    super('Remotion is disabled: REMOTION_LICENCIA is not set (see docs/ADR-06_REMOTION_LICENCIA.md)');
+    this.name = 'RemotionLicenciaNoConfiguradaError';
+  }
+}
+
+/** The animated-text engine or its browser is not available in this process (a deployment fault). */
+export class RemotionNoDisponibleError extends Error {
+  constructor(readonly razon: 'paquete_ausente' | 'navegador_ausente') {
+    super(`The animated text engine is not available: ${razon}`);
+    this.name = 'RemotionNoDisponibleError';
+  }
+}
+
+export type TiemposInvalidosRazon = 'duracion_invalida' | 'duracion_insuficiente' | 'reglas_invalidas';
+
+/** The word timing cannot be computed for this duration or these rules. A reason only: never the text. */
+export class TiemposInvalidosError extends Error {
+  constructor(readonly razon: TiemposInvalidosRazon) {
+    super(`The word timing is invalid: ${razon}`);
+    this.name = 'TiemposInvalidosError';
+  }
+}
+
+export type PlantillaInvalidaRazon = 'plantilla_desconocida' | 'entrada_invalida' | 'palabras_no_coinciden' | 'props_invalidas';
+
+/**
+ * The props of a text template cannot be built. `campos` are the NAMES of the failing fields (only for
+ * `props_invalidas`), never their values: a value could be client text.
+ */
+export class PlantillaInvalidaError extends Error {
+  constructor(
+    readonly razon: PlantillaInvalidaRazon,
+    readonly campos: readonly string[] = [],
+  ) {
+    super(`The template props are invalid: ${razon}${campos.length > 0 ? ` (${campos.join(', ')})` : ''}`);
+    this.name = 'PlantillaInvalidaError';
+  }
+}
+
+export type CapaTextoRazon = 'entrada_invalida' | 'fallo_de_bundle' | 'fallo_de_render' | 'tiempo_agotado' | 'salida_incompleta' | 'solicitud_externa';
+
+/** The text layer of a scene could not be drawn. Ids and a fixed reason only: never the text. */
+export class CapaTextoError extends Error {
+  constructor(readonly razon: CapaTextoRazon) {
+    super(`The animated text layer could not be rendered: ${razon}`);
+    this.name = 'CapaTextoError';
   }
 }
 
