@@ -18,6 +18,7 @@ import {
   SinProduccionError,
 } from './errors.js';
 import { estadoAprobacion, type EstadoAprobacion } from './estadoAprobacion.js';
+import type { Recordatorios } from './recordatoriosPort.js';
 import { decidirEscalada, type DecisionEscalada } from './rondas.js';
 
 // Records a decision about the EXACT current production of a piece and moves the piece (ADR-05).
@@ -59,6 +60,12 @@ export interface DecisionRegistrada {
 
 export const MOTIVO_PUENTE_PASO_8 = 'puente_temporal_paso_8';
 
+/** `recordatorios` is optional: without it nothing is scheduled (callers with no queue, most tests). */
+export interface AprobacionesDeps {
+  db: Db;
+  recordatorios?: Recordatorios;
+}
+
 /** Locks the plan, then the piece (FOR UPDATE), of this client. Null when the piece is not the client's. */
 async function lockPlanYPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise<PiezaRow | null> {
   const { rows: ids } = await tx.query<{ plan_id: string }>('SELECT plan_id FROM piezas WHERE id = $1 AND cliente_id = $2', [piezaId, clienteId]);
@@ -84,9 +91,14 @@ async function lockPlanYPieza(tx: Db, clienteId: ClienteId, piezaId: string): Pr
  *   cliente + rechazada  esperando_aprobacion -> rechazada
  *
  * The audit row carries ids, level, decision and the hash; never the comment.
+ *
+ * Inside the same transaction (so they exist if and only if the decision committed):
+ *   - an internal approval, which leaves the piece waiting for the client, schedules the reminders of
+ *     spec 11.3 (24 h, 4 h, the substitute's turn);
+ *   - the 3rd client change request queues the escalation notice for NovaCiel.
  */
 export async function registrarDecision(
-  deps: { db: Db },
+  deps: AprobacionesDeps,
   clienteId: ClienteId,
   piezaId: string,
   actor: AprobadorActor,
@@ -157,12 +169,29 @@ export async function registrarDecision(
     });
 
     const registros = await listRegistros(tx, clienteId, piezaId);
-    return {
-      aprobacion,
-      pieza: (await getPieza(tx, clienteId, piezaId))!,
-      estadoAprobacion: estadoAprobacion(actual, registros),
-      escalada: decidirEscalada(registros),
-    };
+    const despues = (await getPieza(tx, clienteId, piezaId))!;
+    // `notificarAhora` is true for the count, so it is also true on the next decision of the same piece
+    // (for example the next internal approval): only the client change request that made the count reach
+    // the limit tells NovaCiel.
+    const cuenta = decidirEscalada(registros);
+    const escalada = { ...cuenta, notificarAhora: cuenta.notificarAhora && d.nivel === 'cliente' && d.decision === 'cambios' };
+
+    if (deps.recordatorios) {
+      if (despues.estado === 'esperando_aprobacion') {
+        const { rows: zonas } = await tx.query<{ zona_horaria: string }>('SELECT zona_horaria FROM planes_semanales WHERE id = $1 AND cliente_id = $2', [despues.plan_id, clienteId]);
+        await deps.recordatorios.programar(tx, {
+          clienteId,
+          tipo: 'pieza',
+          objetoId: piezaId,
+          plazo: despues.fecha_hora,
+          zona: zonas[0]!.zona_horaria,
+          referencia: hashActual,
+        });
+      }
+      if (escalada.notificarAhora) await deps.recordatorios.escalar(tx, { clienteId, piezaId });
+    }
+
+    return { aprobacion, pieza: despues, estadoAprobacion: estadoAprobacion(actual, registros), escalada };
   });
 }
 
@@ -172,7 +201,7 @@ export async function registrarDecision(
  * then goes through production again, and the new production version voids every earlier approval.
  */
 export async function reabrirPieza(
-  deps: { db: Db },
+  deps: AprobacionesDeps,
   clienteId: ClienteId,
   piezaId: string,
   actor: AprobadorActor,

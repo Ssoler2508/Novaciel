@@ -69,7 +69,8 @@ import { generarBrief, getBriefActual, listBriefVersions } from './directorCreat
 import { getProduccionActual, listProduccionVersions } from './produccion/produccionRepository.js';
 import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/produccionJobs.js';
 import { assertProducible, producirPieza } from './produccion/produccionService.js';
-import { decidirPlan, proponerPlan, reabrirPieza, registrarDecision } from './aprobaciones/index.js';
+import { decidirPlan, ejecutarJobEscalada, ejecutarJobRecordatorio, proponerPlan, reabrirPieza, registrarDecision } from './aprobaciones/index.js';
+import { FakeNotifier } from '../lib/notificaciones/index.js';
 import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
@@ -473,6 +474,22 @@ describe('isolation: productions', () => {
 });
 
 describe('isolation: approvals (Step 9)', () => {
+  it("a reminder or escalation job of A never reads or notifies about B's piece or plan", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const notifier = new FakeNotifier();
+      const referencia = 'a'.repeat(64);
+      const plazo = new Date(Date.now() + 3 * 24 * 3_600_000).toISOString();
+      for (const [tipo, objetoId] of [['pieza', b.aprobacionPiezaId], ['plan', b.planPropuestoId]] as const) {
+        for (const aviso of ['recordatorio_24h', 'recordatorio_4h', 'turno_suplente'] as const) {
+          const salida = await ejecutarJobRecordatorio({ db, notifier }, { clienteId: a.clienteId, tipo, objetoId, aviso, referencia, plazo }, 'job', new Date());
+          expect(salida, `${tipo} ${aviso}`).toEqual({ resultado: 'omitido', codigo: 'objeto_no_encontrado' });
+        }
+      }
+      expect(await ejecutarJobEscalada({ db, notifier }, { clienteId: a.clienteId, piezaId: b.aprobacionPiezaId }, 'job')).toEqual({ resultado: 'omitido', codigo: 'objeto_no_encontrado' });
+      expect(notifier.enviados).toEqual([]);
+    });
+  });
+
   it("A never reads B's approval records, plan decisions or approvers: B stays unchanged", async () => {
     await withTwoClients(async (a, b, db) => {
       for (const [table, id, foreignId] of [

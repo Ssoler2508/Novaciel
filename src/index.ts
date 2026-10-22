@@ -12,6 +12,8 @@ import { registerPlanificadorRoutes } from './modules/planificador/planificadorR
 import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
 import { createLlmRuntime } from './modules/desarrollo/developmentProvider.js';
 import { createPgBossBriefQueue, registerDirectorJobs, registerDirectorRoutes } from './modules/directorCreativo/index.js';
+import { LogNotifier } from './lib/notificaciones/index.js';
+import { registerRecordatoriosJobs } from './modules/aprobaciones/index.js';
 import { createPgBossProduccionQueue, createReelRuntime, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
 import {
   createStorage,
@@ -87,6 +89,10 @@ async function main(): Promise<void> {
   });
   // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
   await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media) });
+  // Approval reminders and the escalation notice (spec 11.3). LogNotifier only logs ids and template names
+  // until a real provider exists. The services that schedule them take createPgBossRecordatorios(boss) as
+  // their `recordatorios` port (the routes that call them arrive in checkpoint E).
+  await registerRecordatoriosJobs(boss, { db: pool, notifier: new LogNotifier() });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }

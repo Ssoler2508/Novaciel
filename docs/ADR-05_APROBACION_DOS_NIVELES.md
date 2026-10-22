@@ -50,5 +50,15 @@ When should the internal review be retired (spec 11.1: after 4 weeks per client,
 - The database guard `historial_estados_pieza_aprobacion` refuses any entry into `aprobada` or `programada` without both approvals of the current production (id, version, hash_version, hash_pieza by bytes). Its test-only switch `novaciel.omitir_guarda_aprobacion` is transaction-scoped (`set_config(..., true)`) and honoured only in a `*_test` database.
 - `assertPublicable` accepts a piece in `aprobada` or `programada`.
 
+## Checkpoint D: reminders, substitute and escalation
+- A `Notifier` port (fake and log-only implementations) carries ids and template names only. Real providers: later.
+- Reminders (24 h, 4 h) and the substitute's turn (2 h before, configurable) are pg-boss jobs created INSIDE the transaction of the decision that needs them (pg-boss `db` option), so they exist if and only if it committed. Queue policy `exclusive` plus a singleton key (client, object, notice, hash or fingerprint, deadline) means a notice is never queued twice.
+- Decisions do not cancel jobs: every job re-checks the state when it fires and does nothing if the piece or plan was already decided, the production hash or fingerprint changed, or the deadline moved.
+- The recipient is re-validated when the job fires (active user, an approval role for THAT client, no NovaCiel role). If the main approver, or the substitute on their turn, is no longer valid, or the client has none configured, NovaCiel staff receive `aprobador_no_configurado` instead. A client without a substitute simply has no substitute turn.
+- A plan's deadline is the earliest scheduled time of its pieces (the spec defines none; open question in docs/PLAN.md).
+- Escalation: only the client change request that makes the count reach 3 queues `escalada_cambios` for every active NovaCiel administrator and operator.
+
 ## Known debt
 - **`assertPublicable` checks but does not lock.** Between the check and the publish something could change (a file, a fact, a revocation). Step 10 must call it with the piece locked, or re-check immediately before sending, so nothing changes between the check and the publish.
+- **Step 10 must schedule the reminders again when it changes a piece's `fecha_hora` (rescheduling).** The jobs already queued carry the old deadline; they see the change and do nothing, so without a new schedule nobody is reminded.
+- Spec 11.3 "no approval by the scheduled time: reschedule the piece and warn NovaCiel" belongs to publishing (Step 10).

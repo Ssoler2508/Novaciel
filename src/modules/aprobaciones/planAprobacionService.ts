@@ -14,6 +14,7 @@ import { getPlan, PLAN_COLUMNS, type PlanRow } from '../planificador/planesRepos
 import type { ClienteId } from '../shared/clienteId.js';
 import { esPersonalNovaciel, requireAction, rolParaNivel, type AprobadorActor } from './actor.js';
 import { getHuellaPlan } from './aprobacionesRepository.js';
+import type { AprobacionesDeps } from './aprobacionesService.js';
 import { AprobacionInvalidaError, HuellaDesactualizadaError, PermisoDenegadoError, PlanNoDecidibleError, PlanNoProponibleError } from './errors.js';
 
 // The client's approval of the weekly plan (ADR-05, decision 7). It replaces the TEMPORARY
@@ -49,8 +50,11 @@ async function lockPlan(tx: Db, clienteId: ClienteId, planId: string): Promise<{
   return { plan, piezas: await listPiezas(tx, clienteId, { planId }) };
 }
 
-/** NovaCiel shows the plan to the client: borrador -> propuesto. Every piece must still be planeada. */
-export async function proponerPlan(deps: { db: Db }, clienteId: ClienteId, planId: string, actor: AprobadorActor): Promise<PlanConPiezas> {
+/**
+ * NovaCiel shows the plan to the client: borrador -> propuesto. Every piece must still be planeada.
+ * With a `recordatorios` port, the client's reminders are scheduled in the same transaction.
+ */
+export async function proponerPlan(deps: AprobacionesDeps, clienteId: ClienteId, planId: string, actor: AprobadorActor): Promise<PlanConPiezas> {
   requireAction(actor, 'manage_plans', clienteId);
   if (!esPersonalNovaciel(actor)) throw new PermisoDenegadoError('manage_plans');
   return runInTransaction(deps.db, async (tx) => {
@@ -72,6 +76,17 @@ export async function proponerPlan(deps: { db: Db }, clienteId: ClienteId, planI
       antes: { estado: 'borrador' },
       despues: { estado: 'propuesto', piezas: piezas.length },
     });
+    // The client now has to decide: remind them (spec 11.3) before the first piece of the week is due.
+    if (deps.recordatorios) {
+      await deps.recordatorios.programar(tx, {
+        clienteId,
+        tipo: 'plan',
+        objetoId: planId,
+        plazo: new Date(Math.min(...piezas.map((p) => p.fecha_hora.getTime()))),
+        zona: plan.zona_horaria,
+        referencia: await getHuellaPlan(tx, clienteId, planId),
+      });
+    }
     return { plan: (await getPlan(tx, clienteId, planId))!, piezas };
   });
 }
