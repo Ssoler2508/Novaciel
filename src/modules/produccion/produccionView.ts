@@ -41,6 +41,8 @@ export interface ProduccionPublica {
   ubicacion: string | null;
   hash_version: string;
   hash_pieza: string;
+  /** The animated text template the reel was made with; null for images and for reels with plain PNG overlays. */
+  plantilla: { id: string; version: number } | null;
   archivos: ArchivoPublico[];
   creado_en: string;
 }
@@ -82,6 +84,7 @@ export async function toProduccionPublica(
     ubicacion: produccion.ubicacion,
     hash_version: produccion.hash_version,
     hash_pieza: produccion.hash_pieza,
+    plantilla: produccion.plantilla !== null && produccion.plantilla_version !== null ? { id: produccion.plantilla, version: produccion.plantilla_version } : null,
     archivos,
     creado_en: produccion.creado_en.toISOString(),
   };

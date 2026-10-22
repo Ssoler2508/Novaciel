@@ -48,7 +48,7 @@ const entradaDe = (props: PropsPlantilla, extra: Partial<{ fotogramas: number }>
 
 // ---- a fake Remotion ---------------------------------------------------------------------------
 
-type Modo = 'ok' | 'sin_padding' | 'con_padding' | 'falta_un_fotograma' | 'sin_alfa' | 'tamano_malo' | 'falla' | 'cuelga' | 'violacion_csp';
+type Modo = 'ok' | 'sin_padding' | 'con_padding' | 'falta_un_fotograma' | 'sin_alfa' | 'tamano_malo' | 'falla' | 'cuelga' | 'falla_pasado_el_limite' | 'violacion_csp';
 
 class FakeRenderer implements RendererRemotion {
   modo: Modo = 'ok';
@@ -57,6 +57,7 @@ class FakeRenderer implements RendererRemotion {
   composiciones: string[] = [];
   inputProps: Record<string, unknown>[] = [];
   cancelado = false;
+  limitesInternos: number[] = [];
   private liberar: (() => void) | null = null;
 
   async openBrowser(): Promise<NavegadorRemotion> {
@@ -75,7 +76,8 @@ class FakeRenderer implements RendererRemotion {
     return { id: o.id, ...o.inputProps };
   }
 
-  async renderFrames(o: { composition: unknown; outputDir: string; onBrowserLog: (l: LogNavegador) => void }): Promise<{ frameCount: number }> {
+  async renderFrames(o: { composition: unknown; outputDir: string; timeoutInMilliseconds: number; onBrowserLog: (l: LogNavegador) => void }): Promise<{ frameCount: number }> {
+    this.limitesInternos.push(o.timeoutInMilliseconds);
     const c = o.composition as { fotogramas: number; ancho: number; alto: number };
     const png = createCanvas(this.modo === 'tamano_malo' ? c.ancho - 1 : c.ancho, c.alto).toBuffer('image/png');
     const sinAlfa = await sharp({ create: { width: c.ancho, height: c.alto, channels: 3, background: '#000000' } }).png().toBuffer();
@@ -86,6 +88,12 @@ class FakeRenderer implements RendererRemotion {
     if (this.modo === 'falla') {
       await escribir(0, png);
       throw new Error(`boom ${SECRETO}`);
+    }
+    if (this.modo === 'falla_pasado_el_limite') {
+      // Blocks the event loop past the limit, then fails: the renderer's own timeout winning the race with ours.
+      const hasta = Date.now() + 250;
+      while (Date.now() < hasta);
+      throw new Error('renderer timeout');
     }
     if (this.modo === 'cuelga') {
       await escribir(0, png);
@@ -332,6 +340,20 @@ describe('the adapter: failures leave nothing behind', () => {
     expect(Date.now() - inicio).toBeLessThan(3000);
     expect(renderer.cancelado).toBe(true);
     expect(renderer.cierres).toBeGreaterThanOrEqual(1);
+    expect(await nombresEnCarpeta()).toEqual([]);
+  });
+
+  it.each([
+    [10_000, 12_000],
+    [1_000, 7_000],
+  ])("Remotion's own page timeout is a safety net: never under the 7000 ms it demands, above our limit (%i ms -> %i ms)", async (limite, interno) => {
+    await adaptador().renderizar(entradaDe(propsDe()), opciones(limite));
+    expect(renderer.limitesInternos).toEqual([interno]);
+  });
+
+  it('a render that fails after the time limit has passed is a timeout, not a render error', async () => {
+    renderer.modo = 'falla_pasado_el_limite';
+    await expect(adaptador().renderizar(entradaDe(propsDe()), opciones(100))).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
     expect(await nombresEnCarpeta()).toEqual([]);
   });
 

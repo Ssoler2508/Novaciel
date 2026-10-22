@@ -254,7 +254,9 @@ export function crearCapaTextoRemotion(opciones: OpcionesCapaTextoRemotion): Cap
             imageSequencePattern: 'capa-[frame].[ext]',
             puppeteerInstance: navegadorAbierto,
             concurrency: opciones.concurrencia ?? Math.max(1, Math.min(4, Math.floor(os.cpus().length / 2))),
-            timeoutInMilliseconds: Math.min(60_000, timeoutMs),
+            // Only a safety net inside the page: more room than our own limit, so that the limit above decides, and
+            // never under 7000, the minimum Remotion accepts (it throws a TypeError below that).
+            timeoutInMilliseconds: Math.max(7_000, Math.min(60_000, timeoutMs + 2_000)),
             cancelSignal,
             onStart: () => undefined,
             onBrowserLog: alLog,
@@ -286,7 +288,8 @@ export function crearCapaTextoRemotion(opciones: OpcionesCapaTextoRemotion): Cap
         await (navegadorAbierto as NavegadorRemotion | null)?.close({ silent: true }).catch(() => undefined);
         await trabajo.catch(() => undefined);
         await borrarCapas(carpeta);
-        if (agotado) throw new CapaTextoError('tiempo_agotado');
+        // Remotion has its own time limit, equal to ours: under load it can fail a hair before our timer fires.
+        if (agotado || Date.now() - inicio >= timeoutMs) throw new CapaTextoError('tiempo_agotado');
         if (violacion) throw new CapaTextoError('solicitud_externa');
         if (fallo instanceof CapaTextoError || fallo instanceof RemotionNoDisponibleError) throw fallo;
         log.error({ plantilla: props.plantilla, version: props.version, errorName: fallo instanceof Error ? fallo.name : 'UnknownError' }, 'text layer render failed');

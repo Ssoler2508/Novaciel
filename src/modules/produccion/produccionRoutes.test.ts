@@ -295,6 +295,7 @@ describe('GET /clientes/:clienteId/piezas/:piezaId/produccion (and /versiones)',
         ubicacion: 'Nuestro barrio',
         hash_version: 'np1',
         hash_pieza: produccion.hash_pieza,
+        plantilla: null,
       });
       expect(body.textos_alternativos).toHaveLength(5);
       expect(body.archivos.map((a: { orden: number }) => a.orden)).toEqual([1, 2, 3, 4, 5]);

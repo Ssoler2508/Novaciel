@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   if (!(await getClienteById(pool, args.clienteId))) throw new Error(`${SCRIPT} refused: that client does not exist`);
 
   const result = await runPieceProduce(
-    { db: pool, storage, reel: createReelRuntime(config.media), ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
+    { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
     args,
   );
   for (const line of result.lines) (result.ok ? console.log : console.error)(line);

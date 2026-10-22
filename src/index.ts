@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     ...(llm.withBriefContext ? { withContext: llm.withBriefContext } : {}),
   });
   // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
-  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media) });
+  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion) });
   // Approval reminders and the escalation notice (spec 11.3). LogNotifier only logs ids and template names
   // until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
   await registerRecordatoriosJobs(boss, { db: pool, notifier: new LogNotifier() });
