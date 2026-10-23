@@ -5,7 +5,7 @@ import { createUsuarioConRol } from './factories/index.js';
 
 /**
  * Test setup: NovaCiel proposes the plan and a fictional client approver approves it, through the real
- * services (Step 9). Replaces the old TEMPORARY internal approval.
+ * services (Step 9). It replaced the former internal plan approval (removed).
  */
 export async function aprobarPlanComoCliente(db: Db, clienteId: ClienteId, planId: string) {
   const staff = await createUsuarioConRol(db, 'operador_novaciel');

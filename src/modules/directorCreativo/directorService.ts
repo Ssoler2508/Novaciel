@@ -177,7 +177,7 @@ export async function generarBrief(
 
   // 4. One transaction stores everything.
   const stored = await runInTransaction(db, async (tx) => {
-    // LOCK ORDER (the same everywhere, also in aprobarPlanInterno): the plan first, then the piece.
+    // LOCK ORDER (the same everywhere, also in the plan approval services): the plan first, then the piece.
     const { rows: planRows } = await tx.query<{ estado: string }>(
       'SELECT estado FROM planes_semanales WHERE id = $1 AND cliente_id = $2 FOR SHARE',
       [piezaVista.plan_id, clienteId],

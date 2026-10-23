@@ -17,9 +17,9 @@ import { getHuellaPlan } from './aprobacionesRepository.js';
 import type { AprobacionesDeps } from './aprobacionesService.js';
 import { AprobacionInvalidaError, HuellaDesactualizadaError, PermisoDenegadoError, PlanNoDecidibleError, PlanNoProponibleError } from './errors.js';
 
-// The client's approval of the weekly plan (ADR-05, decision 7). It replaces the TEMPORARY
-// aprobarPlanInterno: NovaCiel proposes (borrador -> propuesto) and the CLIENT decides on the plan
-// fingerprint. LOCK ORDER (the same everywhere): the plan first, then its pieces.
+// The client's approval of the weekly plan (ADR-05, decision 7). History: it replaced the former
+// internal approval of the plan (removed). NovaCiel proposes (borrador -> propuesto) and the CLIENT
+// decides on the plan fingerprint. LOCK ORDER (the same everywhere): the plan first, then its pieces.
 
 export const MOTIVO_APROBACION_CLIENTE = 'aprobacion_plan_cliente';
 

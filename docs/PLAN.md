@@ -5,6 +5,23 @@ Rule of thumb: one branch per step (`step-XX`), one commit per checkpoint, plan 
 
 ---
 
+## Status (2026-10-22)
+
+| Step | State |
+| --- | --- |
+| 0, 1, 1b, 2, 2b, 3, 4, 5, 6 | Done |
+| 7a, 7b, 7c | Done |
+| 7d (voice) | Blocked: provider not chosen |
+| 8 (automatic quality control) | Pending |
+| 9 (two-level approval) | Done |
+| 10 (publishing) | Pending |
+| 11 (dashboard and alerts) | Pending |
+| 12 (end-to-end test) | Pending |
+
+Delivery notes (what is real and what is fake, consolidated debt, open questions): `docs/ENTREGA.md`. Decisions: `docs/ADR_INDEX.md`.
+
+---
+
 ## Phase 0 — Verification (no code, done in chat)
 
 Goal: replace assumptions in the spec with checked facts before building on them.
@@ -56,50 +73,50 @@ Detailed checkpoints (A to H) live in `docs/prompts/step-02.md`; this section on
 - **Done when:** a fictional client with profile and verified facts can be created and read; tests prove one client cannot read another's data; the seed runs twice without duplicates.
 - Result: 303 tests green; the seed's fictional client is complete (`puedePlanificar` true) and `activo`. Design decisions in `brain/` ADR-04 (JSON keys and required fields pending confirmation by the Senior).
 
-### Step 2b — Authentication, sessions and secret encryption ✅ (merge ` `)
+### Step 2b — Authentication, sessions and secret encryption ✅ (merge `77bc9b6`)
 Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section only states the scope.
-- [ ] Secret encryption utility (AES-256-GCM, `node:crypto`), keys in configuration with versions so they can be rotated
-- [ ] `conexiones_redes`: encrypted network credentials per client (used later by Step 10), never deleted, only revoked
-- [ ] Passwords with secure hashing (scrypt), account lockout after repeated failures
-- [ ] Server-side sessions (only the token hash is stored), login, logout and current user endpoints
-- [ ] Role-based permissions (matrix from spec section 14) enforced on endpoints
-- [ ] `npm run create-admin` to create the first NovaCiel administrator
-- [ ] No secrets, passwords or tokens in logs, responses or `auditoria`
+- [x] Secret encryption utility (AES-256-GCM, `node:crypto`), keys in configuration with versions so they can be rotated
+- [x] `conexiones_redes`: encrypted network credentials per client (used later by Step 10), never deleted, only revoked
+- [x] Passwords with secure hashing (scrypt), account lockout after repeated failures
+- [x] Server-side sessions (only the token hash is stored), login, logout and current user endpoints
+- [x] Role-based permissions (matrix from spec section 14) enforced on endpoints
+- [x] `npm run create-admin` to create the first NovaCiel administrator
+- [x] No secrets, passwords or tokens in logs, responses or `auditoria`
 - Not in this step: password reset by email, 2FA, per-IP rate limiting, re-encryption script for key rotation (known debt).
 
 **Done when:** a user without the required role is rejected on every protected endpoint, and there is a test proving that secrets are stored encrypted.
 **Must be completed before Steps 9, 10 and 11** (approval endpoints, network credentials and the dashboard all need it).
 
-### Step 3 — Budget and LLM adapter ✅ (merge ` `)
+### Step 3 — Budget and LLM adapter ✅ (merge `445819a`)
 - Budget model: ceilings per client and period, authorization before any paid call, recorded spend.
 - `LLMProvider` interface; Claude implementation (provider and model in config); `FakeLLMProvider` for tests.
 - Output validation with zod schemas: one retry, then alert.
 - Requires the system's own Anthropic API key (not the Pro account).
 - **Done when:** a call without budget authorization is rejected; a valid call records its cost; invalid output triggers retry and alert (tested with the fake).
 
-### Step 4 — Media library ✅ (merge ` `)
+### Step 4 — Media library ✅ (merge `9b5682b`)
 - Upload and catalog the client's real media (photos, video) in storage, with metadata, tags and usage rights. `LocalFileStorage` in development, `FakeStorage` in tests.
 - Link to `autorizaciones_imagen` for people who appear; consent data is not duplicated in the library.
 - Optional description of media through a vision adapter (with fake).
 - FFmpeg (`ffprobe`) installed natively on Windows from this step.
 - **Done when:** media can be uploaded, listed and searched per client.
 
-### Step 5 — Planner and piece states ✅ (merge ` `)
+### Step 5 — Planner and piece states ✅ (merge `081689f`)
 - Weekly plan generation per client from Brand Profile and verified facts.
 - Piece state machine with the states and transitions of spec section 15 (planeada → plan_aprobado → guion_listo → en_produccion → …); `pausada` is reachable from any state.
 - Invalid transitions are impossible.
 - **Done when:** a weekly plan is created for the fictional client and state transitions are tested.
 
-### Step 6 — Creative director ✅ (merge ` `)
+### Step 6 — Creative director ✅ (merge `d533f9c`)
 - Turns each planned piece into a creative brief: format, copy, media to use, references to verified facts.
 - Schema-validated LLM output; every factual claim traced to a `hechos_verificados` record.
 - **Done when:** briefs are generated with the fake and contain no untraceable facts.
 
-### Step 7 — Production with real media (carousels first)
-- ✅ 7a: carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
-- ✅ 7b: video cuts and assembly with FFmpeg (native).
-- ✅ 7c: animated templates and word-level subtitles with Remotion. **Unblocked (2026-10-22):** NovaCiel is 3 people and its Remotion account is on the free plan (confirmed by the developer); use `REMOTION_LICENCIA=gratuita`, no `licenseKey`, nothing is sent to Remotion. The contractor question (3 or 4 people) is open for NovaCiel before production use. Design, license gate and decisions in `docs/ADR-06_REMOTION_LICENCIA.md`; `REMOTION_LICENCIA` has no default (unset = Remotion disabled, reels keep the 7b overlays).
-- 7d: voice. Provider chosen before this sub-step.
+### Step 7 — Production with real media (carousels first) — 7a, 7b, 7c done; 7d blocked
+- ✅ 7a (merge `1d83e07`): carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
+- ✅ 7b (merge `33d5ce7`): video cuts and assembly with FFmpeg (native).
+- ✅ 7c (merge `575c8d3`, final fixes `1801806`): animated templates and word-level subtitles with Remotion. **Unblocked (2026-10-22):** NovaCiel is 3 people and its Remotion account is on the free plan (confirmed by the developer); use `REMOTION_LICENCIA=gratuita`, no `licenseKey`, nothing is sent to Remotion. The contractor question (3 or 4 people) is open for NovaCiel before production use. Design, license gate and decisions in `docs/ADR-06_REMOTION_LICENCIA.md`; `REMOTION_LICENCIA` has no default (unset = Remotion disabled, reels keep the 7b overlays).
+- 7d: voice. **Blocked:** the provider must be chosen first (open question).
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
 
@@ -107,12 +124,12 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Checks: dimensions and formats per network, text length, banned words, facts against `hechos_verificados`, brand rules.
 - **Done when:** a failing piece is blocked with clear reasons.
 
-### Step 9 — Two-level approval ✅ (merge ` `)
+### Step 9 — Two-level approval ✅ (merge `9c040d8`)
 - Internal review, then client approval, recorded against the exact piece (piece-level hash).
 - Any change to the files, their order, caption, hashtags, alt text or network invalidates the approval.
 - Requires Step 2b (sessions and role checks).
 - **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
-- Built on branch `step-09` (checkpoints A to E); design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`. Pending the developer's manual check and merge.
+- Built on branch `step-09` (checkpoints A to E), merged; design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`.
 
 ### Step 10 — Publishing
 - Publishing adapter (intermediary chosen after Phase 0), with fake.

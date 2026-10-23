@@ -20,8 +20,8 @@ import { getBriefActual, listBriefVersions } from './guionesRepository.js';
 // everything that can be refused for free, queue the job and answer 202 with its id; the result is
 // read with the job route or the brief routes.
 //
-// There is NO route to approve a plan on behalf of the client (aprobarPlanInterno is a service used
-// only by a development script): the permission matrix forbids NovaCiel approving for the client.
+// There is NO route to approve a plan on behalf of the client (the former internal plan approval was
+// removed): the permission matrix forbids NovaCiel approving for the client.
 //
 // NOTE for clients: the CSRF guard of Step 2b requires Content-Type: application/json on every
 // POST, also when the body is empty.

@@ -22,7 +22,7 @@ export interface AuthOptions {
 // Only the shape is validated: no password policy at login, and the input is never echoed back.
 const loginBody = z.object({ email: z.string().min(1).max(320), password: z.string().min(1).max(1024) });
 
-export function defaultAllowedOrigin(): string {
+function defaultAllowedOrigin(): string {
   return new URL(config.PUBLIC_BASE_URL ?? `http://localhost:${config.PORT}`).origin;
 }
 

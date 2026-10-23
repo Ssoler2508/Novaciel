@@ -28,42 +28,26 @@ docs/workspace.json
 Thumbs.db
 
 
-# 4. Backend (Go)
+# 4. Build output and coverage
 
-/bin/
 /dist/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-coverage.txt
+coverage/
 
 
-# 5. Frontend & Node Ecosystem (Astro / TS / JS)
+# 5. Node
 
-# Dependencies and build outputs
 node_modules/
-.astro/
 dist/
-build/
 
 # Cache files and logs
 .npm
-.eslintcache
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 
 
-# 6. Docker & Temporary Files
+# 6. Temporary files
 
 *.tmp
-.docker/
 
 # Local file storage (development)
 .data/
