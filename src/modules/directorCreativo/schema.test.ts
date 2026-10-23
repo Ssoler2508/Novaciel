@@ -15,7 +15,7 @@ import { BRIEF_ISSUES, buildBriefSchema, type BriefContent } from './schema.js';
 import { factToken } from './tokens.js';
 import type { BriefContext } from './types.js';
 
-type Mutable = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Mutable = Record<string, any>;
 
 /** Messages of every issue the schema finds in `brief` (empty = valid). */
 function issuesOf(context: BriefContext, brief: unknown): string[] {
