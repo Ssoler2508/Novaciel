@@ -8,7 +8,7 @@ El sistema todavía no tiene despliegue ni publicación real. Todo corre en loca
 
 | Requisito | Detalle |
 | --- | --- |
-| Node.js | 20 o superior (proyecto ESM + TypeScript estricto). |
+| Node.js | 22 o superior (proyecto ESM + TypeScript estricto). |
 | PostgreSQL | 18, local. Dos bases: `novaciel_db` (desarrollo) y `novaciel_test` (pruebas). |
 | FFmpeg y ffprobe | Deben estar en el `PATH`. Se usan para analizar media y renderizar reels. |
 
