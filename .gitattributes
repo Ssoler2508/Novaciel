@@ -1,3 +1,6 @@
+# Normalize line endings to LF in the repository and the working tree.
+* text=auto eol=lf
+
 # Keep media fixtures byte-exact (no line-ending conversion).
 tests/fixtures/media/** -text
 seed-data/media/** -text
