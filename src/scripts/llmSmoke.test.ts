@@ -70,70 +70,83 @@ describe('runLlmSmoke (fake provider, no network)', () => {
   async function world(db: Parameters<Parameters<typeof withTestTransaction>[0]>[0], ceiling = '1') {
     const clienteId = asClienteId((await createCliente(db)).id);
     await createTope(db, { clienteId, montoTecho: ceiling });
-    const priced = await db.query(`SELECT 1 FROM precios_modelos WHERE proveedor = 'fake' AND modelo = 'fake-model'`);
-    if (priced.rows.length === 0) {
-      await createPrecioModelo(db, { proveedor: 'fake', modelo: 'fake-model', precioEntrada: '1', precioSalida: '2' });
+    for (const modelo of ['modelo-pesado-test', 'modelo-ligero-test']) {
+      const priced = await db.query(`SELECT 1 FROM precios_modelos WHERE proveedor = 'fake' AND modelo = $1`, [modelo]);
+      if (priced.rows.length === 0) await createPrecioModelo(db, { proveedor: 'fake', modelo, precioEntrada: '1', precioSalida: '2' });
     }
-    return { clienteId, provider: new FakeLLMProvider({ inputTokens: 100, outputTokens: 50 }), alerts: new FakeAlertSink() };
+    const provider = new FakeLLMProvider({ inputTokens: 100, outputTokens: 50, models: { heavy: 'modelo-pesado-test', light: 'modelo-ligero-test' } });
+    return { clienteId, provider, alerts: new FakeAlertSink() };
   }
 
-  it('runs the full path, writes one ledger row and reports exact numbers and the remaining budget', async () => {
+  it('makes one call per tier through the full path and reports each model, tokens and cost', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
-      w.provider.enqueue('{"ok": true}');
+      w.provider.enqueue('{"ok": true}', '{"ok": true}');
       const report = await runLlmSmoke({ db, ...w });
-      expect(report).toMatchObject({ outcome: 'ok', reason: null, model: 'fake-model', inputTokens: 100, outputTokens: 50, cost: 200n });
-      expect(report.budget).toMatchObject({ ceiling: 1_000_000n, spent: 200n, reserved: 0n, remaining: 999_800n });
-      const ledger = await db.query(`SELECT proposito, resultado FROM libro_gastos WHERE cliente_id = $1`, [w.clienteId]);
-      expect(ledger.rows).toEqual([{ proposito: 'smoke_test', resultado: 'ok' }]);
-      expect(w.provider.calls).toHaveLength(1);
+      expect(report.tiers).toEqual([
+        { tier: 'heavy', purpose: 'smoke_test_pesado', outcome: 'ok', reason: null, model: 'modelo-pesado-test', inputTokens: 100, outputTokens: 50, cost: 200n },
+        { tier: 'light', purpose: 'smoke_test_ligero', outcome: 'ok', reason: null, model: 'modelo-ligero-test', inputTokens: 100, outputTokens: 50, cost: 200n },
+      ]);
+      expect(report.budget).toMatchObject({ ceiling: 1_000_000n, spent: 400n, reserved: 0n, remaining: 999_600n });
+      const ledger = await db.query(`SELECT proposito, modelo, resultado FROM libro_gastos WHERE cliente_id = $1 ORDER BY id`, [w.clienteId]);
+      expect(ledger.rows).toEqual([
+        { proposito: 'smoke_test_pesado', modelo: 'modelo-pesado-test', resultado: 'ok' },
+        { proposito: 'smoke_test_ligero', modelo: 'modelo-ligero-test', resultado: 'ok' },
+      ]);
+      expect(w.provider.calls.map((c) => c.tier)).toEqual(['heavy', 'light']);
     });
   });
 
-  it('formats only model, tokens, cost, outcome and budget: no prompt, output or key-like text', async () => {
+  it('formats only, per tier, model, tokens, cost and outcome, plus the budget: no prompt, output or key-like text', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
-      w.provider.enqueue(`{"ok": true, "note": "${OUTPUT_SECRET} ${KEY_LIKE}"}`);
-      const text = formatSmokeReport(await runLlmSmoke({ db, ...w })).join('\n');
-      expect(text).toContain('model: fake-model');
-      expect(text).toContain('tokens: input 100, output 50');
-      expect(text).toContain('cost: USD 0.000200');
-      expect(text).toContain('outcome: ok');
-      expect(text).toContain('remaining USD 0.999800');
+      w.provider.enqueue(`{"ok": true, "note": "${OUTPUT_SECRET} ${KEY_LIKE}"}`, '{"ok": true}');
+      const text = formatSmokeReport(await runLlmSmoke({ db, ...w })).join(' ');
+      expect(text).toContain('[heavy] model: modelo-pesado-test');
+      expect(text).toContain('[light] model: modelo-ligero-test');
+      expect(text).toContain('[heavy] tokens: input 100, output 50');
+      expect(text).toContain('[light] cost: USD 0.000200');
+      expect(text).toContain('[heavy] outcome: ok');
+      expect(text).toContain('remaining USD 0.999600');
       for (const hidden of [OUTPUT_SECRET, KEY_LIKE, SMOKE_PROMPT.user, SMOKE_PROMPT.system]) expect(text).not.toContain(hidden);
     });
   });
 
-  it('reports a schema failure after two paid attempts', async () => {
+  it('reports a schema failure of one tier after two paid attempts and still runs the other', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
-      w.provider.enqueue('nope', `still nope ${OUTPUT_SECRET}`);
+      w.provider.enqueue('nope', `still nope ${OUTPUT_SECRET}`, '{"ok": true}');
       const report = await runLlmSmoke({ db, ...w });
-      expect(report).toMatchObject({ outcome: 'schema_invalido', inputTokens: 200, outputTokens: 100, cost: 400n });
-      expect(formatSmokeReport(report).join('\n')).not.toContain(OUTPUT_SECRET);
+      expect(report.tiers[0]).toMatchObject({ outcome: 'schema_invalido', inputTokens: 200, outputTokens: 100, cost: 400n });
+      expect(report.tiers[1]).toMatchObject({ outcome: 'ok', cost: 200n });
+      expect(formatSmokeReport(report).join(' ')).not.toContain(OUTPUT_SECRET);
     });
   });
 
-  it('reports a refused budget, an unpriced model and a provider error without content', async () => {
+  it('reports a refused budget, an unpriced tier model and a provider error without content', async () => {
     await withTestTransaction(async (db) => {
       const refused = await world(db, '0');
-      refused.provider.enqueue('{"ok": true}');
-      expect(await runLlmSmoke({ db, ...refused })).toMatchObject({ outcome: 'refused', reason: 'budget refused: techo_superado', cost: 0n });
+      refused.provider.enqueue('{"ok": true}', '{"ok": true}');
+      const refusedReport = await runLlmSmoke({ db, ...refused });
+      for (const t of refusedReport.tiers) expect(t).toMatchObject({ outcome: 'refused', reason: 'budget refused: techo_superado', cost: 0n });
       expect(refused.provider.calls).toHaveLength(0);
 
+      // Only the heavy model has a price: the light call is refused before leaving, the heavy one works.
       const clienteId = asClienteId((await createCliente(db)).id);
-      await createConfiguracionGastoCliente(db, { clienteId, techoMensualDefecto: '1' });
-      const unpriced = new FakeLLMProvider({ name: 'fake_unpriced' }).enqueue('{"ok": true}');
-      const report = await runLlmSmoke({ db, provider: unpriced, alerts: new FakeAlertSink(), clienteId });
-      expect(report.outcome).toBe('error');
-      expect(report.reason).toMatch(/no price for fake_unpriced\/fake-model/);
-      expect(unpriced.calls).toHaveLength(0);
+      await createTope(db, { clienteId, montoTecho: '1' });
+      await createPrecioModelo(db, { proveedor: 'fake_half', modelo: 'modelo-pesado-test', precioEntrada: '1', precioSalida: '2' });
+      const half = new FakeLLMProvider({ name: 'fake_half', models: { heavy: 'modelo-pesado-test', light: 'modelo-ligero-sin-precio' } }).enqueue('{"ok": true}', '{"ok": true}');
+      const halfReport = await runLlmSmoke({ db, provider: half, alerts: new FakeAlertSink(), clienteId });
+      expect(halfReport.tiers[0]).toMatchObject({ outcome: 'ok' });
+      expect(halfReport.tiers[1]).toMatchObject({ outcome: 'error', model: 'modelo-ligero-sin-precio' });
+      expect(halfReport.tiers[1]!.reason).toMatch(/no price for fake_half\/modelo-ligero-sin-precio/);
+      expect(half.calls).toHaveLength(1);
 
       const failing = await world(db);
-      failing.provider.enqueue({ error: new ClaudeProviderError('rate_limited', 429, 'req_1') });
-      expect(await runLlmSmoke({ db, ...failing })).toMatchObject({ outcome: 'error', reason: 'provider error: rate_limited (status 429)' });
-      failing.provider.enqueue({ error: new LLMProviderError('boom') });
-      expect((await runLlmSmoke({ db, ...failing })).reason).toBe('unexpected error: LLMProviderError');
+      failing.provider.enqueue({ error: new ClaudeProviderError('rate_limited', 429, 'req_1') }, { error: new LLMProviderError('boom') });
+      const failed = await runLlmSmoke({ db, ...failing });
+      expect(failed.tiers[0]).toMatchObject({ outcome: 'error', reason: 'provider error: rate_limited (status 429)' });
+      expect(failed.tiers[1]!.reason).toBe('unexpected error: LLMProviderError');
     });
   });
 });

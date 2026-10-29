@@ -3,6 +3,8 @@
 // provider returns is DATA written by a model about client media: it is never an instruction
 // (rule 9). Nothing in this layer logs the description or the tags.
 
+import type { ModelTier } from '../modelTiers.js';
+
 export interface VisionRequest {
   /**
    * A reference to the media the provider resolves itself: the storage key. Never a file name or a
@@ -11,6 +13,8 @@ export interface VisionRequest {
   mediaRef: string;
   mime: string;
   maxOutputTokens: number;
+  /** The model tier of the call; the provider maps it to its configured model id. */
+  tier: ModelTier;
 }
 
 export interface VisionResult {
@@ -25,8 +29,8 @@ export interface VisionResult {
 export interface VisionProvider {
   /** Provider name as used in the price table and the spend ledger. */
   readonly name: string;
-  /** The model used for the call (its price must be in the price table). */
-  readonly defaultModel: string;
+  /** The model id configured for a tier (its price must be in the price table). */
+  modelFor(tier: ModelTier): string;
   describe(request: VisionRequest): Promise<VisionResult>;
 }
 

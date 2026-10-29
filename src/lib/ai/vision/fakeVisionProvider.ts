@@ -1,3 +1,4 @@
+import type { ModelTier, TierModels } from '../modelTiers.js';
 import type { VisionProvider, VisionRequest, VisionResult } from './types.js';
 
 export type ScriptedVision =
@@ -6,7 +7,7 @@ export type ScriptedVision =
 
 export interface FakeVisionOptions {
   name?: string;
-  defaultModel?: string;
+  models?: Partial<TierModels>;
   /** Usage reported by the results that do not set their own. */
   inputTokens?: number;
   outputTokens?: number;
@@ -15,7 +16,7 @@ export interface FakeVisionOptions {
 /** Scripted provider for tests: results come from a queue, calls are recorded, nothing is paid. */
 export class FakeVisionProvider implements VisionProvider {
   readonly name: string;
-  readonly defaultModel: string;
+  readonly #models: TierModels;
   readonly calls: VisionRequest[] = [];
   readonly #queue: ScriptedVision[] = [];
   #inputTokens: number;
@@ -23,9 +24,13 @@ export class FakeVisionProvider implements VisionProvider {
 
   constructor(options: FakeVisionOptions = {}) {
     this.name = options.name ?? 'fake_vision';
-    this.defaultModel = options.defaultModel ?? 'fake-vision-model';
+    this.#models = { heavy: options.models?.heavy ?? 'fake-vision-model-heavy', light: options.models?.light ?? 'fake-vision-model' };
     this.#inputTokens = options.inputTokens ?? 1000;
     this.#outputTokens = options.outputTokens ?? 100;
+  }
+
+  modelFor(tier: ModelTier): string {
+    return this.#models[tier];
   }
 
   /** Queues results, answered in order. */
@@ -44,7 +49,7 @@ export class FakeVisionProvider implements VisionProvider {
       tags: next.tags,
       inputTokens: next.inputTokens ?? this.#inputTokens,
       outputTokens: next.outputTokens ?? this.#outputTokens,
-      model: next.model ?? this.defaultModel,
+      model: next.model ?? this.modelFor(request.tier),
     };
   }
 }

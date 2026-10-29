@@ -6,7 +6,7 @@ import { asClienteId } from '../modules/shared/clienteId.js';
 import { seedDevelopment, SEED_PRICE_MODEL, SEED_PRICE_NOTE, SEED_PRICE_PROVIDER } from './seedDevelopment.js';
 
 describe('seed: fake model price', () => {
-  it('creates one clearly fake price once, usable for estimates, audited once', async () => {
+  it('creates one clearly fake price once, usable for estimates, audited once per model', async () => {
     await withTestTransaction(async (db) => {
       const first = await seedDevelopment(db);
       expect(first.created).toContain(`precio ficticio ${SEED_PRICE_PROVIDER}/${SEED_PRICE_MODEL}`);
@@ -19,7 +19,7 @@ describe('seed: fake model price', () => {
       ]);
       expect(rows).toEqual([{ nota: SEED_PRICE_NOTE, entrada: '1.000000' }]);
       const audit = await db.query(`SELECT 1 FROM auditoria WHERE tabla = 'precios_modelos' AND accion = 'crear'`);
-      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows).toHaveLength(2); // one per priced model (heavy and light)
       await expect(
         estimateCost(db, { provider: SEED_PRICE_PROVIDER, model: SEED_PRICE_MODEL, maxInputTokens: 1_000_000, maxOutputTokens: 1_000_000 }),
       ).resolves.toBe(3_000_000n);

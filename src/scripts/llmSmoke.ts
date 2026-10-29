@@ -9,8 +9,8 @@ import { assertLlmSmokeAllowed, confirmLlmSmokeDatabase } from './llmSmokeGuard.
 
 /**
  * `npm run llm:smoke -- --cliente <id>`: development-only manual check of the real provider. Makes
- * one tiny paid call through the full path and prints only model, tokens, cost, outcome and the
- * remaining budget. Never prints the key, the prompt or the output.
+ * one tiny paid call per model tier through the full path and prints only, per tier, model, tokens,
+ * cost and outcome, plus the remaining budget. Never prints the key, the prompt or the output.
  */
 async function main(): Promise<void> {
   const { clienteId } = parseLlmSmokeArgs(process.argv.slice(2));
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     clienteId,
   });
   for (const line of formatSmokeReport(report)) console.log(line);
-  if (report.outcome !== 'ok') process.exitCode = 1;
+  if (report.tiers.some((t) => t.outcome !== 'ok')) process.exitCode = 1;
 }
 
 main()

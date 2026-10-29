@@ -96,7 +96,7 @@ interface World {
 async function world(db: Db): Promise<World> {
   await seedDevelopment(db);
   const clienteId = asClienteId((await findClienteByNombreComercial(db, SEED_CLIENT_NAME))!.id);
-  const runtime = createLlmRuntime({ provider: 'fake', model: 'fake-model', timeoutMs: 60_000 }, 'development');
+  const runtime = createLlmRuntime({ provider: 'fake', models: { heavy: 'fake-model', light: 'fake-model-light' }, timeoutMs: 60_000 }, 'development');
   const alerts = new FakeAlertSink();
   return { db, clienteId, runtime, alerts, deps: { db, provider: runtime.provider, alerts, withContext: runtime.withBriefContext! } };
 }

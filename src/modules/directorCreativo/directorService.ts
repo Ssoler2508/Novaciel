@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import type { AlertSink } from '../../lib/ai/alerts.js';
+import type { Purpose } from '../../lib/ai/modelTiers.js';
 import type { LLMProvider } from '../../lib/ai/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { generateStructured } from '../ai/generateStructured.js';
@@ -45,7 +46,7 @@ import type { BriefContext, HechoBrief } from './types.js';
 // with the facts valid NOW. Logs carry ids, versions and counts only: never the prompt, the copy or
 // the idea.
 
-export const BRIEF_PURPOSE = 'brief_creativo';
+export const BRIEF_PURPOSE = 'brief_creativo' satisfies Purpose;
 
 /**
  * Output budget, a constant formula derived from the format's limits: 1200 tokens for the caption

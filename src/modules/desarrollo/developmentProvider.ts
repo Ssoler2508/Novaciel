@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { LlmConfig } from '../../config/index.js';
 import { createLLMProvider } from '../../lib/ai/index.js';
+import type { ModelTier, TierModels } from '../../lib/ai/modelTiers.js';
 import type { LLMProvider, LLMRequest, LLMResponse } from '../../lib/ai/types.js';
 import { buildDeterministicBrief } from '../directorCreativo/deterministicBriefFake.js';
 import { BRIEF_PURPOSE } from '../directorCreativo/directorService.js';
@@ -27,10 +28,14 @@ const channel = new AsyncLocalStorage<Channel>();
 
 export class DeterministicDevProvider implements LLMProvider {
   readonly name = 'fake';
-  readonly defaultModel: string;
+  readonly #models: TierModels;
 
-  constructor(options: { defaultModel?: string } = {}) {
-    this.defaultModel = options.defaultModel ?? 'fake-model';
+  constructor(options: { models?: Partial<TierModels> } = {}) {
+    this.#models = { heavy: options.models?.heavy ?? 'fake-model', light: options.models?.light ?? 'fake-model-light' };
+  }
+
+  modelFor(tier: ModelTier): string {
+    return this.#models[tier];
   }
 
   /** Runs `run` with the planner context available to generate() (purpose plan_semanal). */
@@ -66,7 +71,7 @@ export class DeterministicDevProvider implements LLMProvider {
       // Sizes only: the prompt text itself is never read.
       inputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(request)) / 4),
       outputTokens: Math.ceil(text.length / 4),
-      model: request.model ?? this.defaultModel,
+      model: this.modelFor(request.tier),
       stopReason: 'end_turn',
     };
   }
@@ -86,7 +91,7 @@ export interface LlmRuntime {
 export function createLlmRuntime(cfg: LlmConfig, nodeEnv: string): LlmRuntime {
   if (cfg.provider === 'fake') {
     if (nodeEnv === 'production') throw new Error('The deterministic development provider is for development and tests only');
-    const fake = new DeterministicDevProvider({ defaultModel: cfg.model });
+    const fake = new DeterministicDevProvider({ models: cfg.models });
     return {
       provider: fake,
       withPlannerContext: (context, run) => fake.withPlannerContext(context, run),

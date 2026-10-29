@@ -1,3 +1,4 @@
+import type { ModelTier, TierModels } from './modelTiers.js';
 import type { LLMProvider, LLMRequest, LLMResponse } from './types.js';
 
 export type ScriptedReply =
@@ -7,7 +8,7 @@ export type ScriptedReply =
 
 export interface FakeLLMOptions {
   name?: string;
-  defaultModel?: string;
+  models?: Partial<TierModels>;
   /** Token usage reported for replies that do not set their own. */
   inputTokens?: number;
   outputTokens?: number;
@@ -16,7 +17,7 @@ export interface FakeLLMOptions {
 /** Scripted provider for tests: replies come from a queue, calls are recorded, nothing is paid. */
 export class FakeLLMProvider implements LLMProvider {
   readonly name: string;
-  readonly defaultModel: string;
+  readonly #models: TierModels;
   readonly calls: LLMRequest[] = [];
   readonly #queue: ScriptedReply[] = [];
   #inputTokens: number;
@@ -24,9 +25,13 @@ export class FakeLLMProvider implements LLMProvider {
 
   constructor(options: FakeLLMOptions = {}) {
     this.name = options.name ?? 'fake';
-    this.defaultModel = options.defaultModel ?? 'fake-model';
+    this.#models = { heavy: options.models?.heavy ?? 'fake-model', light: options.models?.light ?? 'fake-model-light' };
     this.#inputTokens = options.inputTokens ?? 100;
     this.#outputTokens = options.outputTokens ?? 50;
+  }
+
+  modelFor(tier: ModelTier): string {
+    return this.#models[tier];
   }
 
   /** Queues replies, answered in order. */
@@ -52,7 +57,7 @@ export class FakeLLMProvider implements LLMProvider {
       text: scripted.text,
       inputTokens: ('inputTokens' in scripted ? scripted.inputTokens : undefined) ?? this.#inputTokens,
       outputTokens: ('outputTokens' in scripted ? scripted.outputTokens : undefined) ?? this.#outputTokens,
-      model: request.model ?? this.defaultModel,
+      model: this.modelFor(request.tier),
       stopReason: ('stopReason' in scripted ? scripted.stopReason : undefined) ?? 'end_turn',
     };
   }

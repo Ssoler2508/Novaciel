@@ -14,7 +14,9 @@ import { LLMProviderError } from './types.js';
 
 // A fake HTTP layer is passed to the SDK: no test here touches the network.
 const KEY = 'sk-fake-test-key-DO-NOT-USE-123456';
-const MODEL = 'fake-claude-model';
+const MODEL = 'modelo-pesado-test';
+const MODEL_LIGHT = 'modelo-ligero-test';
+const MODELS = { heavy: MODEL, light: MODEL_LIGHT };
 const PROMPT_SECRET = 'PROMPT-SECRET-TEXT-4711';
 const BODY_SECRET = 'RESPONSE-BODY-SECRET-5512';
 
@@ -62,13 +64,14 @@ function fakeFetch(...script: (Response | ((init: RequestInit) => Promise<Respon
 }
 
 function provider(f: ReturnType<typeof fakeFetch>, extra: Partial<ConstructorParameters<typeof ClaudeProvider>[0]> = {}) {
-  return new ClaudeProvider({ apiKey: KEY, defaultModel: MODEL, timeoutMs: 5000, maxRetries: 0, fetch: f.fetch, ...extra });
+  return new ClaudeProvider({ apiKey: KEY, models: MODELS, timeoutMs: 5000, maxRetries: 0, fetch: f.fetch, ...extra });
 }
 
 const request = {
   system: 'Return JSON.',
   messages: [{ role: 'user' as const, content: `Write about ${PROMPT_SECRET}.` }],
   maxOutputTokens: 321,
+  tier: 'heavy' as const,
 };
 
 afterEach(() => vi.unstubAllEnvs());
@@ -107,18 +110,18 @@ describe('ClaudeProvider: success', () => {
     await expect(provider(f).generate(request)).resolves.toMatchObject({ text: 'ok', inputTokens: 15, outputTokens: 5 });
   });
 
-  it('sends the configured model and max_tokens, the system prompt and the messages', async () => {
+  it('sends the model of the requested tier, max_tokens, the system prompt and the messages', async () => {
     const f = fakeFetch(json(200, messageBody()), json(200, messageBody()));
     const p = provider(f);
     await p.generate(request);
-    await p.generate({ ...request, model: 'other-fake-model' });
+    await p.generate({ ...request, tier: 'light' });
     expect(f.seen[0]!.body).toEqual({
       model: MODEL,
       max_tokens: 321,
       system: 'Return JSON.',
       messages: [{ role: 'user', content: request.messages[0]!.content }],
     });
-    expect(f.seen[1]!.body.model).toBe('other-fake-model');
+    expect(f.seen[1]!.body.model).toBe(MODEL_LIGHT);
   });
 
   it('uses only our key and the fixed Anthropic URL, even if the SDK environment variables are set', async () => {
@@ -127,7 +130,7 @@ describe('ClaudeProvider: success', () => {
     vi.stubEnv('ANTHROPIC_BASE_URL', 'https://evil.example.test');
     vi.stubEnv('ANTHROPIC_LOG', 'debug');
     const f = fakeFetch(json(200, messageBody()));
-    await new ClaudeProvider({ apiKey: KEY, defaultModel: MODEL, timeoutMs: 5000, fetch: f.fetch }).generate(request);
+    await new ClaudeProvider({ apiKey: KEY, models: MODELS, timeoutMs: 5000, fetch: f.fetch }).generate(request);
     const seen = f.seen[0]!;
     expect(seen.url.startsWith('https://api.anthropic.com/')).toBe(true);
     expect(seen.headers.get('x-api-key')).toBe(KEY);
@@ -216,7 +219,7 @@ describe('ClaudeProvider with generateStructured', () => {
       const ok = fakeFetch(json(200, messageBody()));
       const result = await generateStructured(
         { db, provider: provider(ok), alerts: new FakeAlertSink(), logger },
-        { clienteId, purpose: 'test_purpose', schema, prompt: { system: 's', user: `u ${PROMPT_SECRET}` }, maxOutputTokens: 100, actor: { tipo: 'sistema' } },
+        { clienteId, purpose: 'smoke_test_pesado', schema, prompt: { system: 's', user: `u ${PROMPT_SECRET}` }, maxOutputTokens: 100, actor: { tipo: 'sistema' } },
       );
       // 120 * 1.00/M + 40 * 2.00/M = 200 micro-USD.
       expect(result).toMatchObject({ data: { title: 'ok', score: 3 }, cost: 200n });
@@ -228,7 +231,7 @@ describe('ClaudeProvider with generateStructured', () => {
       await expect(
         generateStructured(
           { db, provider: provider(down), alerts: new FakeAlertSink(), logger },
-          { clienteId, purpose: 'test_purpose', schema, prompt: { system: 's', user: `u ${PROMPT_SECRET}` }, maxOutputTokens: 100, actor: { tipo: 'sistema' } },
+          { clienteId, purpose: 'smoke_test_pesado', schema, prompt: { system: 's', user: `u ${PROMPT_SECRET}` }, maxOutputTokens: 100, actor: { tipo: 'sistema' } },
         ),
       ).rejects.toBeInstanceOf(ClaudeProviderError);
       const states = await db.query(`SELECT estado FROM autorizaciones_gasto WHERE cliente_id = $1 ORDER BY creado_en, id`, [clienteId]);
@@ -250,13 +253,14 @@ describe('createLLMProvider and config', () => {
     SECRETS_KEYS: `1:${Buffer.alloc(32, 1).toString('base64')}`,
     SECRETS_ACTIVE_KEY_VERSION: '1',
   };
-  const claude = { ...base, LLM_PROVIDER: 'claude', LLM_MODEL: MODEL, NOVACIEL_ANTHROPIC_API_KEY: KEY };
+  const claude = { ...base, LLM_PROVIDER: 'claude', LLM_MODEL: MODEL, LLM_MODEL_LIGHT: MODEL_LIGHT, NOVACIEL_ANTHROPIC_API_KEY: KEY };
 
   it('builds a ClaudeProvider from config', () => {
     const cfg = loadConfig(claude);
     const p = createLLMProvider(cfg.llm);
     expect(p).toBeInstanceOf(ClaudeProvider);
-    expect(p).toMatchObject({ name: 'claude', defaultModel: MODEL });
+    expect(p).toMatchObject({ name: 'claude' });
+    expect([p.modelFor('heavy'), p.modelFor('light')]).toEqual([MODEL, MODEL_LIGHT]);
   });
 
   it('requires the key only with the claude provider, and the message never prints a key', () => {
@@ -272,7 +276,7 @@ describe('createLLMProvider and config', () => {
   });
 
   it('ignores ANTHROPIC_API_KEY entirely', () => {
-    expect(() => loadConfig({ ...base, LLM_PROVIDER: 'claude', LLM_MODEL: MODEL, ANTHROPIC_API_KEY: KEY })).toThrow(/NOVACIEL_ANTHROPIC_API_KEY/);
+    expect(() => loadConfig({ ...base, LLM_PROVIDER: 'claude', LLM_MODEL: MODEL, LLM_MODEL_LIGHT: MODEL_LIGHT, ANTHROPIC_API_KEY: KEY })).toThrow(/NOVACIEL_ANTHROPIC_API_KEY/);
     const cfg = loadConfig({ ...claude, ANTHROPIC_API_KEY: 'sk-decoy' });
     expect(cfg.llm.apiKey?.reveal()).toBe(KEY);
   });

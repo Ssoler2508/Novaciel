@@ -212,7 +212,7 @@ describe('llm config', () => {
 
   it('defaults to the fake provider and model in development and test', () => {
     for (const NODE_ENV of ['development', 'test']) {
-      expect(loadConfig({ ...valid, NODE_ENV }).llm).toEqual({ provider: 'fake', model: 'fake-model', timeoutMs: 60_000 });
+      expect(loadConfig({ ...valid, NODE_ENV }).llm).toEqual({ provider: 'fake', models: { heavy: 'fake-model', light: 'fake-model-light' }, timeoutMs: 60_000 });
     }
   });
 
@@ -221,11 +221,20 @@ describe('llm config', () => {
     expect(loadConfig({ ...production, LLM_PROVIDER: 'fake' }).llm.provider).toBe('fake');
   });
 
-  it('requires LLM_MODEL with the claude provider and passes it through', () => {
-    expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'claude' })).toThrow(/LLM_MODEL/);
-    const llm = loadConfig({ ...valid, LLM_PROVIDER: 'claude', LLM_MODEL: 'some-model', NOVACIEL_ANTHROPIC_API_KEY: 'sk-fake-key' }).llm;
-    expect(llm).toMatchObject({ provider: 'claude', model: 'some-model', timeoutMs: 60_000 });
+  it('requires both tier models with the claude provider and passes them through', () => {
+    const claude = { ...valid, LLM_PROVIDER: 'claude', NOVACIEL_ANTHROPIC_API_KEY: 'sk-fake-key' };
+    expect(() => loadConfig(claude)).toThrow(/LLM_MODEL:/);
+    expect(() => loadConfig({ ...claude, LLM_MODEL: 'modelo-pesado-test' })).toThrow(/LLM_MODEL_LIGHT: required when LLM_PROVIDER is "claude"/);
+    expect(() => loadConfig({ ...claude, LLM_MODEL_LIGHT: 'modelo-ligero-test' })).toThrow(/LLM_MODEL:/);
+    const llm = loadConfig({ ...claude, LLM_MODEL: 'modelo-pesado-test', LLM_MODEL_LIGHT: 'modelo-ligero-test' }).llm;
+    expect(llm).toMatchObject({ provider: 'claude', models: { heavy: 'modelo-pesado-test', light: 'modelo-ligero-test' }, timeoutMs: 60_000 });
     expect(llm.apiKey?.reveal()).toBe('sk-fake-key');
+  });
+
+  it('ignores LLM_MODEL_LIGHT with the fake provider', () => {
+    const llm = loadConfig({ ...valid, LLM_PROVIDER: 'fake', LLM_MODEL_LIGHT: 'modelo-ligero-test' }).llm;
+    expect(llm.models).toEqual({ heavy: 'fake-model', light: 'fake-model-light' });
+    expect(loadConfig({ ...valid, LLM_PROVIDER: 'fake' }).llm.models.light).toBe('fake-model-light');
   });
 
   it('rejects an unknown provider', () => {
