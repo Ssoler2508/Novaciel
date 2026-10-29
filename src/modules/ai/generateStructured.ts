@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import type { ZodType } from 'zod';
 import type { Db } from '../../db/types.js';
 import type { AlertSink } from '../../lib/ai/alerts.js';
+import { modelForPurpose, tierForPurpose, type Purpose } from '../../lib/ai/modelTiers.js';
 import { LLMProviderError, type LLMProvider, type LLMResponse } from '../../lib/ai/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import type { AuditActor } from '../auditoria/recordAudit.js';
@@ -20,14 +21,12 @@ export interface GenerateStructuredDeps {
   provider: LLMProvider;
   alerts: AlertSink;
   logger?: Logger;
-  /** Overrides the provider's default model. */
-  model?: string;
 }
 
 export interface GenerateStructuredRequest<T> {
   clienteId: ClienteId;
-  /** What the call is for; recorded in the ledger. */
-  purpose: string;
+  /** What the call is for; recorded in the ledger. It alone decides the model tier. */
+  purpose: Purpose;
   schema: ZodType<T>;
   prompt: { system: string; user: string };
   maxOutputTokens: number;
@@ -46,7 +45,7 @@ export interface GenerateStructuredResult<T> {
 
 export class SchemaValidationError extends Error {
   constructor(
-    readonly purpose: string,
+    readonly purpose: Purpose,
     readonly attempts: number,
   ) {
     super(`Model output did not match the expected schema after ${attempts} attempts (purpose: ${purpose})`);
@@ -84,8 +83,9 @@ export async function generateStructured<T>(
 ): Promise<GenerateStructuredResult<T>> {
   const log = deps.logger ?? defaultLogger;
   const { db, provider } = deps;
-  const model = deps.model ?? provider.defaultModel;
-  const meta = { clienteId: request.clienteId, purpose: request.purpose, provider: provider.name, model };
+  const tier = tierForPurpose(request.purpose);
+  const model = modelForPurpose(provider, request.purpose);
+  const meta = { clienteId: request.clienteId, purpose: request.purpose, tier, provider: provider.name, model };
 
   const attemptOnce = async (user: string, attemptNumber: number): Promise<Attempt<T>> => {
     // No tokenizer: a token covers at least one UTF-8 byte, so the byte length is a safe upper bound.
@@ -112,7 +112,7 @@ export async function generateStructured<T>(
         system: request.prompt.system,
         messages: [{ role: 'user', content: user }],
         maxOutputTokens: request.maxOutputTokens,
-        model,
+        tier,
       });
     } catch (error) {
       await closeAfterProviderError(deps, request, authorization, model, error, log);
@@ -146,6 +146,8 @@ export async function generateStructured<T>(
         cost: microToUsd(cost),
         durationMs: Date.now() - started,
         outcome,
+        // The ledger keeps the id we sent and priced; the API may echo a dated variant of it.
+        ...(response.model !== model ? { responseModel: response.model } : {}),
       },
       'llm call settled',
     );

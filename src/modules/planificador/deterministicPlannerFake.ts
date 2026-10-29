@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { ModelTier, TierModels } from '../../lib/ai/modelTiers.js';
 import type { LLMProvider, LLMRequest, LLMResponse } from '../../lib/ai/types.js';
 import { InvalidLocalTimeError } from './errors.js';
 import { toUtc } from './fechas.js';
@@ -134,10 +135,14 @@ export function buildDeterministicPlan(context: PlannerContext) {
 
 export class DeterministicPlannerFake implements LLMProvider {
   readonly name = 'fake';
-  readonly defaultModel: string;
+  readonly #models: TierModels;
 
-  constructor(options: { defaultModel?: string } = {}) {
-    this.defaultModel = options.defaultModel ?? 'fake-model';
+  constructor(options: { models?: Partial<TierModels> } = {}) {
+    this.#models = { heavy: options.models?.heavy ?? 'fake-model', light: options.models?.light ?? 'fake-model-light' };
+  }
+
+  modelFor(tier: ModelTier): string {
+    return this.#models[tier];
   }
 
   /** Runs `run` with the planner context available to generate(). The only way the fake learns it. */
@@ -160,7 +165,7 @@ export class DeterministicPlannerFake implements LLMProvider {
       // Sizes only: the prompt text itself is never read.
       inputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(request)) / 4),
       outputTokens: Math.ceil(text.length / 4),
-      model: request.model ?? this.defaultModel,
+      model: this.modelFor(request.tier),
       stopReason: 'end_turn',
     };
   }

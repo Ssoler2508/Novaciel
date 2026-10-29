@@ -40,6 +40,7 @@ export const SEED_APPROVER_EMAIL = 'aprobador.aurora@example.test';
 export const SEED_SUBSTITUTE_EMAIL = 'suplente.aurora@example.test';
 export const SEED_PRICE_PROVIDER = 'fake';
 export const SEED_PRICE_MODEL = 'fake-model';
+export const SEED_PRICE_MODEL_LIGHT = 'fake-model-light';
 export const SEED_PRICE_NOTE = 'FAKE — replace with real prices';
 export const SEED_CLIENT_NAME = 'Cafetería Aurora (ficticia)';
 const SEED_AUTHORIZATION_KEY = 'autorizaciones/seed-persona-ficticia.pdf';
@@ -95,20 +96,22 @@ export async function seedDevelopment(db: Db, now: Date = new Date(), options: S
 
   // Obviously fake price for the fake development model. Real prices are entered by an administrator
   // from the provider's official pricing page, never by the seed.
-  const hasPrice = await hasAnyPrice(db, SEED_PRICE_PROVIDER, SEED_PRICE_MODEL);
-  note(!hasPrice, `precio ficticio ${SEED_PRICE_PROVIDER}/${SEED_PRICE_MODEL}`);
-  if (!hasPrice) {
-    await setModelPrice(
-      db,
-      {
-        provider: SEED_PRICE_PROVIDER,
-        model: SEED_PRICE_MODEL,
-        inputPerMillion: usdToMicro('1'),
-        outputPerMillion: usdToMicro('2'),
-        nota: SEED_PRICE_NOTE,
-      },
-      { tipo: 'usuario', usuarioId: admin.id },
-    );
+  for (const model of [SEED_PRICE_MODEL, SEED_PRICE_MODEL_LIGHT]) {
+    const hasPrice = await hasAnyPrice(db, SEED_PRICE_PROVIDER, model);
+    note(!hasPrice, `precio ficticio ${SEED_PRICE_PROVIDER}/${model}`);
+    if (!hasPrice) {
+      await setModelPrice(
+        db,
+        {
+          provider: SEED_PRICE_PROVIDER,
+          model,
+          inputPerMillion: usdToMicro('1'),
+          outputPerMillion: usdToMicro('2'),
+          nota: SEED_PRICE_NOTE,
+        },
+        { tipo: 'usuario', usuarioId: admin.id },
+      );
+    }
   }
 
   // Fictional client. Left in en_onboarding: it is activated once it can be planned.

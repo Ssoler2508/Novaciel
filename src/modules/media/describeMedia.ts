@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import type { AlertSink } from '../../lib/ai/alerts.js';
+import { modelForPurpose, tierForPurpose, type Purpose } from '../../lib/ai/modelTiers.js';
 import { VisionProviderError, type VisionProvider } from '../../lib/ai/vision/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { SchemaValidationError } from '../ai/generateStructured.js';
@@ -24,7 +25,7 @@ import { getMedia, type MediaRow } from './mediaRepository.js';
 //
 // Logs, alerts and audit rows carry metadata only: never the description or the tags.
 
-export const DESCRIBE_PURPOSE = 'describe_media';
+export const DESCRIBE_PURPOSE = 'describe_media' satisfies Purpose;
 const MAX_OUTPUT_TOKENS = 512;
 /**
  * PLACEHOLDER upper bound on the input tokens of one image/video call. There is no tokenizer for
@@ -81,8 +82,9 @@ export async function describeMedia(
   const media = await getMedia(db, clienteId, mediaId);
   if (!media) throw new MediaNotFoundError();
 
-  const model = vision.defaultModel;
-  const meta = { clienteId, mediaId, purpose: DESCRIBE_PURPOSE, provider: vision.name, model };
+  const tier = tierForPurpose(DESCRIBE_PURPOSE);
+  const model = modelForPurpose(vision, DESCRIBE_PURPOSE);
+  const meta = { clienteId, mediaId, purpose: DESCRIBE_PURPOSE, tier, provider: vision.name, model };
 
   const attemptOnce = async (attemptNumber: number): Promise<Attempt> => {
     // Throws PriceNotFoundError for an unpriced model, before anything is authorized or called.
@@ -103,7 +105,7 @@ export async function describeMedia(
     const started = Date.now();
     let result;
     try {
-      result = await vision.describe({ mediaRef: media.clave_almacenamiento, mime: media.mime, maxOutputTokens: MAX_OUTPUT_TOKENS });
+      result = await vision.describe({ mediaRef: media.clave_almacenamiento, mime: media.mime, maxOutputTokens: MAX_OUTPUT_TOKENS, tier });
     } catch (error) {
       await closeAfterProviderError(deps, clienteId, authorization, model, error, actor, log);
       log.error(

@@ -63,7 +63,7 @@ describe('describeMedia', () => {
         { resultado: 'ok', costo: '0.001200', proposito: 'describe_media', proveedor: 'fake_vision', modelo: 'fake-vision-model', unidades_entrada: '1000', unidades_salida: '100' },
       ]);
       expect(await getSpendSummary(db, w.clienteId)).toMatchObject({ spent: 1200n, reserved: 0n });
-      expect(w.vision.calls).toEqual([{ mediaRef: w.media.clave_almacenamiento, mime: 'image/jpeg', maxOutputTokens: 512 }]);
+      expect(w.vision.calls).toEqual([{ mediaRef: w.media.clave_almacenamiento, mime: 'image/jpeg', maxOutputTokens: 512, tier: 'light' }]);
       expect(w.alerts.alerts).toEqual([]);
 
       const audit = (await auditRowsFor(db, 'media', w.media.id)).filter((a) => a.accion === 'describir');

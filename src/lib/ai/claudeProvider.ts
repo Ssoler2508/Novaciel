@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { TierModels, ModelTier } from './modelTiers.js';
 import { LLMProviderError, type LLMProvider, type LLMRequest, type LLMResponse } from './types.js';
 
 // Claude implementation of LLMProvider. Rules it keeps:
@@ -34,7 +35,7 @@ export class ClaudeProviderError extends LLMProviderError {
 
 export interface ClaudeProviderOptions {
   apiKey: string;
-  defaultModel: string;
+  models: TierModels;
   timeoutMs: number;
   maxRetries?: number;
   /** For tests only; production uses the fixed Anthropic URL. */
@@ -45,11 +46,11 @@ export interface ClaudeProviderOptions {
 
 export class ClaudeProvider implements LLMProvider {
   readonly name = 'claude';
-  readonly defaultModel: string;
+  readonly #models: TierModels;
   readonly #client: Anthropic;
 
   constructor(options: ClaudeProviderOptions) {
-    this.defaultModel = options.defaultModel;
+    this.#models = options.models;
     this.#client = new Anthropic({
       apiKey: options.apiKey,
       authToken: null,
@@ -61,11 +62,15 @@ export class ClaudeProvider implements LLMProvider {
     });
   }
 
+  modelFor(tier: ModelTier): string {
+    return this.#models[tier];
+  }
+
   async generate(request: LLMRequest): Promise<LLMResponse> {
     let message: Anthropic.Message;
     try {
       message = await this.#client.messages.create({
-        model: request.model ?? this.defaultModel,
+        model: this.modelFor(request.tier),
         max_tokens: request.maxOutputTokens,
         system: request.system,
         messages: request.messages.map((m) => ({ role: m.role, content: m.content })),

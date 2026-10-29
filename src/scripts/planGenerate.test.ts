@@ -188,7 +188,7 @@ describe('runPlanGenerate with the deterministic fake', () => {
   it('reports a budget refusal on one line', async () => {
     await withTestTransaction(async (db) => {
       const w = await world(db);
-      const unpriced = new DeterministicPlannerFake({ defaultModel: 'model-without-price' });
+      const unpriced = new DeterministicPlannerFake({ models: { heavy: 'model-without-price' } });
       const result = await runPlanGenerate(
         { ...w.deps, provider: unpriced, withContext: (c, run) => unpriced.withContext(c, run) },
         { clienteId: w.clienteId, reemplazar: false },

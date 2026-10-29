@@ -2,6 +2,8 @@
 // later checkpoint, ClaudeProvider. Prompts and outputs may contain client data: nothing in this
 // layer logs their content.
 
+import type { ModelTier } from './modelTiers.js';
+
 export interface LLMMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -11,8 +13,8 @@ export interface LLMRequest {
   system: string;
   messages: LLMMessage[];
   maxOutputTokens: number;
-  /** Overrides the provider's configured model. */
-  model?: string;
+  /** The model tier of the call; the provider maps it to its configured model id. */
+  tier: ModelTier;
 }
 
 export interface LLMResponse {
@@ -27,8 +29,8 @@ export interface LLMResponse {
 export interface LLMProvider {
   /** Provider name as used in the price table and the spend ledger (for example "fake"). */
   readonly name: string;
-  /** The model used when a request does not name one. */
-  readonly defaultModel: string;
+  /** The model id configured for a tier. */
+  modelFor(tier: ModelTier): string;
   generate(request: LLMRequest): Promise<LLMResponse>;
 }
 

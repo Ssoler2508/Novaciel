@@ -36,7 +36,7 @@ async function world(db: Db, ceiling = '10') {
   const run = (overrides: Partial<{ clienteId: ClienteId }> = {}) =>
     generateStructured(
       { db, provider, alerts, logger: logs.log },
-      { clienteId: overrides.clienteId ?? clienteId, purpose: 'test_purpose', schema, prompt, maxOutputTokens: 1000, actor: SISTEMA },
+      { clienteId: overrides.clienteId ?? clienteId, purpose: 'smoke_test_pesado', schema, prompt, maxOutputTokens: 1000, actor: SISTEMA },
     );
   return { clienteId, provider, alerts, logs, run };
 }
@@ -54,10 +54,10 @@ describe('generateStructured', () => {
       expect(result).toMatchObject({ data: { title: 'ok', score: 3 }, attempts: 1, inputTokens: 100, outputTokens: 50, cost: 200n });
       // 100 * 1.00/M + 50 * 2.00/M = 0.000200 USD.
       expect(await ledger(db, w.clienteId)).toEqual([
-        { resultado: 'ok', costo: '0.000200', unidades_entrada: '100', unidades_salida: '50', proposito: 'test_purpose', modelo: 'fake-model', proveedor: 'fake' },
+        { resultado: 'ok', costo: '0.000200', unidades_entrada: '100', unidades_salida: '50', proposito: 'smoke_test_pesado', modelo: 'fake-model', proveedor: 'fake' },
       ]);
       expect(w.provider.calls).toHaveLength(1);
-      expect(w.provider.calls[0]).toMatchObject({ model: 'fake-model', maxOutputTokens: 1000, messages: [{ role: 'user', content: prompt.user }] });
+      expect(w.provider.calls[0]).toMatchObject({ tier: 'heavy', maxOutputTokens: 1000, messages: [{ role: 'user', content: prompt.user }] });
       expect(w.alerts.alerts).toEqual([]);
       const summary = await getSpendSummary(db, w.clienteId);
       expect(summary).toMatchObject({ spent: 200n, reserved: 0n });
@@ -105,7 +105,7 @@ describe('generateStructured', () => {
       expect((await ledger(db, w.clienteId)).map((r) => r.resultado)).toEqual(['schema_invalido', 'schema_invalido']);
       expect(w.provider.calls).toHaveLength(2);
       expect(w.alerts.alerts).toEqual([
-        { code: 'llm_schema_invalid', clienteId: w.clienteId, purpose: 'test_purpose', provider: 'fake', model: 'fake-model', attempts: 2 },
+        { code: 'llm_schema_invalid', clienteId: w.clienteId, purpose: 'smoke_test_pesado', tier: 'heavy', provider: 'fake', model: 'fake-model', attempts: 2 },
       ]);
     });
   });
@@ -139,7 +139,7 @@ describe('generateStructured', () => {
       await expect(
         generateStructured(
           { db, provider, alerts: new FakeAlertSink() },
-          { clienteId, purpose: 'p', schema, prompt, maxOutputTokens: 10, actor: SISTEMA },
+          { clienteId, purpose: 'smoke_test_pesado', schema, prompt, maxOutputTokens: 10, actor: SISTEMA },
         ),
       ).rejects.toThrow(PriceNotFoundError);
       expect(provider.calls).toHaveLength(0);
@@ -197,7 +197,7 @@ describe('generateStructured', () => {
         const text = w.logs.text();
         expect(text).not.toContain(PROMPT_SECRET);
         expect(text).not.toContain(OUTPUT_SECRET);
-        expect(text).toContain('test_purpose');
+        expect(text).toContain('smoke_test_pesado');
       }
       expect(JSON.stringify(bad.alerts.alerts)).not.toContain(OUTPUT_SECRET);
       const audit = await db.query('SELECT datos_antes, datos_despues FROM auditoria');

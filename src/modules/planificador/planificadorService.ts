@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import type { AlertSink } from '../../lib/ai/alerts.js';
+import type { Purpose } from '../../lib/ai/modelTiers.js';
 import type { LLMProvider } from '../../lib/ai/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { generateStructured } from '../ai/generateStructured.js';
@@ -27,7 +28,7 @@ import type { PlanOutput, PlannerContext } from './types.js';
 // ONE transaction. Rule 2: every cited fact is re-checked inside that transaction.
 // Logs carry ids and counts only: never the prompt, the model output or any idea text.
 
-export const PLAN_PURPOSE = 'plan_semanal';
+export const PLAN_PURPOSE = 'plan_semanal' satisfies Purpose;
 
 /** Output budget: about 150 to 300 tokens per piece (an idea of up to 300 characters and up to 5 fact ids) plus the wrapper. */
 export function maxOutputTokensFor(pieceCount: number): number {

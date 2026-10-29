@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { inspect } from 'node:util';
 import { z } from 'zod';
+import type { TierModels } from '../lib/ai/modelTiers.js';
 import { SecretValue } from './secretValue.js';
 
 const KEY_BYTES = 32;
@@ -90,7 +91,10 @@ const schema = z
     S3_ACCESS_KEY: z.string().min(1).optional(),
     S3_SECRET_KEY: z.string().min(1).optional(),
     LLM_PROVIDER: z.enum(['fake', 'claude']).optional(),
+    // Heavy tier (weekly plan, creative director, briefs). Kept as LLM_MODEL for compatibility.
     LLM_MODEL: z.string().min(1).optional(),
+    // Light tier (repetitive work such as describing media). Required with the claude provider.
+    LLM_MODEL_LIGHT: z.string().min(1).optional(),
     // Media library: ffprobe location and limits.
     FFPROBE_PATH: z.string().min(1).default('ffprobe'),
     FFPROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
@@ -125,7 +129,8 @@ const schema = z
       require('LLM_PROVIDER', 'must be set explicitly in production');
     }
     if (resolveLlmProvider(env) === 'claude') {
-      require('LLM_MODEL', 'required when LLM_PROVIDER is "claude"');
+      require('LLM_MODEL', 'required when LLM_PROVIDER is "claude" (heavy tier)');
+      require('LLM_MODEL_LIGHT', 'required when LLM_PROVIDER is "claude" (light tier)');
       require('NOVACIEL_ANTHROPIC_API_KEY', 'required when LLM_PROVIDER is "claude"');
     }
     const driver = resolveDriver(env);
@@ -170,7 +175,8 @@ export type StorageConfig =
 
 export interface LlmConfig {
   provider: 'fake' | 'claude';
-  model: string;
+  /** Model id per tier; the only source of model ids. */
+  models: TierModels;
   timeoutMs: number;
   /** Only with provider "claude". Printing it shows a placeholder; use reveal() at the point of use. */
   apiKey?: SecretValue;
@@ -212,14 +218,16 @@ function resolveLlmProvider(env: Pick<Env, 'NODE_ENV' | 'LLM_PROVIDER'>): 'fake'
 
 // The only model name that may live in code: the fake provider's, which has a fake price in the seed.
 const FAKE_MODEL = 'fake-model';
+const FAKE_MODEL_LIGHT = 'fake-model-light';
 
 function buildLlmConfig(env: Env): LlmConfig {
   const provider = resolveLlmProvider(env);
   if (!provider) throw new Error('Invalid LLM configuration');
   const timeoutMs = env.LLM_TIMEOUT_MS;
-  if (provider === 'fake') return { provider, model: env.LLM_MODEL ?? FAKE_MODEL, timeoutMs };
-  if (!env.LLM_MODEL || !env.NOVACIEL_ANTHROPIC_API_KEY) throw new Error('Invalid LLM configuration');
-  return { provider, model: env.LLM_MODEL, timeoutMs, apiKey: new SecretValue(env.NOVACIEL_ANTHROPIC_API_KEY) };
+  // With the fake provider LLM_MODEL_LIGHT is ignored.
+  if (provider === 'fake') return { provider, models: { heavy: env.LLM_MODEL ?? FAKE_MODEL, light: FAKE_MODEL_LIGHT }, timeoutMs };
+  if (!env.LLM_MODEL || !env.LLM_MODEL_LIGHT || !env.NOVACIEL_ANTHROPIC_API_KEY) throw new Error('Invalid LLM configuration');
+  return { provider, models: { heavy: env.LLM_MODEL, light: env.LLM_MODEL_LIGHT }, timeoutMs, apiKey: new SecretValue(env.NOVACIEL_ANTHROPIC_API_KEY) };
 }
 
 /** "local" by default outside production; in production there is no default. */
