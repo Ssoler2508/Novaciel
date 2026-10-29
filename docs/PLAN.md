@@ -166,6 +166,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
 - Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
+- Third NovaCiel-only edge `revision_novaciel → con_cambios` (Step 8, docs/ADR-05_APROBACION_DOS_NIVELES.md): section 15 has no exit from `revision_novaciel` other than `esperando_aprobacion`, and the internal "cambios" decision needs one now that the Step 8 bridge is gone. Confirm with the Senior (together with `aprobada` and `programada` → `con_cambios`).
 - Exact time of the substitute approver's turn (spec 11.3 says only "after the reminders"): Step 9 uses 2 h before the scheduled time, configurable in the reminder rules (`suplenteHoras`). Confirm with the Senior.
 - Retirement of NovaCiel's internal review (spec 11.1: after 4 weeks per client, then per piece type after 20 pieces approved without changes): Step 9 keeps it always required (see docs/ADR-05_APROBACION_DOS_NIVELES.md). When do we build the retirement?
 

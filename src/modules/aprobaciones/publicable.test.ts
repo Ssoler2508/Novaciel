@@ -112,7 +112,7 @@ describe('the central rule: one test per way to break it', () => {
   it('no approvals at all', async () => {
     await withTestTransaction(async (db) => {
       const x = await world(db);
-      await forzarAprobada(x, ['revision_novaciel', 'esperando_aprobacion', 'aprobada']);
+      await forzarAprobada(x, ['esperando_aprobacion', 'aprobada']);
       await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).rejects.toEqual(expect.objectContaining({ name: 'SinAprobacionVigenteError', estadoAprobacion: 'pendiente_interno' }));
     });
   });
@@ -129,7 +129,7 @@ describe('the central rule: one test per way to break it', () => {
   it('only the client approval, inserted bypassing the service (and the insert trigger)', async () => {
     await withTestTransaction(async (db) => {
       const x = await world(db);
-      await forzarAprobada(x, ['revision_novaciel', 'esperando_aprobacion']);
+      await forzarAprobada(x, ['esperando_aprobacion']);
       await db.query('ALTER TABLE aprobaciones DISABLE TRIGGER aprobaciones_before_insert');
       await createAprobacion(db, { piezaId: x.w.piezaId, nivel: 'cliente', usuarioId: x.actores.ids.cliente });
       await db.query('ALTER TABLE aprobaciones ENABLE TRIGGER aprobaciones_before_insert');
@@ -289,7 +289,7 @@ describe('assertPublicable: PiezaNoPublicableError', () => {
       const x = await world(db);
       const error = await assertPublicable(x.deps, x.clienteId, x.w.piezaId).catch((e: Error) => e);
       expect(error).toBeInstanceOf(PiezaNoPublicableError);
-      expect(error).toMatchObject({ estado: 'en_control_calidad', planEstado: 'aprobado' });
+      expect(error).toMatchObject({ estado: 'revision_novaciel', planEstado: 'aprobado' });
     });
   });
 });

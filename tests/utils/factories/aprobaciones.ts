@@ -186,7 +186,7 @@ export interface AprobableWorld {
 
 /**
  * A client with an approved plan and a piece whose production is the current one, in the state a
- * decision is recorded in: `en_control_calidad` (internal level) or, with `estado`, any other.
+ * decision is recorded in: `revision_novaciel` (internal level, once QC passed) or, with `estado`, any other.
  */
 export async function createAprobableWorld(db: Db, o: { estado?: string; clienteId?: string; semanaInicio?: string } = {}): Promise<AprobableWorld> {
   const clienteId = o.clienteId ?? (await createCliente(db)).id;
@@ -197,7 +197,7 @@ export async function createAprobableWorld(db: Db, o: { estado?: string; cliente
   await moverPieza(db, pieza.id, 'en_produccion');
   const produccion = await createProduccion(db, { piezaId: pieza.id });
   // Walk the main chain one transition at a time (section 15) up to the requested state.
-  const target = o.estado ?? 'en_control_calidad';
+  const target = o.estado ?? 'revision_novaciel';
   const chain = ['en_control_calidad', 'revision_novaciel', 'esperando_aprobacion', 'aprobada', 'programada'];
   for (const estado of target === 'en_produccion' ? [] : chain.slice(0, chain.indexOf(target) + 1)) {
     await moverPieza(db, pieza.id, estado);
@@ -212,8 +212,8 @@ export interface PiezaAprobableOverrides {
   semanaInicio?: string;
   /** How many final files (images) the production has. Default 2. */
   archivos?: number;
-  /** Stop in this state. Default en_control_calidad (ready for the internal level). */
-  estado?: 'en_control_calidad';
+  /** Stop in this state. Default revision_novaciel (ready for the internal level, as if QC had passed). */
+  estado?: 'en_control_calidad' | 'revision_novaciel';
 }
 
 export interface PiezaAprobable {
@@ -240,7 +240,7 @@ export const CONTENIDO_PRODUCCION = {
 } as const;
 
 /**
- * A client with an approved plan and a piece in en_control_calidad whose production is real: every file
+ * A client with an approved plan and a piece in revision_novaciel (or en_control_calidad) whose production is real: every file
  * exists in `storage` with its true SHA-256, and hash_pieza is the np1 hash of what is stored. The media
  * show people and are linked to a valid authorization, and the brief cites a valid fact, so the checks of
  * rule 2 have something to check.
@@ -292,6 +292,7 @@ export async function createPiezaAprobable(db: Db, storage: Storage, o: PiezaApr
     archivos,
   });
   await moverPieza(db, pieza.id, 'en_control_calidad');
+  if ((o.estado ?? 'revision_novaciel') === 'revision_novaciel') await moverPieza(db, pieza.id, 'revision_novaciel');
   return {
     clienteId,
     planId: plan.id,

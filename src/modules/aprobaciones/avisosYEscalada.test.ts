@@ -88,6 +88,7 @@ describe('escalation on the 3rd client change request', () => {
     const hash = (await db.query<{ h: string }>(`SELECT encode(hash_pieza, 'hex') AS h FROM producciones WHERE pieza_id = $1 AND es_actual`, [x.w.piezaId])).rows[0]!.h;
     if (nivelCambios === 'interno') {
       await registrarDecision({ db, recordatorios }, x.clienteId, x.w.piezaId, x.actores.novaciel, { nivel: 'interno', decision: 'cambios', hashVisto: hash, motivo: 'toma' });
+      await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_produccion', { tipo: 'sistema' });
     } else {
       await registrarDecision({ db, recordatorios }, x.clienteId, x.w.piezaId, x.actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: hash });
       await registrarDecision({ db, recordatorios }, x.clienteId, x.w.piezaId, x.actores.cliente, { nivel: 'cliente', decision: 'cambios', hashVisto: hash, motivo: 'texto' });
@@ -95,6 +96,7 @@ describe('escalation on the 3rd client change request', () => {
     }
     await createProduccion(db, { piezaId: x.w.piezaId });
     await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_control_calidad', { tipo: 'sistema' });
+    await transitionPieza(db, x.clienteId, x.w.piezaId, 'revision_novaciel', { tipo: 'sistema' });
   }
 
   it('the 1st and 2nd request notify nobody, the 3rd queues one escalation, the 4th does not', async () => {

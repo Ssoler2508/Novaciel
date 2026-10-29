@@ -7,7 +7,7 @@ export const MAX_RONDAS_CAMBIOS = 2;
 
 /**
  * Change rounds of a piece: the change requests of the CLIENT, over all its productions. Internal
- * change requests and NovaCiel pull-backs (aprobada/programada -> con_cambios) never count.
+ * change requests and NovaCiel pull-backs (revision_novaciel, aprobada, programada -> con_cambios) never count.
  */
 export function rondasDeCambios(registros: readonly RegistroAprobacion[]): { rondas: number; maximo: number } {
   const rondas = registros.filter((r) => r.nivel === 'cliente' && r.decision === 'cambios').length;

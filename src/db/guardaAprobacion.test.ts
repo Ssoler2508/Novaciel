@@ -50,13 +50,11 @@ describe('the approval guard on the publishable states', () => {
   it('refuses aprobada with no approvals, with only the internal one, and passes with both', async () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       await expectFails(db, /no internal approval/, () => mover(db, w, 'aprobada'));
       // The records are made in the state each level decides in: the internal one before the piece moves on.
       const bare = await createPiezaAprobable(db, new FakeStorage());
       await createAprobacion(db, { piezaId: bare.piezaId, nivel: 'interno' });
-      await moverPieza(db, bare.piezaId, 'revision_novaciel');
       await moverPieza(db, bare.piezaId, 'esperando_aprobacion');
       await expectFails(db, /no client approval/, () => mover(db, bare, 'aprobada'));
       await createAprobacion(db, { piezaId: bare.piezaId, nivel: 'cliente' });
@@ -75,7 +73,6 @@ describe('the approval guard on the publishable states', () => {
       await mover(db, w, 'programada');
 
       const bare = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, bare.piezaId, 'revision_novaciel');
       await moverPieza(db, bare.piezaId, 'esperando_aprobacion');
       await expectFails(db, /no internal approval/, () => mover(db, bare, 'programada'));
     });
@@ -85,7 +82,6 @@ describe('the approval guard on the publishable states', () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
       await createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno' });
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       await createAprobacion(db, { piezaId: w.piezaId, nivel: 'cliente' });
       // Both levels approved version 1. Then NovaCiel produces version 2 (a new hash).
@@ -102,7 +98,6 @@ describe('the approval guard on the publishable states', () => {
   it('compares the hash byte by byte: records of the current production row with another hash do not count', async () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       // Forged: same production id and version, another hash (the insert trigger is disabled for the forgery).
       await db.query('ALTER TABLE aprobaciones DISABLE TRIGGER aprobaciones_before_insert');
@@ -124,7 +119,6 @@ describe('the approval guard on the publishable states', () => {
   it('refuses an order that is wrong (client before internal) and a change request or rejection newer than the internal approval', async () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       await db.query('ALTER TABLE aprobaciones DISABLE TRIGGER aprobaciones_before_insert');
       await createAprobacion(db, { piezaId: w.piezaId, nivel: 'cliente' });
@@ -146,7 +140,6 @@ describe('the approval guard on the publishable states', () => {
   it('refuses a piece without a current production', async () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       await db.query('SET CONSTRAINTS ALL IMMEDIATE');
       await db.query('ALTER TABLE producciones DISABLE TRIGGER producciones_before_update_delete');
@@ -158,7 +151,6 @@ describe('the approval guard on the publishable states', () => {
   it('does not touch the other transitions', async () => {
     await withTestTransaction(async (db) => {
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await mover(db, w, 'revision_novaciel');
       await mover(db, w, 'esperando_aprobacion');
       await mover(db, w, 'rechazada');
     });
@@ -179,7 +171,6 @@ describe('the test-only switch novaciel.omitir_guarda_aprobacion', () => {
       await client.query('BEGIN');
       expect((await client.query(SWITCH)).rows[0].v).not.toBe('si');
       const w = await createPiezaAprobable(client, new FakeStorage());
-      await moverPieza(client, w.piezaId, 'revision_novaciel');
       await moverPieza(client, w.piezaId, 'esperando_aprobacion');
       await expectFails(client, /no internal approval/, () => mover(client, w, 'aprobada'));
       await client.query('ROLLBACK');
@@ -198,7 +189,6 @@ describe('the test-only switch novaciel.omitir_guarda_aprobacion', () => {
     await withTestTransaction(async (db) => {
       expect((await db.query(SWITCH)).rows[0].v).not.toBe('si');
       const w = await createPiezaAprobable(db, new FakeStorage());
-      await moverPieza(db, w.piezaId, 'revision_novaciel');
       expect((await db.query(SWITCH)).rows[0].v).not.toBe('si');
       await expectFails(db, /no internal approval/, () => mover(db, w, 'aprobada'));
     });

@@ -84,7 +84,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06 y esta limpieza.
 
 ## 5. Preguntas abiertas para NovaCiel
 
-1. **Dos transiciones nuevas a `con_cambios`:** la espec. 15 no las prevé desde `aprobada` ni `programada` (ADR-05, sección 5 y checkpoint C). ¿Se confirman?
+1. **Tres transiciones nuevas a `con_cambios`:** la espec. 15 no las prevé desde `aprobada`, `programada` ni `revision_novaciel` (ADR-05, secciones 1, 5 y checkpoint C; la tercera es del Paso 8: la decisión interna "cambios" ya no puede darse desde `en_control_calidad`, así que necesita salida desde `revision_novaciel`). ¿Se confirman?
 2. **Turno del suplente:** la espec. 11.3 solo dice "después de los recordatorios". Se usa 2 h antes de la hora programada, configurable (`suplenteHoras`).
 3. **Plazo del plan semanal:** se usa la hora más temprana de sus piezas. ¿Es correcto?
 4. **Remotion y el contratista:** NovaCiel es de 3 personas con cuenta gratuita. ¿El desarrollador, que es contratista independiente, cuenta como persona (3 o 4)? Decide entre la licencia gratuita y la de empresa antes del uso en producción. Si la respuesta es "cuenta", comprar la licencia de empresa y usar `REMOTION_LICENCIA=empresa`.
