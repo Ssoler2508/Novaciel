@@ -9,7 +9,7 @@ const PERFIL_V2 = '9a3c1a50-0000-4000-8000-000000000002';
 const KIT_MARCA = { colores: { principal: '#1b1b3a', secundarios: ['#fdf6e3'], acento: '#ff9f1c' } };
 const KIT_SIN_COLORES = { colores: {} };
 
-const base: EntradaMarca = { perfilMarcaId: PERFIL_V1, kitVisualDelBrief: KIT_MARCA, fuenteRender: 'Inter', textosEnPantalla: ['Hola', 'Café del día'] };
+const base: EntradaMarca = { perfilMarcaId: PERFIL_V1, kitVisual: KIT_MARCA, fuenteRender: 'Inter', textosEnPantalla: ['Hola', 'Café del día'], perfilOrigen: 'produccion' };
 const por = (checks: CheckQC[], codigo: string) => checks.find((c) => c.codigo === codigo)!;
 const estado = (e: EntradaMarca) => Object.fromEntries(checksMarca(e).map((c) => [c.codigo, c.resultado]));
 
@@ -27,20 +27,20 @@ describe('checksMarca', () => {
     for (const check of checksMarca(base).filter((c) => c.codigo !== 'marca_glifos_no_soportados')) expect(check.parametros.perfil_marca_id, check.codigo).toBe(PERFIL_V1);
   });
 
-  it('judges the kit it is given: the profile version of the brief, not whatever is current', () => {
-    // Version 1 (the brief's) has brand colours; a later version 2 lost them. The caller passes version 1.
-    const delBrief = checksMarca({ ...base, perfilMarcaId: PERFIL_V1, kitVisualDelBrief: KIT_MARCA });
-    const posterior = checksMarca({ ...base, perfilMarcaId: PERFIL_V2, kitVisualDelBrief: KIT_SIN_COLORES });
+  it('judges the kit it is given: the profile version of the production, not whatever is current', () => {
+    // Version 1 (the one the production was rendered with) has brand colours; a later version 2 lost them. The caller passes version 1.
+    const delBrief = checksMarca({ ...base, perfilMarcaId: PERFIL_V1, kitVisual: KIT_MARCA });
+    const posterior = checksMarca({ ...base, perfilMarcaId: PERFIL_V2, kitVisual: KIT_SIN_COLORES });
     expect(por(delBrief, 'marca_colores_respaldo').resultado).toBe('pasa');
     expect(por(posterior, 'marca_colores_respaldo')).toMatchObject({ resultado: 'advertencia', parametros: { perfil_marca_id: PERFIL_V2 } });
   });
 
   it('warns, without rejecting, when the profile has no usable colours and the fallback was used', () => {
-    const check = por(checksMarca({ ...base, kitVisualDelBrief: KIT_SIN_COLORES }), 'marca_colores_respaldo');
+    const check = por(checksMarca({ ...base, kitVisual: KIT_SIN_COLORES }), 'marca_colores_respaldo');
     expect(check).toMatchObject({ resultado: 'advertencia', severidad: 'advertencia' });
     // Even then the colours really chosen pass the contrast rule.
-    expect(por(checksMarca({ ...base, kitVisualDelBrief: KIT_SIN_COLORES }), 'marca_contraste').resultado).toBe('pasa');
-    expect(por(checksMarca({ ...base, kitVisualDelBrief: undefined }), 'marca_colores_respaldo').resultado).toBe('advertencia');
+    expect(por(checksMarca({ ...base, kitVisual: KIT_SIN_COLORES }), 'marca_contraste').resultado).toBe('pasa');
+    expect(por(checksMarca({ ...base, kitVisual: undefined }), 'marca_colores_respaldo').resultado).toBe('advertencia');
   });
 });
 

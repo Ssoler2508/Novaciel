@@ -35,7 +35,8 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, field: string): T {
   return result.data;
 }
 
-function parseHorariosVetados(value: unknown): HorarioVetado[] {
+/** The vetoed windows of `operacion.horarios_vetados` (empty when the key is absent). Quality control uses it too. */
+export function parseHorariosVetados(value: unknown): HorarioVetado[] {
   if (value === undefined) return []; // key absent: no restriction
   const raw = parse(z.array(vetadoSchema), value, 'operacion.horarios_vetados');
   return raw.map((entry) => {

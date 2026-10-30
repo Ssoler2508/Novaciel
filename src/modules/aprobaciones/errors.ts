@@ -89,6 +89,17 @@ export class SinAprobacionVigenteError extends Error {
   }
 }
 
+/**
+ * There is no passing quality-control report for the current production and hash: none at all
+ * ('sin_informe', also when the only reports are about an older production) or the latest one failed ('rechazado').
+ */
+export class ControlCalidadNoAprobadoError extends Error {
+  constructor(readonly estadoQc: 'sin_informe' | 'rechazado') {
+    super(`The current production has no passing quality-control report (${estadoQc})`);
+    this.name = 'ControlCalidadNoAprobadoError';
+  }
+}
+
 /** A stored file is missing from storage, or its bytes or size differ from what was recorded. */
 export class ArchivoAlteradoError extends Error {
   constructor(

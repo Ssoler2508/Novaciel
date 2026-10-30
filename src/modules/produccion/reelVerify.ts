@@ -55,7 +55,15 @@ function checkTags(tags: Readonly<Record<string, string>>, allowed: Readonly<Rec
  * Verifies the probed output against the timeline and the house format. `tamanoBytes` is the size of
  * the file on disk.
  */
-export function verifyReelOutput(input: { facts: VideoFacts; layout: Mp4Layout; timeline: ReelTimeline; tamanoBytes: number }): void {
+export function verifyReelOutput(input: {
+  facts: VideoFacts;
+  layout: Mp4Layout;
+  /** Only the two totals the file must have, so a stored file can be checked without rebuilding the timeline (quality control derives them from the stored duration). */
+  timeline: Pick<ReelTimeline, 'totalFrames' | 'totalMs'>;
+  tamanoBytes: number;
+  /** The largest accepted file; the default is MAX_REEL_BYTES. Quality control can pass a lower cap (tests do). */
+  maxBytes?: number;
+}): void {
   const { facts, layout, timeline, tamanoBytes } = input;
 
   if (!/(^|,)mp4(,|$)/.test(facts.formato)) throw new SalidaInvalidaError('formato_contenedor');
@@ -84,7 +92,7 @@ export function verifyReelOutput(input: { facts: VideoFacts; layout: Mp4Layout; 
     throw new SalidaInvalidaError('audio', 'duracion');
   }
 
-  if (tamanoBytes <= 0 || tamanoBytes > MAX_REEL_BYTES) throw new SalidaInvalidaError('tamano_maximo');
+  if (tamanoBytes <= 0 || tamanoBytes > (input.maxBytes ?? MAX_REEL_BYTES)) throw new SalidaInvalidaError('tamano_maximo');
 
   // Metadata: an exact allow-list of tags, and no box that carries metadata or a location.
   checkTags(facts.tagsFormato, ETIQUETAS_FORMATO_PERMITIDAS);

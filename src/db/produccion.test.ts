@@ -41,8 +41,8 @@ async function insertProduccion(
   p: { clienteId: string; piezaId: string; guionId: string; version?: number; red?: string; esActual?: boolean; hashPieza?: Buffer; hashVersion?: string; hashtags?: (string | null)[]; alts?: (string | null)[] },
 ) {
   return db.query(
-    `INSERT INTO producciones (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, hash_version, hash_pieza)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Texto ficticio', $7, $8, $9, $10) RETURNING id`,
+    `INSERT INTO producciones (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, hash_version, hash_pieza, perfil_marca_id)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Texto ficticio', $7, $8, $9, $10, (SELECT perfil_marca_id FROM guiones WHERE id = $3)) RETURNING id`,
     [
       p.clienteId,
       p.piezaId,

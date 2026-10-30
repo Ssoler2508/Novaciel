@@ -40,6 +40,11 @@ export interface ProducibleWorldOptions {
   sceneSeconds?: number;
   /** On-screen text of each scene (default "Escena N del origen del café"). */
   texts?: readonly string[];
+  /**
+   * Write the default texts with ordinal WORDS instead of digits ("Escena primera..."), so the copy has no
+   * figure and passes the rule-2 check of quality control.
+   */
+  sinCifras?: boolean;
 }
 
 export interface ProducibleWorld {
@@ -53,6 +58,7 @@ export interface ProducibleWorld {
 }
 
 const DEFAULT_SLIDES = { carrusel: 5, post: 1, historia: 2, reel: 3 } as const;
+const ORDINALES = ['primera', 'segunda', 'tercera', 'cuarta', 'quinta', 'sexta', 'septima', 'octava', 'novena', 'decima', 'undecima', 'duodecima'] as const;
 
 export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): Promise<ProducibleWorld> {
   const formato = o.formato ?? 'carrusel';
@@ -80,18 +86,19 @@ export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): P
   const duracion = esReel ? { duracion_s: o.sceneSeconds ?? 5 } : {};
   for (let i = 0; i < slides; i++) {
     const orden = i + 1;
+    const numero = o.sinCifras ? (ORDINALES[i] ?? 'ultima') : String(orden);
     if (esReel && !faltantes.has(orden)) {
       const clip = o.clips![Math.min(i, o.clips!.length - 1)]!;
       const row = await createMedia(db, { clienteId, tipo: 'video', ancho: clip.ancho, alto: clip.alto, duracionMs: clip.duracionMs });
       await storage.put(row.clave_almacenamiento, clip.bytes);
       media.push(row);
       const marks = clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entrada_ms: clip.entradaMs, salida_ms: clip.salidaMs } : {};
-      escenas.push({ orden, texto_en_pantalla: o.texts?.[i] ?? `Escena ${orden} del origen del café`, ...duracion, toma: { media_id: row.id, ...marks } });
+      escenas.push({ orden, texto_en_pantalla: o.texts?.[i] ?? `Escena ${numero} del origen del café`, ...duracion, toma: { media_id: row.id, ...marks } });
       tomas.push({ mediaId: row.id, ...(clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entradaMs: clip.entradaMs, salidaMs: clip.salidaMs } : {}) });
       continue;
     }
     if (faltantes.has(orden)) {
-      escenas.push({ orden, texto_en_pantalla: `Escena ${orden} del origen del café`, ...(esReel ? {} : { texto_alternativo: `Granos de café, foto ${orden}` }), ...duracion, toma: { media_id: null, motivo_faltante: 'No hay media adecuada' } });
+      escenas.push({ orden, texto_en_pantalla: `Escena ${numero} del origen del café`, ...(esReel ? {} : { texto_alternativo: `Granos de café, foto ${numero}` }), ...duracion, toma: { media_id: null, motivo_faltante: 'No hay media adecuada' } });
       tomas.push({ fuente: 'faltante' as const, motivoFaltante: 'No hay media adecuada' });
       continue;
     }
@@ -99,7 +106,7 @@ export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): P
     const jpeg = await sharp({ create: { width, height, channels: 3, background: { r: 40 + i * 30, g: 90, b: 140 } } }).jpeg({ quality: 90 }).toBuffer();
     await storage.put(row.clave_almacenamiento, jpeg);
     media.push(row);
-    escenas.push({ orden, texto_en_pantalla: `Escena ${orden} del origen del café`, texto_alternativo: `Granos de café, foto ${orden}`, toma: { media_id: row.id } });
+    escenas.push({ orden, texto_en_pantalla: `Escena ${numero} del origen del café`, texto_alternativo: `Granos de café, foto ${numero}`, toma: { media_id: row.id } });
     tomas.push({ mediaId: row.id });
   }
   const guion = await createGuion(db, {

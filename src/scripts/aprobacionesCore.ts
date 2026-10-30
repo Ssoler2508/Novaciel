@@ -57,6 +57,7 @@ function failure(error: unknown): string {
   if (error instanceof InvalidTransitionError) return 'The piece cannot move that way from its current state';
   if (error instanceof aprobaciones.PiezaNoPublicableError) return `NOT PUBLICABLE: ${error.name} (state ${error.estado}, plan ${error.planEstado})`;
   if (error instanceof aprobaciones.SinAprobacionVigenteError) return `NOT PUBLICABLE: ${error.name} (${error.estadoAprobacion})`;
+  if (error instanceof aprobaciones.ControlCalidadNoAprobadoError) return `NOT PUBLICABLE: ${error.name} (${error.estadoQc})`;
   if (error instanceof aprobaciones.ArchivoAlteradoError) return `NOT PUBLICABLE: ${error.name} (file ${error.orden}, ${error.motivo})`;
   if (error instanceof aprobaciones.HashPiezaNoCoincideError) return `NOT PUBLICABLE: ${error.name} (production ${error.produccionId}, against the ${error.contra} hash)`;
   if (error instanceof ProduccionHechoVencidoError) return `NOT PUBLICABLE: ${error.name} (${error.hechoIds.length} fact(s): ${error.hechoIds.join(', ')})`;

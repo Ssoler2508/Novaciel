@@ -129,9 +129,10 @@ describe('property: no parameter ever carries text of the client', () => {
         }),
         ...checksMarca({
           perfilMarcaId: uuid(),
-          kitVisualDelBrief: rnd() < 0.2 ? conMarca() : { colores: { principal: rnd() < 0.5 ? conMarca() : `#${hora().replace(':', '')}00`, secundarios: [conMarca()], acento: '#ffffff' } },
+          kitVisual: rnd() < 0.2 ? conMarca() : { colores: { principal: rnd() < 0.5 ? conMarca() : `#${hora().replace(':', '')}00`, secundarios: [conMarca()], acento: '#ffffff' } },
           fuenteRender: rnd() < 0.5 ? 'Inter' : conMarca(),
           textosEnPantalla: Array.from({ length: entero(0, 5) }, () => conMarca()),
+          perfilOrigen: rnd() < 0.5 ? 'produccion' : 'brief',
         }),
         ...checksFuentes({
           tomas: Array.from({ length: entero(0, 6) }, (_v, k) => ({ orden: k + 1, fuente: rnd() < 0.5 ? elegir(['media_real', 'faltante', 'generacion_ia', 'animacion_ia']) : conMarca(), mediaId: rnd() < 0.5 ? uuid() : null })),

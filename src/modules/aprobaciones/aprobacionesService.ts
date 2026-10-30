@@ -4,8 +4,8 @@ import { runInTransaction } from '../../db/transaction.js';
 import { recordAudit } from '../auditoria/recordAudit.js';
 import { PiezaNotFoundError } from '../piezas/errors.js';
 import type { EstadoPieza } from '../piezas/estados.js';
-import { getPieza, PIEZA_COLUMNS, PIEZA_FROM, type PiezaRow } from '../piezas/piezasRepository.js';
-import { transitionPieza } from '../piezas/piezasService.js';
+import { getPieza, type PiezaRow } from '../piezas/piezasRepository.js';
+import { lockPlanYPieza, transitionPieza } from '../piezas/piezasService.js';
 import { PlanNoAprobadoError } from '../planificador/errors.js';
 import type { ClienteId } from '../shared/clienteId.js';
 import { esPersonalNovaciel, requireAction, rolParaNivel, type AprobadorActor } from './actor.js';
@@ -62,19 +62,6 @@ export interface DecisionRegistrada {
 export interface AprobacionesDeps {
   db: Db;
   recordatorios?: Recordatorios;
-}
-
-/** Locks the plan, then the piece (FOR UPDATE), of this client. Null when the piece is not the client's. */
-async function lockPlanYPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise<PiezaRow | null> {
-  const { rows: ids } = await tx.query<{ plan_id: string }>('SELECT plan_id FROM piezas WHERE id = $1 AND cliente_id = $2', [piezaId, clienteId]);
-  const planId = ids[0]?.plan_id;
-  if (!planId) return null;
-  await tx.query('SELECT id FROM planes_semanales WHERE id = $1 AND cliente_id = $2 FOR SHARE', [planId, clienteId]);
-  const { rows } = await tx.query<PiezaRow>(
-    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE p.id = $1 AND p.cliente_id = $2 FOR UPDATE OF p`,
-    [piezaId, clienteId],
-  );
-  return rows[0] ?? null;
 }
 
 /**

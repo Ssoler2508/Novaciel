@@ -74,6 +74,13 @@ export async function getHecho(db: Db, clienteId: ClienteId, id: string): Promis
   return rows[0] ?? null;
 }
 
+/** The facts with these ids that belong to the client (a missing id is simply absent), expired or not. */
+export async function getHechosByIds(db: Db, clienteId: ClienteId, ids: readonly string[]): Promise<HechoRow[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await db.query<HechoRow>('SELECT * FROM hechos_verificados WHERE cliente_id = $1 AND id = ANY($2::uuid[]) ORDER BY id', [clienteId, ids]);
+  return rows;
+}
+
 /** All facts of the client, including expired ones. Agents must use getValidHechos. */
 export async function listHechos(db: Db, clienteId: ClienteId): Promise<HechoRow[]> {
   const { rows } = await db.query<HechoRow>(

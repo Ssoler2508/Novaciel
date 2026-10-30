@@ -101,6 +101,15 @@ export async function getBriefActual(db: Db, clienteId: ClienteId, piezaId: stri
   return (await loadViews(db, clienteId, piezaId, true, options))[0] ?? null;
 }
 
+/**
+ * The brief a production was made from, by id, WITH the model's text (the one that holds the fact
+ * tokens). Any version, current or not; null for another client's or another piece's brief.
+ */
+export async function getBriefDeProduccion(db: Db, clienteId: ClienteId, piezaId: string, guionId: string): Promise<GuionView | null> {
+  const versions = await loadViews(db, clienteId, piezaId, false, { includeDescartados: true, includeModel: true });
+  return versions.find((v) => v.id === guionId) ?? null;
+}
+
 /** Every version of a piece's brief, oldest first. Empty for another client's piece. */
 export function listBriefVersions(db: Db, clienteId: ClienteId, piezaId: string, options: GuionReadOptions = {}): Promise<GuionView[]> {
   return loadViews(db, clienteId, piezaId, false, options);

@@ -9,6 +9,7 @@ import { createHechoVerificado } from './hechosVerificados.js';
 import { createMedia, createMediaAutorizacion } from './media.js';
 import { createGuion } from './guiones.js';
 import { createProduccion } from './producciones.js';
+import { createRevisionCalidad } from './revisionesCalidad.js';
 import { createPieza, createPlanSemanal, moverPieza } from './planesPiezas.js';
 import { assignRole } from './roles.js';
 import { createUsuario } from './usuarios.js';
@@ -187,8 +188,13 @@ export interface AprobableWorld {
 /**
  * A client with an approved plan and a piece whose production is the current one, in the state a
  * decision is recorded in: `revision_novaciel` (internal level, once QC passed) or, with `estado`, any other.
+ * A piece that is past `en_control_calidad` has a passing quality-control report of its production, as
+ * it would after QC (`sinInformeQC` leaves it out); one still in `en_control_calidad` has none.
  */
-export async function createAprobableWorld(db: Db, o: { estado?: string; clienteId?: string; semanaInicio?: string } = {}): Promise<AprobableWorld> {
+export async function createAprobableWorld(
+  db: Db,
+  o: { estado?: string; clienteId?: string; semanaInicio?: string; sinInformeQC?: boolean } = {},
+): Promise<AprobableWorld> {
   const clienteId = o.clienteId ?? (await createCliente(db)).id;
   const plan = await createPlanSemanal(db, { clienteId, estado: 'aprobado', ...(o.semanaInicio ? { semanaInicio: o.semanaInicio } : {}) });
   const pieza = await createPieza(db, { clienteId, planId: plan.id, estado: 'plan_aprobado' });
@@ -201,6 +207,8 @@ export async function createAprobableWorld(db: Db, o: { estado?: string; cliente
   const chain = ['en_control_calidad', 'revision_novaciel', 'esperando_aprobacion', 'aprobada', 'programada'];
   for (const estado of target === 'en_produccion' ? [] : chain.slice(0, chain.indexOf(target) + 1)) {
     await moverPieza(db, pieza.id, estado);
+    // The report is recorded while the piece waits for QC (its trigger needs that), before it moves on.
+    if (estado === 'en_control_calidad' && target !== 'en_control_calidad' && !o.sinInformeQC) await createRevisionCalidad(db, { piezaId: pieza.id });
   }
   return { clienteId, planId: plan.id, piezaId: pieza.id, produccionId: produccion.id };
 }
@@ -214,6 +222,8 @@ export interface PiezaAprobableOverrides {
   archivos?: number;
   /** Stop in this state. Default revision_novaciel (ready for the internal level, as if QC had passed). */
   estado?: 'en_control_calidad' | 'revision_novaciel';
+  /** Leave out the passing quality-control report that a piece in revision_novaciel normally has. */
+  sinInformeQC?: boolean;
 }
 
 export interface PiezaAprobable {
@@ -292,7 +302,10 @@ export async function createPiezaAprobable(db: Db, storage: Storage, o: PiezaApr
     archivos,
   });
   await moverPieza(db, pieza.id, 'en_control_calidad');
-  if ((o.estado ?? 'revision_novaciel') === 'revision_novaciel') await moverPieza(db, pieza.id, 'revision_novaciel');
+  if ((o.estado ?? 'revision_novaciel') === 'revision_novaciel') {
+    if (!o.sinInformeQC) await createRevisionCalidad(db, { piezaId: pieza.id });
+    await moverPieza(db, pieza.id, 'revision_novaciel');
+  }
   return {
     clienteId,
     planId: plan.id,
