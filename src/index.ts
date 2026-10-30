@@ -16,6 +16,12 @@ import { LogNotifier } from './lib/notificaciones/index.js';
 import { createPgBossRecordatorios, registerAprobacionesRoutes, registerRecordatoriosJobs } from './modules/aprobaciones/index.js';
 import { createPgBossProduccionQueue, createReelRuntime, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
 import {
+  createPgBossControlCalidad,
+  createPgBossControlCalidadQueue,
+  registerControlCalidadJobs,
+  registerControlCalidadRoutes,
+} from './modules/controlCalidad/index.js';
+import {
   createStorage,
   LocalFileStorage,
   registerLocalFileRoute,
@@ -70,6 +76,7 @@ async function main(): Promise<void> {
   await registerPlanificadorRoutes(app, { db: pool, queue: createPgBossPlanQueue(boss) });
   await registerDirectorRoutes(app, { db: pool, queue: createPgBossBriefQueue(boss) });
   await registerProduccionRoutes(app, { db: pool, queue: createPgBossProduccionQueue(boss), storage });
+  await registerControlCalidadRoutes(app, { db: pool, queue: createPgBossControlCalidadQueue(boss) });
   // The approval routes queue the reminders through pg-boss, inside the decision's transaction. The workers
   // that deliver them (with the notifier) are registered below, after the queue starts.
   await registerAprobacionesRoutes(app, { db: pool, storage, recordatorios: createPgBossRecordatorios(boss) });
@@ -91,7 +98,9 @@ async function main(): Promise<void> {
     ...(llm.withBriefContext ? { withContext: llm.withBriefContext } : {}),
   });
   // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
-  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion) });
+  // Every stored production queues its quality-control job inside the same transaction (Step 8).
+  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), controlCalidad: createPgBossControlCalidad(boss) });
+  await registerControlCalidadJobs(boss, { db: pool, storage, reel: { ffprobePath: config.media.ffprobePath, ffprobeTimeoutMs: config.media.ffprobeTimeoutMs } });
   // Approval reminders and the escalation notice (spec 11.3). LogNotifier only logs ids and template names
   // until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
   await registerRecordatoriosJobs(boss, { db: pool, notifier: new LogNotifier() });

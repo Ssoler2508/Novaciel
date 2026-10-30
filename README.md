@@ -144,10 +144,13 @@ npm run media:upload     -- --cliente $C --file "C:\path\photo1.jpg" --tags test
 npm run plan:generate    -- --cliente $C --semana 2026-12-07      # 1. plan the week (a free Monday)
 npm run plan:approve     -- --cliente $C --plan <PLAN_ID>         # 2. NovaCiel proposes, the fictional client approver approves
 npm run brief:generate   -- --cliente $C --plan <PLAN_ID>         # 3. creative briefs
-npm run piece:produce    -- --cliente $C --pieza <PIECE_ID>       # 4. produce the files
-npm run piece:approve    -- --cliente $C --pieza <PIECE_ID>       # 5. internal and client approval of the exact file
-npm run piece:publicable -- --cliente $C --pieza <PIECE_ID>       # 6. PUBLICABLE only with both approvals of the current hash
+npm run piece:produce    -- --cliente $C --pieza <PIECE_ID>       # 4. produce the files (queues the QC job)
+npm run qc:run           -- --cliente $C --pieza <PIECE_ID>       # 5. quality control, if the server is not running its worker
+npm run piece:approve    -- --cliente $C --pieza <PIECE_ID>       # 6. internal and client approval of the exact file
+npm run piece:publicable -- --cliente $C --pieza <PIECE_ID>       # 7. PUBLICABLE only with a passing QC and both approvals of the current hash
 ```
+
+Quality control runs by itself after each production when the server is up (`npm run dev`): the piece moves to `revision_novaciel` on a pass and back to `en_produccion` on a fail, with the failed codes in the report. `qc:run` does the same directly (`--pieza <id>` or `--plan <id>`) and is also the way to control pieces left in `en_control_calidad` in development data. The internal approval only accepts `revision_novaciel`.
 
 Others: `piece:reopen` (send a piece back for changes), `password:set-dev`, `set-price`, `llm:smoke` (a real, paid call to Claude; needs `LLM_PROVIDER=claude`). Exact arguments are in the header of each script in `src/scripts/`.
 

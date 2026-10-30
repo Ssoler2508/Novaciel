@@ -22,3 +22,15 @@ export { checksTextos } from './textos.js';
 export type { EntradaTextos } from './textos.js';
 export { idDeCampo } from './tipos.js';
 export type { CampoPublicado, CheckQC, Parametros, ParametroValor, ResultadoCheck, ResultadoQC, Severidad } from './tipos.js';
+export {
+  CONTROL_CALIDAD_QUEUE,
+  crearColaControlCalidad,
+  createPgBossControlCalidad,
+  createPgBossControlCalidadQueue,
+  ejecutarJobControlCalidad,
+  registerControlCalidadJobs,
+  singletonKeyControlCalidad,
+} from './controlCalidadJobs.js';
+export type { ControlCalidadOutput, ControlCalidadPayload, ControlCalidadQueue } from './controlCalidadJobs.js';
+export { registerControlCalidadRoutes, toInformePublico } from './controlCalidadRoutes.js';
+export type { ControlCalidadRoutesOptions } from './controlCalidadRoutes.js';

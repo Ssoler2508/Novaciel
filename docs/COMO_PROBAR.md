@@ -123,10 +123,13 @@ npm run media:upload -- --cliente $C --file "C:\ruta\foto1.jpg" --tags prueba --
 npm run plan:generate -- --cliente $C --semana 2026-12-07      # un lunes libre
 npm run plan:approve  -- --cliente $C --plan <PLAN_ID>          # propuesto por NovaCiel, aprobado por el cliente ficticio
 npm run brief:generate -- --cliente $C --plan <PLAN_ID>
-npm run piece:produce  -- --cliente $C --pieza <PIEZA_ID>       # imprime la ruta de cada archivo
+npm run piece:produce  -- --cliente $C --pieza <PIEZA_ID>       # imprime la ruta de cada archivo y deja en cola el control de calidad
+npm run qc:run         -- --cliente $C --pieza <PIEZA_ID>       # control de calidad directo (si el servidor no está corriendo)
 npm run piece:approve  -- --cliente $C --pieza <PIEZA_ID>       # aprobación interna y del cliente
-npm run piece:publicable -- --cliente $C --pieza <PIEZA_ID>     # PUBLICABLE solo con las dos aprobaciones
+npm run piece:publicable -- --cliente $C --pieza <PIEZA_ID>     # PUBLICABLE solo con control de calidad aprobado y las dos aprobaciones
 ```
+
+**Control de calidad (Paso 8).** Con el servidor encendido (`npm run dev`), el control corre solo después de cada producción: la pieza pasa a `revision_novaciel` si aprueba, o vuelve a `en_produccion` con los códigos del fallo. Si el servidor está apagado, el trabajo queda en cola y `qc:run` hace el control directamente. `qc:run` también sirve para las piezas que quedaron en `en_control_calidad` en los datos de desarrollo (con `--plan <PLAN_ID>` controla todas las del plan). Imprime solo ids, resultado y códigos. La aprobación interna solo acepta piezas en `revision_novaciel`.
 
 **Reglas que conviene comprobar:**
 

@@ -3,6 +3,7 @@ import { closePool, pool } from '../db/pool.js';
 import { createStorage, LocalFileStorage } from '../lib/media/storage/index.js';
 import { getClienteById } from '../modules/clientes/clientesRepository.js';
 import { createReelRuntime } from '../modules/produccion/index.js';
+import { withDevControlCalidad } from './devQueue.js';
 import { assertDevScriptAllowed, confirmDevScriptDatabase } from './devScriptGuard.js';
 import { parsePieceProduceArgs } from './pieceProduceArgs.js';
 import { runPieceProduce } from './pieceProduceCore.js';
@@ -14,6 +15,7 @@ const SCRIPT = 'piece:produce';
  * Development-only: produces the final files of a plan's pieces, or of one piece (image slides, or the
  * MP4 of a reel with FFmpeg), through the production service (actor sistema). No model call and no
  * cost: it only crops, resizes, cuts, joins and draws the text of the brief on the client's real media.
+ * Queues the quality-control job inside the production transaction (the server's worker runs it; or use `npm run qc:run`).
  * Refuses production and *_test databases. Prints ids, sizes, hashes and (local storage) the path of
  * each file: NEVER the copy of a piece.
  */
@@ -25,9 +27,11 @@ async function main(): Promise<void> {
   console.log(`Database "${database}" (url name "${urlName}"), storage: ${config.storage.driver}`);
   if (!(await getClienteById(pool, args.clienteId))) throw new Error(`${SCRIPT} refused: that client does not exist`);
 
-  const result = await runPieceProduce(
-    { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
-    args,
+  const result = await withDevControlCalidad((controlCalidad) =>
+    runPieceProduce(
+      { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), controlCalidad, ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
+      args,
+    ),
   );
   for (const line of result.lines) (result.ok ? console.log : console.error)(line);
   if (!result.ok) process.exitCode = 1;

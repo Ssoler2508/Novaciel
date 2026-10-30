@@ -71,10 +71,18 @@ export interface ReelRuntime {
   remotion?: { licencia: LicenciaRemotion | undefined; capaTexto: CapaTextoAnimado; timeoutMs?: number };
 }
 
+/** What the final production transaction asks of the quality-control queue (Step 8). Ids only. */
+export interface ControlCalidadEncolador {
+  /** Queues the QC job of a production INSIDE the caller's transaction: a rollback leaves no job. */
+  encolar(tx: Db, input: { clienteId: string; piezaId: string; produccionId: string }): Promise<void>;
+}
+
 export interface ProduccionDeps {
   db: Db;
   storage: Storage;
   logger?: Logger;
+  /** Starts quality control by itself once a production is stored. Absent: nobody queues it (scripts and tests run it by hand). */
+  controlCalidad?: ControlCalidadEncolador;
   /** Needed to produce a reel; image pieces do not use it. */
   reel?: ReelRuntime;
 }
@@ -516,7 +524,10 @@ export async function producirPieza(
         await transitionPieza(tx, clienteId, piezaId, 'en_produccion', actor, { motivo: `Production started (version ${version})` });
       }
       const piezaFinal = await transitionPieza(tx, clienteId, piezaId, 'en_control_calidad', actor, { motivo: `Production finished (version ${version})` });
-      return { piezaFinal, produccion: (await getProduccionActual(tx, clienteId, piezaId, { includeDescartados: true }))! };
+      const produccionFinal = (await getProduccionActual(tx, clienteId, piezaId, { includeDescartados: true }))!;
+      // Same transaction: the job exists if and only if the production does.
+      await deps.controlCalidad?.encolar(tx, { clienteId, piezaId, produccionId: produccionFinal.id });
+      return { piezaFinal, produccion: produccionFinal };
     });
 
     log.info({ clienteId, piezaId, produccionId: resultado.produccion.id, version: resultado.produccion.version, archivos: guardados.length }, 'production stored');
