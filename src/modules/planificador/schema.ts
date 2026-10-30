@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { InvalidLocalTimeError } from './errors.js';
 import { diaDeLaSemana, isValidLocalDate, isValidLocalTime, minutesOf, toUtc } from './fechas.js';
-import { containsText, containsWord, mentionsPrice, mentionsPromotion, mentionsSchedule } from './textMatch.js';
+import { reglaViolada } from '../reglasProhibidas/matcher.js';
+import { mentionsPrice, mentionsPromotion, mentionsSchedule } from './textMatch.js';
 import {
   FORMATOS,
   FORMATOS_POR_RED,
   TRABAJOS,
   type HechoTipo,
+  type HorarioVetado,
   type PlanOutput,
   type PlanPieza,
   type PlannerContext,
@@ -34,13 +36,16 @@ export const PLAN_ISSUES = {
   bannedTerm: 'banned_term',
 } as const;
 
-/** True when a local date and time fall inside one of the client's vetoed windows (end exclusive). */
-export function isVetado(context: PlannerContext, fecha: string, hora: string): boolean {
+/** True when a local date and time fall inside one of the vetoed windows (end exclusive). Pure; quality control uses it too. */
+export function horarioVetado(horarios: readonly HorarioVetado[], fecha: string, hora: string): boolean {
   const dia = diaDeLaSemana(fecha);
   const minutos = minutesOf(hora);
-  return context.horariosVetados.some(
-    (v) => (v.dia === undefined || v.dia === dia) && minutos >= minutesOf(v.desde) && minutos < minutesOf(v.hasta),
-  );
+  return horarios.some((v) => (v.dia === undefined || v.dia === dia) && minutos >= minutesOf(v.desde) && minutos < minutesOf(v.hasta));
+}
+
+/** True when a local date and time fall inside one of the client's vetoed windows (end exclusive). */
+export function isVetado(context: PlannerContext, fecha: string, hora: string): boolean {
+  return horarioVetado(context.horariosVetados, fecha, hora);
 }
 
 /** Allowed distance, in pieces, between a pillar's count and its expected share: max(1, ceil(0.2 * N)). */
@@ -118,11 +123,7 @@ export function buildPlanSchema(context: PlannerContext): z.ZodType<PlanOutput> 
         if (mentionsPromotion(pieza.idea) && !citedTypes.has('promocion')) issue(at('idea'), PLAN_ISSUES.missingFactForPromotion);
 
         // Banned words (whole word), promises and topics (anywhere), accent- and case-insensitive.
-        const banned = context.reglas.some((regla) => {
-          if (regla.tipo === 'palabra') return containsWord(pieza.idea, regla.texto);
-          if (regla.tipo === 'promesa' || regla.tipo === 'tema') return containsText(pieza.idea, regla.texto);
-          return false; // elemento_visual belongs to the visual steps
-        });
+        const banned = context.reglas.some((regla) => reglaViolada(pieza.idea, regla)); // elemento_visual belongs to the visual steps
         if (banned) issue(at('idea'), PLAN_ISSUES.bannedTerm);
       });
 
