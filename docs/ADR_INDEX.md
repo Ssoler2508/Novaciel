@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One line per ADR. ADR-01 to ADR-04 are written in Spanish and were copied unchanged from the project notes (`brain/`, which is not versioned); the `[[...]]` links inside them point to those notes and do not resolve in this repository. ADR-05 and ADR-06 are written in English.
+One line per ADR. ADR-01 to ADR-04 are written in Spanish and were copied unchanged from the project notes (`brain/`, which is not versioned); the `[[...]]` links inside them point to those notes and do not resolve in this repository. ADR-05, ADR-06 and ADR-07 are written in English.
 
 | ADR | Title | Status | Summary |
 | --- | --- | --- | --- |
@@ -10,5 +10,6 @@ One line per ADR. ADR-01 to ADR-04 are written in Spanish and were copied unchan
 | [ADR-04](ADR-04-Modelo-de-datos-del-Paso-2.md) | Step 2 data model | Accepted, with points pending confirmation | Columns of `clientes` and `usuarios`, the versioned brand profile and its supporting tables; JSON keys and required fields are proposals to confirm. |
 | [ADR-05](ADR-05_APROBACION_DOS_NIVELES.md) | Two-level approval | Built (Step 9) | Internal review then client approval, recorded against the exact piece hash; change rounds, escalation, reminders, publish gate (`assertPublicable`) and the temporary Step 8 bridge. |
 | [ADR-06](ADR-06_REMOTION_LICENCIA.md) | Remotion: license gate and integration | Built (Step 7c) | `REMOTION_LICENCIA` has no default (unset = Remotion disabled); Remotion renders only a transparent text layer that the FFmpeg pipeline composes. |
+| [ADR-07](ADR-07_CONTROL_DE_CALIDAD.md) | Automatic quality control | Built (Step 8) | 38 deterministic checks (36 blocking, 2 warnings) with stable codes and Spanish reasons; the report binds to the exact production; the publish gate requires a passing report; the Step 8 bridge is removed; the catalogue, VERIFY values and known limits are listed. |
 
 Related technical notes: [HASH_PIEZA_NP1.md](HASH_PIEZA_NP1.md) (piece hash format and test vectors; do not change).

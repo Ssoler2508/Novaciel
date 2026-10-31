@@ -120,9 +120,10 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
 
-### Step 8 — Automatic quality control
+### Step 8 — Automatic quality control ✅ (branch `step-08`; merge pending)
 - Checks: dimensions and formats per network, text length, banned words, facts against `hechos_verificados`, brand rules.
 - **Done when:** a failing piece is blocked with clear reasons.
+- Built on branch `step-08` (checkpoints A to E): 38 deterministic checks with stable codes and Spanish reasons, a report bound to the exact production, an automatic `control-calidad` job after each production, NovaCiel-only read and re-run routes, `npm run qc:run`, the publish gate, and the Step 9 bridge removed. Catalogue, VERIFY values and known limits in `docs/ADR-07_CONTROL_DE_CALIDAD.md`.
 
 ### Step 9 — Two-level approval ✅ (merge `9c040d8`)
 - Internal review, then client approval, recorded against the exact piece (piece-level hash).

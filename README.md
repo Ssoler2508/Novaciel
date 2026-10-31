@@ -17,7 +17,7 @@ The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). Th
 | 6 | Creative director (briefs) | Done |
 | 7a, 7b, 7c | Production: carousels, reels with FFmpeg, Remotion text templates | Done |
 | 7d | Voice | Blocked (provider not chosen) |
-| 8 | Automatic quality control | Not built |
+| 8 | Automatic quality control | Done |
 | 9 | Two-level approval | Done |
 | 10 | Publishing | Not built |
 | 11 | Dashboard and real alerts | Not built |
