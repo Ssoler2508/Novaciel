@@ -71,10 +71,18 @@ export interface ReelRuntime {
   remotion?: { licencia: LicenciaRemotion | undefined; capaTexto: CapaTextoAnimado; timeoutMs?: number };
 }
 
+/** What the final production transaction asks of the quality-control queue (Step 8). Ids only. */
+export interface ControlCalidadEncolador {
+  /** Queues the QC job of a production INSIDE the caller's transaction: a rollback leaves no job. */
+  encolar(tx: Db, input: { clienteId: string; piezaId: string; produccionId: string }): Promise<void>;
+}
+
 export interface ProduccionDeps {
   db: Db;
   storage: Storage;
   logger?: Logger;
+  /** Starts quality control by itself once a production is stored. Absent: nobody queues it (scripts and tests run it by hand). */
+  controlCalidad?: ControlCalidadEncolador;
   /** Needed to produce a reel; image pieces do not use it. */
   reel?: ReelRuntime;
 }
@@ -309,8 +317,12 @@ export async function producirPieza(
   //    exists (see renderizarYGuardarReel); an image piece renders EVERY slide first, in memory, so a
   //    render failure stops there with nothing stored. If anything fails from here on, the files
   //    stored so far are deleted (never the sources).
+  // The profile version the files are rendered with is recorded in the production, so quality control judges
+  // the brand against exactly that version even if the kit is edited later.
   const perfil = await getCurrentPerfilMarca(db, clienteId);
-  const kitVisual = perfil?.kit_visual ?? {};
+  if (!perfil) throw new ProduccionObsoletaError();
+  const perfilMarcaId = perfil.id;
+  const kitVisual = perfil.kit_visual;
   const mediaIds = [...new Set(brief.tomas.flatMap((t) => (t.media_id ? [t.media_id] : [])))];
   const { rows: mediaRows } = await db.query<{ id: string; clave_almacenamiento: string; tipo: string }>(
     'SELECT id, clave_almacenamiento, tipo FROM media WHERE cliente_id = $1 AND id = ANY($2::uuid[])',
@@ -436,8 +448,8 @@ export async function producirPieza(
       }
       const { rows: produccionRows } = await tx.query<{ id: string }>(
         `INSERT INTO producciones
-           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version)
-         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id)
+         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
         [
           clienteId,
           piezaId,
@@ -453,6 +465,7 @@ export async function producirPieza(
           actor.tipo === 'usuario' ? actor.usuarioId : null,
           guardados[0]?.plantilla?.id ?? null,
           guardados[0]?.plantilla?.version ?? null,
+          perfilMarcaId,
         ],
       );
       const produccionId = produccionRows[0]!.id;
@@ -502,6 +515,7 @@ export async function producirPieza(
           ...(pieza.formato === 'reel' ? { escenas: guardados[0]?.fuentes?.length ?? 0 } : {}),
           hash_version: HASH_VERSION,
           hash_pieza: hashPieza.toString('hex'),
+          perfil_marca_id: perfilMarcaId,
         },
       });
 
@@ -510,7 +524,10 @@ export async function producirPieza(
         await transitionPieza(tx, clienteId, piezaId, 'en_produccion', actor, { motivo: `Production started (version ${version})` });
       }
       const piezaFinal = await transitionPieza(tx, clienteId, piezaId, 'en_control_calidad', actor, { motivo: `Production finished (version ${version})` });
-      return { piezaFinal, produccion: (await getProduccionActual(tx, clienteId, piezaId, { includeDescartados: true }))! };
+      const produccionFinal = (await getProduccionActual(tx, clienteId, piezaId, { includeDescartados: true }))!;
+      // Same transaction: the job exists if and only if the production does.
+      await deps.controlCalidad?.encolar(tx, { clienteId, piezaId, produccionId: produccionFinal.id });
+      return { piezaFinal, produccion: produccionFinal };
     });
 
     log.info({ clienteId, piezaId, produccionId: resultado.produccion.id, version: resultado.produccion.version, archivos: guardados.length }, 'production stored');

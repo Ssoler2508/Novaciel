@@ -60,10 +60,13 @@ const SIDE_EXITS: readonly Pair[] = [
   // user; the service asks for manage_plans).
   ['aprobada', 'con_cambios'],
   ['programada', 'con_cambios'],
+  // Step 8 (docs/ADR-05_APROBACION_DOS_NIVELES.md): with the bridge gone the internal level decides only in `revision_novaciel`,
+  // and its "cambios" decision needs a way out of it. NovaCiel only, like the two above; it is not a client change round.
+  ['revision_novaciel', 'con_cambios'],
 ];
 
 /**
- * All allowed (desde, hacia) pairs: 11 + 8 + 13 into `pausada` + 13 out of it = 45. Leaving
+ * All allowed (desde, hacia) pairs: 11 + 9 + 13 into `pausada` + 13 out of it = 46. Leaving
  * `pausada` is further restricted to the piece's own `estado_previo` (see canTransition).
  */
 export const ALLOWED_TRANSITIONS: readonly Pair[] = [

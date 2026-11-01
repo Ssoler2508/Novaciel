@@ -11,6 +11,8 @@ Spec 11.3 says "any change after approval voids it and the piece is approved aga
 
 A piece that goes back to `con_cambios` follows the normal path (`en_produccion` → … ). Its earlier approvals stop counting because the new production has another version and hash (decision 4).
 
+**Third transition (Step 8):** once the Step 8 bridge is gone (decision 6) the internal level decides only in `revision_novaciel`, and the section 15 chain has no exit from that state except `esperando_aprobacion`. A third NovaCiel-only edge is added, `revision_novaciel → con_cambios` (45 → 46), with the same database rule as the other two (`historial_estados_pieza_check`, migration `1700000002100`). The internal "cambios" decision uses it (history motivo `cambios_internos`); from `con_cambios` the piece is produced again as usual. It is not a client change round (decision 3). Like the other two, it is a deviation from section 15 pending confirmation by the Senior.
+
 ### 2. Internal review is always required (spec 11.1 deviation)
 Spec 11.1 retires the internal review per piece type after 20 pieces approved without changes. Step 9 does not implement the retirement: the internal level is required for every piece. The retirement policy is listed as debt. The client level is always required, as in the spec.
 
@@ -26,12 +28,14 @@ A pure rule over the records (implemented in checkpoint B as `estadoAprobacion`)
 The database enforces the same order at insert time. A change of the scheduled time (`fecha_hora`) is not in the hash and does not void the approval; it is audited and shown to the client.
 
 ### 5. Change rounds and escalation
-- Rounds = number of `cambios` records of the CLIENT level, over all productions of the piece. Internal `cambios` records and NovaCiel pull-backs (`aprobada`/`programada` → `con_cambios`) never count. Maximum 2 (spec 11.3).
+- Rounds = number of `cambios` records of the CLIENT level, over all productions of the piece. Internal `cambios` records and NovaCiel pull-backs (`revision_novaciel`/`aprobada`/`programada` → `con_cambios`) never count. Maximum 2 (spec 11.3).
 - The 3rd change request is not refused: it sets a derived `escalada` flag (computed from the records, no new column) and notifies all NovaCiel admins and operators through the `Notifier`. A person from NovaCiel takes over.
 - Piece states: `esperando_aprobacion → con_cambios → en_produccion` as in section 15. Rejection (client only) is `esperando_aprobacion → rechazada` (terminal).
 
-### 6. Step 8 bridge (TEMPORARY)
-Automatic QC does not exist, so pieces wait in `en_control_calidad`. Until Step 8, the internal approval also moves `en_control_calidad → revision_novaciel`, and the history row says so. The database accepts the internal level in `en_control_calidad` and in `revision_novaciel`. When Step 8 exists, the bridge is removed; no other check of this step depends on it.
+### 6. Step 8 bridge (TEMPORARY) — removed in Step 8, checkpoint A
+**Update:** the bridge no longer exists. The internal level is accepted only in `revision_novaciel` (database trigger `aprobaciones_before_insert` and `registrarDecision`); a piece reaches `revision_novaciel` by passing quality control. The history motivo `puente_temporal_paso_8` does not appear in new rows (old rows are append-only and stay).
+
+Original text: automatic QC does not exist, so pieces wait in `en_control_calidad`. Until Step 8, the internal approval also moves `en_control_calidad → revision_novaciel`, and the history row says so. The database accepts the internal level in `en_control_calidad` and in `revision_novaciel`. When Step 8 exists, the bridge is removed; no other check of this step depends on it.
 
 ### 7. Plans
 - NovaCiel proposes the plan (`proponerPlan`: `borrador → propuesto`). The client decides on the plan fingerprint (`plan_huella`, one SQL definition shared by the service and the database): `aprobado`, `cambios` (back to `borrador`) or `rechazado` (to `descartado`).
@@ -44,7 +48,7 @@ Automatic QC does not exist, so pieces wait in `en_control_calidad`. Until Step 
 When should the internal review be retired (spec 11.1: after 4 weeks per client, or 20 pieces of a type approved without changes)? Not built in Step 9.
 
 ## Checkpoint C: services and the publish gate
-- `registrarDecision` records the decision and moves the piece in one transaction (lock order: plan, then piece). The internal approval from `en_control_calidad` also performs `en_control_calidad → revision_novaciel` and then `revision_novaciel → esperando_aprobacion`; the first step is the TEMPORARY Step 8 bridge and its history row says `puente_temporal_paso_8`. An internal change request sends the piece to `en_produccion`.
+- `registrarDecision` records the decision and moves the piece in one transaction (lock order: plan, then piece). The internal approval from `en_control_calidad` also performs `en_control_calidad → revision_novaciel` and then `revision_novaciel → esperando_aprobacion`; the first step is the TEMPORARY Step 8 bridge and its history row says `puente_temporal_paso_8`. An internal change request sends the piece to `en_produccion`. (Step 8 changed this: the bridge is gone and an internal change request now sends the piece to `con_cambios`, see decision 1.)
 - `reabrirPieza` (NovaCiel, `manage_plans`) is the service for `aprobada`/`programada → con_cambios`.
 - `proponerPlan` and `decidirPlan` replace `aprobarPlanInterno`; the `plan:approve-internal` script was removed. Until checkpoint E there is no development script to approve a plan.
 - The database guard `historial_estados_pieza_aprobacion` refuses any entry into `aprobada` or `programada` without both approvals of the current production (id, version, hash_version, hash_pieza by bytes). Its test-only switch `novaciel.omitir_guarda_aprobacion` is transaction-scoped (`set_config(..., true)`) and honoured only in a `*_test` database.

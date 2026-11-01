@@ -51,7 +51,7 @@ export {
 export { getProduccionActual, listProduccionVersions } from './produccionRepository.js';
 export type { ArchivoView, ProduccionReadOptions, ProduccionView } from './produccionRepository.js';
 export { producirPieza } from './produccionService.js';
-export type { PiezaProducida, ProducirOptions, ProduccionDeps } from './produccionService.js';
+export type { ControlCalidadEncolador, PiezaProducida, ProducirOptions, ProduccionDeps } from './produccionService.js';
 export { assertProducible } from './produccionService.js';
 export {
   createPgBossProduccionQueue,

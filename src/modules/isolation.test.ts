@@ -4,6 +4,7 @@ import { withTestTransaction } from '../../tests/utils/transaction.js';
 import {
   assignRole,
   createAprobableWorld,
+  createRevisionCalidad,
   createAprobacion,
   createAprobacionPlan,
   createAprobadoresCliente,
@@ -76,7 +77,7 @@ import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from '.
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -104,6 +105,9 @@ interface World {
   planPropuestoId: string;
   aprobacionPlanId: string;
   /** What the Step 9 world adds to the piece, plan and media lists. */
+  /** Step 8: a piece in en_control_calidad with a QC report of its production. */
+  qcPiezaId: string;
+  revisionId: string;
   extraPiezaIds: string[];
   extraPlanIds: string[];
   extraMediaIds: string[];
@@ -155,6 +159,9 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   const planPropuestoPieza = await createPieza(db, { clienteId: cliente.id, planId: planPropuesto.id });
   const aprobableMediaId = (await db.query<{ media_id: string }>('SELECT media_id FROM producciones_archivos WHERE produccion_id = $1', [aprobable.produccionId])).rows[0]!.media_id;
   const aprobacionPlan = await createAprobacionPlan(db, { planId: planPropuesto.id });
+  const enQc = await createAprobableWorld(db, { clienteId: cliente.id, semanaInicio: '2026-12-07', estado: 'en_control_calidad' });
+  const revision = await createRevisionCalidad(db, { piezaId: enQc.piezaId });
+  const enQcMediaId = (await db.query<{ media_id: string }>('SELECT media_id FROM producciones_archivos WHERE produccion_id = $1', [enQc.produccionId])).rows[0]!.media_id;
   return {
     clienteId: asClienteId(cliente.id),
     creadoPor,
@@ -178,9 +185,11 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     aprobacionId: aprobacion.id,
     planPropuestoId: planPropuesto.id,
     aprobacionPlanId: aprobacionPlan.id,
-    extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id],
-    extraPlanIds: [aprobable.planId, planPropuesto.id],
-    extraMediaIds: [aprobableMediaId],
+    qcPiezaId: enQc.piezaId,
+    revisionId: revision.id,
+    extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id, enQc.piezaId],
+    extraPlanIds: [aprobable.planId, planPropuesto.id, enQc.planId],
+    extraMediaIds: [aprobableMediaId, enQcMediaId],
   };
 }
 
@@ -531,6 +540,35 @@ describe('isolation: approvals (Step 9)', () => {
         );
       });
       await attempt('approver_of_b', () => db.query('UPDATE aprobadores_cliente SET principal_usuario_id = $2 WHERE cliente_id = $1', [a.clienteId, b.usuarioSoloId]));
+    });
+  });
+});
+
+describe('isolation: quality-control reports (Step 8)', () => {
+  it("A never reads B's QC reports, and they cannot be changed through A's client id: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      expect((await db.query('SELECT 1 FROM revisiones_calidad WHERE cliente_id = $1', [a.clienteId])).rows.length).toBeGreaterThan(0);
+      expect((await db.query('SELECT 1 FROM revisiones_calidad WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.revisionId])).rows).toEqual([]);
+      expect((await db.query('SELECT 1 FROM revisiones_calidad WHERE cliente_id = $1 AND pieza_id = $2', [a.clienteId, b.qcPiezaId])).rows).toEqual([]);
+      // Filtered by A's client id, B's rows are not even reached (and the table is append-only anyway).
+      expect((await db.query('UPDATE revisiones_calidad SET duracion_ms = 1 WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.revisionId])).rowCount).toBe(0);
+      expect((await db.query('DELETE FROM revisiones_calidad WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.revisionId])).rowCount).toBe(0);
+    });
+  });
+
+  it("a report of A cannot point at B's piece or production", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const prodB = (await db.query<{ id: string; version: number; hash_version: string; hash_pieza: Buffer }>('SELECT id, version, hash_version, hash_pieza FROM producciones WHERE pieza_id = $1', [b.qcPiezaId])).rows[0]!;
+      const checks = JSON.stringify([{ codigo: 'archivo_hash_distinto', resultado: 'pasa', severidad: 'bloqueante', motivo: 'Cumple.', parametros: {} }]);
+      await db.query('SAVEPOINT iso_qc');
+      await expect(
+        db.query(
+          `INSERT INTO revisiones_calidad (cliente_id, pieza_id, produccion_id, produccion_version, hash_version, hash_pieza, resultado, checks, duracion_ms, actor_tipo)
+           VALUES ($1, $2, $3, $4, $5, $6, 'aprobado', $7::jsonb, 1, 'sistema')`,
+          [a.clienteId, b.qcPiezaId, prodB.id, prodB.version, prodB.hash_version, prodB.hash_pieza, checks],
+        ),
+      ).rejects.toThrow();
+      await db.query('ROLLBACK TO SAVEPOINT iso_qc');
     });
   });
 });

@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { withTestTransaction } from '../../../tests/utils/transaction.js';
 import {
+  checkQC,
   createActores,
   createAprobacion,
   createPiezaAprobable,
   createProduccion,
+  createRevisionCalidad,
   createUsuarioConRol,
   moverPieza,
   type Actores,
@@ -19,6 +21,7 @@ import { asClienteId } from '../shared/clienteId.js';
 import { reabrirPieza, registrarDecision } from './aprobacionesService.js';
 import {
   ArchivoAlteradoError,
+  ControlCalidadNoAprobadoError,
   HashDesactualizadoError,
   HashPiezaNoCoincideError,
   PermisoDenegadoError,
@@ -112,7 +115,7 @@ describe('the central rule: one test per way to break it', () => {
   it('no approvals at all', async () => {
     await withTestTransaction(async (db) => {
       const x = await world(db);
-      await forzarAprobada(x, ['revision_novaciel', 'esperando_aprobacion', 'aprobada']);
+      await forzarAprobada(x, ['esperando_aprobacion', 'aprobada']);
       await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).rejects.toEqual(expect.objectContaining({ name: 'SinAprobacionVigenteError', estadoAprobacion: 'pendiente_interno' }));
     });
   });
@@ -129,7 +132,7 @@ describe('the central rule: one test per way to break it', () => {
   it('only the client approval, inserted bypassing the service (and the insert trigger)', async () => {
     await withTestTransaction(async (db) => {
       const x = await world(db);
-      await forzarAprobada(x, ['revision_novaciel', 'esperando_aprobacion']);
+      await forzarAprobada(x, ['esperando_aprobacion']);
       await db.query('ALTER TABLE aprobaciones DISABLE TRIGGER aprobaciones_before_insert');
       await createAprobacion(db, { piezaId: x.w.piezaId, nivel: 'cliente', usuarioId: x.actores.ids.cliente });
       await db.query('ALTER TABLE aprobaciones ENABLE TRIGGER aprobaciones_before_insert');
@@ -289,7 +292,97 @@ describe('assertPublicable: PiezaNoPublicableError', () => {
       const x = await world(db);
       const error = await assertPublicable(x.deps, x.clienteId, x.w.piezaId).catch((e: Error) => e);
       expect(error).toBeInstanceOf(PiezaNoPublicableError);
-      expect(error).toMatchObject({ estado: 'en_control_calidad', planEstado: 'aprobado' });
+      expect(error).toMatchObject({ estado: 'revision_novaciel', planEstado: 'aprobado' });
+    });
+  });
+});
+
+describe('assertPublicable: the quality-control report of the exact production', () => {
+  /** Both levels approved with the records (the switch of the factories moves the piece), as if QC had been skipped. */
+  async function aprobadaSinGuarda(x: X) {
+    await createAprobacion(x.db, { piezaId: x.w.piezaId, nivel: 'interno' });
+    await moverPieza(x.db, x.w.piezaId, 'esperando_aprobacion');
+    await createAprobacion(x.db, { piezaId: x.w.piezaId, nivel: 'cliente' });
+    await moverPieza(x.db, x.w.piezaId, 'aprobada');
+  }
+  const mundo = async (db: Db, w: PiezaAprobable, storage: FakeStorage): Promise<X> => ({
+    db,
+    storage,
+    w,
+    actores: await createActores(db, w.clienteId),
+    clienteId: asClienteId(w.clienteId),
+    deps: { db, storage },
+  });
+  const rechazo = [checkQC('hashtags_forma', 'no_pasa')];
+
+  it('passes when the latest report of the current production passed', async () => {
+    await withTestTransaction(async (db) => {
+      const x = await aprobada(db); // the factories record a passing report, as QC would
+      await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).resolves.toMatchObject({ version: 1 });
+    });
+  });
+
+  it('refuses a piece with both approvals and NO report', async () => {
+    await withTestTransaction(async (db) => {
+      const storage = new FakeStorage();
+      const x = await mundo(db, await createPiezaAprobable(db, storage, { sinInformeQC: true }), storage);
+      await aprobadaSinGuarda(x);
+      const error = await assertPublicable(x.deps, x.clienteId, x.w.piezaId).catch((e: Error) => e);
+      expect(error).toBeInstanceOf(ControlCalidadNoAprobadoError);
+      expect(error).toMatchObject({ name: 'ControlCalidadNoAprobadoError', estadoQc: 'sin_informe' });
+    });
+  });
+
+  it('refuses a piece whose latest report is a rejection', async () => {
+    await withTestTransaction(async (db) => {
+      const storage = new FakeStorage();
+      const w = await createPiezaAprobable(db, storage, { estado: 'en_control_calidad' });
+      await createRevisionCalidad(db, { piezaId: w.piezaId, checks: rechazo });
+      await moverPieza(db, w.piezaId, 'revision_novaciel');
+      const x = await mundo(db, w, storage);
+      await aprobadaSinGuarda(x);
+      await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).rejects.toMatchObject({ name: 'ControlCalidadNoAprobadoError', estadoQc: 'rechazado' });
+    });
+  });
+
+  it('the latest report counts: a pass after a rejection of the same production publishes, a rejection after a pass does not', async () => {
+    await withTestTransaction(async (db) => {
+      const storage = new FakeStorage();
+      const primero = await createPiezaAprobable(db, storage, { estado: 'en_control_calidad' });
+      await createRevisionCalidad(db, { piezaId: primero.piezaId, checks: rechazo });
+      await createRevisionCalidad(db, { piezaId: primero.piezaId });
+      await moverPieza(db, primero.piezaId, 'revision_novaciel');
+      const a = await mundo(db, primero, storage);
+      await aprobadaSinGuarda(a);
+      await expect(assertPublicable(a.deps, a.clienteId, a.w.piezaId)).resolves.toBeDefined();
+
+      const segundo = await createPiezaAprobable(db, storage, { estado: 'en_control_calidad' });
+      await createRevisionCalidad(db, { piezaId: segundo.piezaId });
+      await createRevisionCalidad(db, { piezaId: segundo.piezaId, checks: rechazo });
+      await moverPieza(db, segundo.piezaId, 'revision_novaciel');
+      const b = await mundo(db, segundo, storage);
+      await aprobadaSinGuarda(b);
+      await expect(assertPublicable(b.deps, b.clienteId, b.w.piezaId)).rejects.toMatchObject({ estadoQc: 'rechazado' });
+    });
+  });
+
+  it('a report of an OLDER production does not count: a new production needs its own', async () => {
+    await withTestTransaction(async (db) => {
+      const x = await world(db); // has a passing report of production 1
+      await moverPieza(db, x.w.piezaId, 'con_cambios');
+      await createProduccion(db, { piezaId: x.w.piezaId });
+      for (const estado of ['en_produccion', 'en_control_calidad', 'revision_novaciel']) await moverPieza(db, x.w.piezaId, estado);
+      await aprobadaSinGuarda(x);
+      await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).rejects.toMatchObject({ name: 'ControlCalidadNoAprobadoError', estadoQc: 'sin_informe' });
+    });
+  });
+
+  it('comes after the approvals: a piece with no approval still says so first', async () => {
+    await withTestTransaction(async (db) => {
+      const x = await world(db);
+      await moverPieza(db, x.w.piezaId, 'esperando_aprobacion');
+      await moverPieza(db, x.w.piezaId, 'aprobada');
+      await expect(assertPublicable(x.deps, x.clienteId, x.w.piezaId)).rejects.toBeInstanceOf(SinAprobacionVigenteError);
     });
   });
 });

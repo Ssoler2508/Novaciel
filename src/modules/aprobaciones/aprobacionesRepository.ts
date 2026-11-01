@@ -83,7 +83,7 @@ export interface PiezaPendiente {
 
 /** Pieces with a current production that wait for a level: NovaCiel's review or the client's decision. */
 export async function listPiezasPendientes(db: Db, clienteId: ClienteId, nivel: 'interno' | 'cliente'): Promise<PiezaPendiente[]> {
-  const estados = nivel === 'interno' ? ['en_control_calidad', 'revision_novaciel'] : ['esperando_aprobacion'];
+  const estados = nivel === 'interno' ? ['revision_novaciel'] : ['esperando_aprobacion'];
   const { rows } = await db.query<PiezaPendiente>(
     `SELECT p.id, p.red, p.formato, p.estado, p.fecha_hora, pr.version, encode(pr.hash_pieza, 'hex') AS hash_pieza
      FROM piezas p

@@ -43,6 +43,12 @@ export async function getCurrentPerfilMarca(db: Db, clienteId: ClienteId): Promi
   return rows[0] ?? null;
 }
 
+/** One version of the profile by id (any version, current or closed), or null. Never another client's row. */
+export async function getPerfilMarcaById(db: Db, clienteId: ClienteId, id: string): Promise<PerfilMarcaRow | null> {
+  const { rows } = await db.query<PerfilMarcaRow>('SELECT * FROM perfil_marca WHERE id = $1 AND cliente_id = $2', [id, clienteId]);
+  return rows[0] ?? null;
+}
+
 /**
  * Closes the current version and inserts the new one in a single transaction, writing one audit row.
  * Blocks that are not given are carried over from the current version (empty on the first version).

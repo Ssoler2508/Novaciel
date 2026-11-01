@@ -17,6 +17,7 @@
     "plan:generate": "tsx src/scripts/planGenerate.ts",
     "brief:generate": "tsx src/scripts/briefGenerate.ts",
     "piece:produce": "tsx src/scripts/pieceProduce.ts",
+    "qc:run": "tsx src/scripts/qcRun.ts",
     "remotion:browser": "tsx src/scripts/remotionBrowser.ts",
     "plan:approve": "tsx src/scripts/planApprove.ts",
     "piece:approve": "tsx src/scripts/pieceApprove.ts",

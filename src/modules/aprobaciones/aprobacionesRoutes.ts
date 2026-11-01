@@ -6,6 +6,7 @@ import type { App } from '../auth/appType.js';
 import { requirePermission, requireSession } from '../auth/authorize.js';
 import { can } from '../auth/permissions.js';
 import { InvalidTransitionError, PiezaNotFoundError, PlanDescartadoError } from '../piezas/errors.js';
+import { getUltimaRevisionDePieza } from '../controlCalidad/revisionesRepository.js';
 import { getPieza, listPiezas } from '../piezas/piezasRepository.js';
 import {
   PlanConPiezasPausadasError,
@@ -193,12 +194,24 @@ export async function registerAprobacionesRoutes(app: App, options: Aprobaciones
         // NovaCiel reads every comment; a client role reads the client-level ones only.
         comentario: esNovaciel || r.nivel === 'cliente' ? r.comentario : null,
       }));
+      // Additive (Step 8): the quality-control summary of the CURRENT production, or null when it has no report.
+      // The client roles get the result only; the reason codes are for NovaCiel.
+      const revisionQc = await getUltimaRevisionDePieza(db, clienteId, pieza.id);
+      const controlCalidad = revisionQc
+        ? {
+            resultado: revisionQc.resultado,
+            version: revisionQc.produccion_version,
+            creado_en: revisionQc.creado_en.toISOString(),
+            ...(esNovaciel ? { codigos_fallo: revisionQc.codigos_fallo, codigos_advertencia: revisionQc.checks.filter((c) => c.resultado === 'advertencia').map((c) => c.codigo) } : {}),
+          }
+        : null;
       return {
         ...(await toProduccionPublica(storage, produccion, query.data.ttl)),
         pieza_estado: pieza.estado,
         fecha_hora: pieza.fecha_hora.toISOString(),
         estado_aprobacion: estadoPublico(estadoAprobacion(actual, await listRegistros(db, clienteId, pieza.id))),
         historial,
+        control_calidad: controlCalidad,
       };
     });
 

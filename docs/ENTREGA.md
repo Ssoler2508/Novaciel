@@ -1,8 +1,8 @@
 # Notas de entrega: novaciel-core
 
-Para NovaCiel y el Senior. Estado a 2026-10-22: Pasos 0 a 7c y 9 construidos; Paso 8, Paso 10, Paso 11 y 7d no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
+Para NovaCiel y el Senior. Estado a 2026-10-31: Pasos 0 a 7c, 8 y 9 construidos; Paso 10, Paso 11 y 7d no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
 
-Resultado de la verificación final de esta entrega: 127 archivos de pruebas y 2087 pruebas en verde con `npm test`; `npm run typecheck` y `npm run build` limpios; `npm audit` sin vulnerabilidades.
+Resultado de la verificación final de esta entrega: 146 archivos de pruebas y 2321 pruebas en verde con `npm test` (16 min) y 140 archivos y 2249 pruebas con `npm run test:fast` (10 min); `npm run typecheck` limpio (verificado en el Paso 8, 2026-10-31). `npm run build` y `npm audit` se verificaron por última vez en la limpieza anterior (127 archivos y 2087 pruebas), no en el Paso 8.
 
 ## 1. Qué está construido
 
@@ -18,6 +18,7 @@ Resultado de la verificación final de esta entrega: 127 archivos de pruebas y 2
 | 7a | Carruseles con media real y texto encima, hash de cada archivo y hash de la pieza | Real (`@napi-rs/canvas`, fuente Inter). |
 | 7b | Reels: cortes y montaje con FFmpeg, verificación de la salida y de los metadatos | Real (FFmpeg del sistema). |
 | 7c | Plantillas de texto animado y subtítulos palabra a palabra con Remotion | Real si `REMOTION_LICENCIA` está definida; si no, los reels usan el texto plano de 7b. |
+| 8 | Control de calidad automático: 38 comprobaciones deterministas (archivos releídos y re-hasheados, imágenes, reels, formato de los textos, palabras y promesas prohibidas, cifras contra hechos verificados, media usable, horario, marca), informe atado a la producción exacta, trabajo automático tras cada producción y rutas de lectura y reejecución solo para NovaCiel (ADR-07) | Real. **Ninguna comprobación usa un modelo**; las de visión y de tono son deuda. |
 | 9 | Aprobación en dos niveles sobre el hash exacto de la pieza, rondas de cambios, escalada, recordatorios, suplente, puerta de publicación (`assertPublicable`) | Real. **Notificador simulado**: solo registra ids y nombres de plantilla. |
 
 Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, visión `fake`, notificador `fake`/log, almacenamiento local en disco, **no hay publicación en ninguna red**.
@@ -26,7 +27,7 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vi
 
 | # | Regla | Dónde se aplica |
 | --- | --- | --- |
-| 1 | Nada se publica sin aprobación humana del archivo exacto | Guarda en la base de datos `historial_estados_pieza_aprobacion` (migración 1800): ninguna pieza entra en `aprobada` ni `programada` sin las dos aprobaciones del hash vigente. `src/modules/aprobaciones/publicable.ts` (`assertPublicable`). Hash: `docs/HASH_PIEZA_NP1.md`. |
+| 1 | Nada se publica sin aprobación humana del archivo exacto | Guarda en la base de datos `historial_estados_pieza_aprobacion` (migración 1800): ninguna pieza entra en `aprobada` ni `programada` sin las dos aprobaciones del hash vigente. `src/modules/aprobaciones/publicable.ts` (`assertPublicable`). Hash: `docs/HASH_PIEZA_NP1.md`. Desde el Paso 8 también exigen un informe de control de calidad aprobado de la producción vigente (`assertPublicable` y la misma guarda; ADR-07). |
 | 2 | Todo dato del negocio sale de `hechos_verificados` vigentes | `src/modules/hechos` (los vencidos no se devuelven); fichas de hechos en `src/modules/directorCreativo/tokens.ts` y esquema del brief. |
 | 3 | Toda tabla de cliente lleva `cliente_id` y toda consulta lo filtra | Repositorios de `src/modules/*`; prueba transversal `src/modules/isolation.test.ts`. |
 | 4 | Todo proveedor externo detrás de un adaptador con versión falsa | `src/lib/ai`, `src/lib/media` (almacenamiento, ffprobe, FFmpeg), `src/lib/notificaciones`, puerto `CapaTextoAnimado` (`src/modules/produccion/capaTexto.ts`). Modelos y precios en configuración. |
@@ -38,7 +39,7 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vi
 
 ## 3. Qué NO está construido
 
-- **Paso 8, control de calidad automático.** Hoy las piezas esperan en `en_control_calidad`. Existe un **puente TEMPORAL** en aprobaciones (`MOTIVO_PUENTE_PASO_8`, `puente_temporal_paso_8`): la aprobación interna también mueve `en_control_calidad → revision_novaciel`. Cuando exista el Paso 8, el puente se elimina (ADR-05, sección 6).
+- **Controles de calidad con modelo** (consistencia visual de marca, tono de voz, ortografía, defectos de tomas con IA) y los técnicos que la espec. 10 pide y no se decidieron en código (volumen de audio normalizado, cuadros negros o congelados, medición de zonas seguras, licencia de música). Ver ADR-07, sección 8.
 - **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios**. Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
 - **Paso 11, tablero y alertas reales.** Las alertas de hoy van al log; no hay vistas ni rutas de gestión de aprobadores.
 - **Paso 7d, voz.** Sin proveedor elegido.
@@ -47,7 +48,7 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vi
 
 ## 4. Deuda conocida consolidada
 
-Fuentes: PLAN.md, ADR-05, ADR-06 y esta limpieza.
+Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 
 **Seguridad y cuentas (Paso 2b)**
 1. Sin restablecimiento de contraseña por correo, sin segundo factor y sin límite de intentos por IP.
@@ -70,21 +71,27 @@ Fuentes: PLAN.md, ADR-05, ADR-06 y esta limpieza.
 12. Los paquetes de Remotion en caché (`.data/remotion`) no se limpian.
 13. Hay que quedarse en Remotion 4.0.x: la licencia cambia en 5.0.
 
-**Puente y estructura**
-14. El puente TEMPORAL del Paso 8 (ver sección 3).
-15. Los `index.ts` de `produccion`, `planificador`, `directorCreativo` y `aprobaciones` re-exportan mucha más API de la que se usa fuera del módulo. No se tocó para no retirar API pública sin necesidad.
-16. `maxOutputTokensFor` y `singletonKey*` existen con la misma forma en varios módulos (firmas y prefijos distintos; no se unificaron).
+**Estructura**
+14. Los `index.ts` de `produccion`, `planificador`, `directorCreativo` y `aprobaciones` re-exportan mucha más API de la que se usa fuera del módulo. No se tocó para no retirar API pública sin necesidad.
+15. `maxOutputTokensFor` y `singletonKey*` existen con la misma forma en varios módulos (firmas y prefijos distintos; no se unificaron).
 
 **Pruebas**
-17. `src/modules/conexionesRedes/conexionesRedesRepository.test.ts` ("create stores no plaintext…") falló una vez en `npm run test:fast` bajo carga y pasó en tres ejecuciones posteriores. Se trata como intermitente; conviene vigilarlo.
-18. La suite completa tarda entre 16 y 24 minutos en el portátil de desarrollo.
+16. `src/modules/conexionesRedes/conexionesRedesRepository.test.ts` ("create stores no plaintext…") falló una vez en `npm run test:fast` bajo carga y pasó en tres ejecuciones posteriores. Se trata como intermitente; conviene vigilarlo.
+17. La suite completa tarda entre 16 y 24 minutos en el portátil de desarrollo.
 
 **Dependencias**
-19. `@anthropic-ai/sdk` está en 0.131; la versión 1.x es un salto mayor que no se evaluó. Varias dependencias usan rangos `^`; `package-lock.json` fija lo instalado.
+18. `@anthropic-ai/sdk` está en 0.131; la versión 1.x es un salto mayor que no se evaluó. Varias dependencias usan rangos `^`; `package-lock.json` fija lo instalado.
+
+**Control de calidad (ADR-07)**
+19. Faltan los controles con modelo y los técnicos de la espec. 10 listados en la sección 3.
+20. Las advertencias (`programacion_proxima`, `marca_colores_respaldo`) no se muestran todavía al cliente (Paso 11) ni hay controles propios por cliente.
+21. `verifyReelOutput` se detiene en el primer fallo: un reel con varios defectos muestra uno por ejecución, y las familias posteriores no se reportan hasta corregirlo (ADR-07, sección 6).
+22. `programacion_proxima` y `marca_fuente_no_permitida` solo tienen pruebas unitarias; ninguna prueba del servicio los produce (ADR-07, sección 7).
+23. Los valores de la casa del catálogo marcados VERIFY (tamaños máximos, topes de texto, parámetros de codificación, opacidad del velo) siguen sin comprobarse contra la documentación de las redes (pregunta 6).
 
 ## 5. Preguntas abiertas para NovaCiel
 
-1. **Dos transiciones nuevas a `con_cambios`:** la espec. 15 no las prevé desde `aprobada` ni `programada` (ADR-05, sección 5 y checkpoint C). ¿Se confirman?
+1. **Tres transiciones nuevas a `con_cambios`:** la espec. 15 no las prevé desde `aprobada`, `programada` ni `revision_novaciel` (ADR-05, secciones 1, 5 y checkpoint C; la tercera es del Paso 8: la decisión interna "cambios" ya no puede darse desde `en_control_calidad`, así que necesita salida desde `revision_novaciel`). ¿Se confirman?
 2. **Turno del suplente:** la espec. 11.3 solo dice "después de los recordatorios". Se usa 2 h antes de la hora programada, configurable (`suplenteHoras`).
 3. **Plazo del plan semanal:** se usa la hora más temprana de sus piezas. ¿Es correcto?
 4. **Remotion y el contratista:** NovaCiel es de 3 personas con cuenta gratuita. ¿El desarrollador, que es contratista independiente, cuenta como persona (3 o 4)? Decide entre la licencia gratuita y la de empresa antes del uso en producción. Si la respuesta es "cuenta", comprar la licencia de empresa y usar `REMOTION_LICENCIA=empresa`.
@@ -97,6 +104,9 @@ Fuentes: PLAN.md, ADR-05, ADR-06 y esta limpieza.
 11. ¿Cuándo se retira la revisión interna (ver deuda 8)?
 12. ¿Los precios y datos del cliente ficticio deben ser en USD y de EE. UU.? ¿Basta "fecha de fin obligatoria + revocación" como consentimiento de imagen en EE. UU.?
 13. ¿"El sistema en español" incluye código, comentarios y commits o solo nombres de dominio e interfaz? Hoy el código está en inglés.
+
+14. **Qué ve el cliente del control de calidad:** hoy solo el resultado, la versión y la fecha; los códigos y las advertencias son de NovaCiel. ¿Se confirma, o el cliente debe ver los motivos de un rechazo?
+15. **Piezas anteriores al Paso 8:** las que estaban en `en_control_calidad` se controlan con `npm run qc:run`; las rechazadas por `media_no_usable` (media de prueba ya borrada) hay que producirlas de nuevo. ¿Basta así, o se limpian los datos de desarrollo?
 
 La Fase 0 (verificaciones previas: precios de modelos de imagen y video, intermediarios de publicación, límites de estadísticas, términos de música libre, requisitos legales de EE. UU., etc.) sigue abierta salvo la licencia de Remotion.
 

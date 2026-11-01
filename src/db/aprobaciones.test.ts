@@ -59,13 +59,22 @@ describe('aprobaciones: append-only (Step 9)', () => {
 });
 
 describe('aprobaciones: the decision binds to the exact current production', () => {
-  it('records an internal approval of the current production, in en_control_calidad and in revision_novaciel', async () => {
+  it('records an internal approval of the current production, in revision_novaciel', async () => {
     await withTestTransaction(async (db) => {
-      const w1 = await createAprobableWorld(db);
-      const a = await createAprobacion(db, { piezaId: w1.piezaId, nivel: 'interno' });
-      expect(a.produccion_id).toBe(w1.produccionId);
-      const w2 = await createAprobableWorld(db, { estado: 'revision_novaciel' });
-      await expect(createAprobacion(db, { piezaId: w2.piezaId, nivel: 'interno' })).resolves.toMatchObject({ nivel: 'interno', decision: 'aprobada' });
+      const w = await createAprobableWorld(db);
+      const a = await createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno' });
+      expect(a.produccion_id).toBe(w.produccionId);
+      expect(a).toMatchObject({ nivel: 'interno', decision: 'aprobada' });
+    });
+  });
+
+  it('the Step 8 bridge is gone: an internal decision from en_control_calidad is refused by the database', async () => {
+    await withTestTransaction(async (db) => {
+      const w = await createAprobableWorld(db, { estado: 'en_control_calidad' });
+      await expectFails(db, /a piece in en_control_calidad cannot get an internal decision/, () => createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno' }));
+      await expectFails(db, /a piece in en_control_calidad cannot get an internal decision/, () =>
+        createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno', decision: 'cambios' }),
+      );
     });
   });
 
@@ -88,7 +97,12 @@ describe('aprobaciones: the decision binds to the exact current production', () 
     await withTestTransaction(async (db) => {
       const w = await createAprobableWorld(db);
       const old = await db.query<{ version: number; hash_pieza: Buffer }>('SELECT version, hash_pieza FROM producciones WHERE id = $1', [w.produccionId]);
+      // A production can only be added while the piece is in production or QC.
+      await moverPieza(db, w.piezaId, 'con_cambios', { actor: { tipo: 'sistema' } });
       await createProduccion(db, { piezaId: w.piezaId });
+      await moverPieza(db, w.piezaId, 'en_produccion');
+      await moverPieza(db, w.piezaId, 'en_control_calidad');
+      await moverPieza(db, w.piezaId, 'revision_novaciel');
       await expectFails(db, /only the current production/, () =>
         createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno', produccionId: w.produccionId, version: old.rows[0]!.version, hashPieza: old.rows[0]!.hash_pieza }),
       );
@@ -208,7 +222,10 @@ describe('aprobaciones: internal before client', () => {
       // NovaCiel approved version 1; then a version 2 was produced and the piece moved on to the client.
       const w = await createAprobableWorld(db);
       await createAprobacion(db, { piezaId: w.piezaId, nivel: 'interno' });
+      await moverPieza(db, w.piezaId, 'con_cambios', { actor: { tipo: 'sistema' } });
       await createProduccion(db, { piezaId: w.piezaId });
+      await moverPieza(db, w.piezaId, 'en_produccion');
+      await moverPieza(db, w.piezaId, 'en_control_calidad');
       await moverPieza(db, w.piezaId, 'revision_novaciel');
       await moverPieza(db, w.piezaId, 'esperando_aprobacion');
       await expectFails(db, /before the internal approval/, () => createAprobacion(db, { piezaId: w.piezaId, nivel: 'cliente' }));
@@ -382,10 +399,10 @@ describe('aprobadores_cliente: main approver and substitute', () => {
   });
 });
 
-describe('transitions out of aprobada and programada (ADR-05)', () => {
-  const FROM = ['aprobada', 'programada'] as const;
+describe('transitions out of revision_novaciel, aprobada and programada (ADR-05)', () => {
+  const FROM = ['revision_novaciel', 'aprobada', 'programada'] as const;
 
-  it('NovaCiel and the system can send an approved or scheduled piece back to con_cambios', async () => {
+  it('NovaCiel and the system can send a reviewed, approved or scheduled piece back to con_cambios', async () => {
     await withTestTransaction(async (db) => {
       const staff = await createUsuarioConRol(db, 'operador_novaciel');
       for (const desde of FROM) {

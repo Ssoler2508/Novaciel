@@ -120,9 +120,10 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
 
-### Step 8 — Automatic quality control
+### Step 8 — Automatic quality control ✅ (branch `step-08`; merge pending)
 - Checks: dimensions and formats per network, text length, banned words, facts against `hechos_verificados`, brand rules.
 - **Done when:** a failing piece is blocked with clear reasons.
+- Built on branch `step-08` (checkpoints A to E): 38 deterministic checks with stable codes and Spanish reasons, a report bound to the exact production, an automatic `control-calidad` job after each production, NovaCiel-only read and re-run routes, `npm run qc:run`, the publish gate, and the Step 9 bridge removed. Catalogue, VERIFY values and known limits in `docs/ADR-07_CONTROL_DE_CALIDAD.md`.
 
 ### Step 9 — Two-level approval ✅ (merge `9c040d8`)
 - Internal review, then client approval, recorded against the exact piece (piece-level hash).
@@ -166,6 +167,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Voice provider (before Step 7d).
 - Publishing intermediary (after Phase 0).
 - Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
+- Third NovaCiel-only edge `revision_novaciel → con_cambios` (Step 8, docs/ADR-05_APROBACION_DOS_NIVELES.md): section 15 has no exit from `revision_novaciel` other than `esperando_aprobacion`, and the internal "cambios" decision needs one now that the Step 8 bridge is gone. Confirm with the Senior (together with `aprobada` and `programada` → `con_cambios`).
 - Exact time of the substitute approver's turn (spec 11.3 says only "after the reminders"): Step 9 uses 2 h before the scheduled time, configurable in the reminder rules (`suplenteHoras`). Confirm with the Senior.
 - Retirement of NovaCiel's internal review (spec 11.1: after 4 weeks per client, then per piece type after 20 pieces approved without changes): Step 9 keeps it always required (see docs/ADR-05_APROBACION_DOS_NIVELES.md). When do we build the retirement?
 

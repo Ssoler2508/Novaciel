@@ -113,7 +113,7 @@ describe('POST .../piezas/:piezaId/decision', () => {
       expect(stale.statusCode).toBe(409);
       expect(stale.json()).toEqual({ error: 'hash_desactualizado' });
       expect(await nRegistros(ctx)).toBe(0);
-      expect(await estadoPieza(ctx)).toBe('en_control_calidad');
+      expect(await estadoPieza(ctx)).toBe('revision_novaciel');
       expect(ctx.recordatorios.programados).toEqual([]);
       const ok = await post(ctx, admin, decisionUrl(ctx), internoOk(ctx));
       expect(ok.statusCode).toBe(200);
@@ -162,7 +162,7 @@ describe('POST .../piezas/:piezaId/decision', () => {
       const client = await login(ctx, 'aprobador_cliente');
       const early = await post(ctx, client, decisionUrl(ctx), clienteOk(ctx));
       expect(early.statusCode).toBe(409);
-      expect(early.json()).toEqual({ error: 'estado_invalido', estado: 'en_control_calidad' });
+      expect(early.json()).toEqual({ error: 'estado_invalido', estado: 'revision_novaciel' });
       const otro = await createPiezaAprobable(ctx.db, new FakeStorage());
       const admin = await login(ctx, 'administrador_novaciel');
       // NovaCiel can reach any client, but a piece id of another client under this client's URL is not found.
@@ -224,7 +224,7 @@ describe('GET .../aprobaciones/pendientes', () => {
       const interno = (await get(ctx, admin, url)).json();
       expect(interno.nivel).toBe('interno');
       expect(interno.piezas).toHaveLength(1);
-      expect(interno.piezas[0]).toMatchObject({ id: ctx.w.piezaId, estado: 'en_control_calidad', version: 1, hash_pieza: ctx.w.hashHex });
+      expect(interno.piezas[0]).toMatchObject({ id: ctx.w.piezaId, estado: 'revision_novaciel', version: 1, hash_pieza: ctx.w.hashHex });
       expect(interno.planes).toEqual([]);
       expect((await get(ctx, client, url)).json()).toMatchObject({ nivel: 'cliente', piezas: [], planes: [] });
 
@@ -271,7 +271,6 @@ describe('GET .../piezas/:piezaId/revision', () => {
       const owner = await login(ctx, 'dueno_cliente');
       // An internal approval with a comment, then a client change request with another one (made with the factory so the comments are exact).
       await createAprobacion(ctx.db, { piezaId: ctx.w.piezaId, nivel: 'interno', comentario: INTERNO, usuarioId: admin.user.id });
-      await moverPieza(ctx.db, ctx.w.piezaId, 'revision_novaciel');
       await moverPieza(ctx.db, ctx.w.piezaId, 'esperando_aprobacion');
       await createAprobacion(ctx.db, { piezaId: ctx.w.piezaId, nivel: 'cliente', decision: 'cambios', motivo: 'texto', comentario: CLIENTE, usuarioId: client.user.id });
       const url = `${base(ctx)}/piezas/${ctx.w.piezaId}/revision`;

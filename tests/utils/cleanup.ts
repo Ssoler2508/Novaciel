@@ -18,6 +18,7 @@ export const DOMAIN_TABLES: readonly string[] = [
   'aprobaciones_plan',
   'aprobaciones',
   'aprobadores_cliente',
+  'revisiones_calidad',
   'producciones_fuentes',
   'producciones_archivos',
   'producciones',

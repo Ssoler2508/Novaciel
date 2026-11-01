@@ -50,6 +50,8 @@ export interface ProduccionView {
   /** The animated template the reel's text was drawn with; null for images and for reels made with PNG overlays. */
   plantilla: string | null;
   plantilla_version: number | null;
+  /** The brand profile version the files were rendered with; null only for productions made before it was recorded. */
+  perfil_marca_id: string | null;
   archivos: ArchivoView[];
   creado_por: string | null;
   creado_en: Date;
@@ -67,7 +69,7 @@ interface ProduccionRow extends Omit<ProduccionView, 'archivos' | 'hash_pieza'> 
 async function loadViews(db: Db, clienteId: ClienteId, piezaId: string, soloActual: boolean, options: ProduccionReadOptions): Promise<ProduccionView[]> {
   const { rows } = await db.query<ProduccionRow>(
     `SELECT x.id, x.cliente_id, x.pieza_id, x.guion_id, x.version, x.es_actual, x.red, x.texto_publicacion, x.hashtags,
-            x.textos_alternativos, x.ubicacion, x.hash_version, encode(x.hash_pieza, 'hex') AS hash_pieza, x.plantilla, x.plantilla_version, x.creado_por, x.creado_en
+            x.textos_alternativos, x.ubicacion, x.hash_version, encode(x.hash_pieza, 'hex') AS hash_pieza, x.plantilla, x.plantilla_version, x.perfil_marca_id, x.creado_por, x.creado_en
      FROM producciones x
      JOIN piezas p ON p.id = x.pieza_id AND p.cliente_id = x.cliente_id
      JOIN planes_semanales pl ON pl.id = p.plan_id AND pl.cliente_id = p.cliente_id

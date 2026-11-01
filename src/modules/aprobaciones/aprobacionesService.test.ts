@@ -17,7 +17,7 @@ import { getHistorial, getPieza } from '../piezas/piezasRepository.js';
 import { transitionPieza } from '../piezas/piezasService.js';
 import { asClienteId } from '../shared/clienteId.js';
 import { listRegistros } from './aprobacionesRepository.js';
-import { MOTIVO_PUENTE_PASO_8, reabrirPieza, registrarDecision } from './aprobacionesService.js';
+import { reabrirPieza, registrarDecision } from './aprobacionesService.js';
 import {
   AprobacionInvalidaError,
   HashDesactualizadoError,
@@ -37,39 +37,41 @@ const estadoDe = async (db: Db, clienteId: ReturnType<typeof asClienteId>, pieza
 const nRegistros = async (db: Db, clienteId: ReturnType<typeof asClienteId>, piezaId: string) => (await listRegistros(db, clienteId, piezaId)).length;
 
 describe('registrarDecision: the internal level', () => {
-  it('an internal approval from en_control_calidad performs the TEMPORARY Step 8 bridge and leaves the piece waiting for the client', async () => {
+  it('an internal approval from revision_novaciel leaves the piece waiting for the client, in one step', async () => {
     await withTestTransaction(async (db) => {
       const { w, actores, clienteId } = await world(db);
       const result = await registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: w.hashHex });
       expect(result.pieza.estado).toBe('esperando_aprobacion');
       expect(result.estadoAprobacion).toMatchObject({ estado: 'pendiente_cliente' });
       expect(result.aprobacion).toMatchObject({ nivel: 'interno', decision: 'aprobada', produccionId: w.produccionId, version: 1 });
-      const history = (await getHistorial(db, clienteId, w.piezaId)).slice(-2);
-      expect(history.map((h) => [h.desde, h.hacia, h.motivo])).toEqual([
-        ['en_control_calidad', 'revision_novaciel', MOTIVO_PUENTE_PASO_8],
-        ['revision_novaciel', 'esperando_aprobacion', 'aprobacion_interna'],
-      ]);
+      const history = (await getHistorial(db, clienteId, w.piezaId)).slice(-1);
+      expect(history.map((h) => [h.desde, h.hacia, h.motivo])).toEqual([['revision_novaciel', 'esperando_aprobacion', 'aprobacion_interna']]);
       expect(history.every((h) => h.actor_usuario_id === actores.ids.novaciel)).toBe(true);
     });
   });
 
-  it('from revision_novaciel (once Step 8 exists) it does only the second step', async () => {
+  it('the bridge is gone: a piece still in en_control_calidad cannot get an internal decision and nothing is recorded', async () => {
     await withTestTransaction(async (db) => {
-      const { w, actores, clienteId } = await world(db);
-      await transitionPieza(db, clienteId, w.piezaId, 'revision_novaciel', { tipo: 'sistema' });
-      const result = await registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: w.hashHex });
-      expect(result.pieza.estado).toBe('esperando_aprobacion');
-      expect((await getHistorial(db, clienteId, w.piezaId)).slice(-1).map((h) => h.desde)).toEqual(['revision_novaciel']);
+      const w = await createPiezaAprobable(db, new FakeStorage(), { estado: 'en_control_calidad' });
+      const actores = await createActores(db, w.clienteId);
+      const clienteId = asClienteId(w.clienteId);
+      for (const decision of [{ decision: 'aprobada' as const }, { decision: 'cambios' as const, motivo: 'texto' as const }]) {
+        await expect(
+          registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', hashVisto: w.hashHex, ...decision }),
+        ).rejects.toBeInstanceOf(PiezaEstadoNoDecidibleError);
+      }
+      expect(await nRegistros(db, clienteId, w.piezaId)).toBe(0);
+      expect(await estadoDe(db, clienteId, w.piezaId)).toBe('en_control_calidad');
     });
   });
 
-  it('an internal change request sends the piece back to en_produccion and is not a change round', async () => {
+  it('an internal change request sends the piece to con_cambios (NovaCiel only) and is not a change round', async () => {
     await withTestTransaction(async (db) => {
       const { w, actores, clienteId } = await world(db);
       const result = await registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, {
         nivel: 'interno', decision: 'cambios', hashVisto: w.hashHex, motivo: 'texto', comentario: COMENTARIO,
       });
-      expect(result.pieza.estado).toBe('en_produccion');
+      expect(result.pieza.estado).toBe('con_cambios');
       expect(result.escalada).toEqual({ rondas: 0, escalada: false, notificarAhora: false });
       expect(result.estadoAprobacion).toMatchObject({ estado: 'cambios_pedidos', ronda: 0 });
     });
@@ -88,7 +90,7 @@ describe('registrarDecision: the internal level', () => {
         registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: 'no-es-un-hash' }),
       ).rejects.toBeInstanceOf(AprobacionInvalidaError);
       expect(await nRegistros(db, clienteId, w.piezaId)).toBe(0);
-      expect(await estadoDe(db, clienteId, w.piezaId)).toBe('en_control_calidad');
+      expect(await estadoDe(db, clienteId, w.piezaId)).toBe('revision_novaciel');
     });
   });
 });
@@ -210,7 +212,7 @@ describe('registrarDecision: the approver confirms what they saw', () => {
         registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: 'f'.repeat(64) }),
       ).rejects.toBeInstanceOf(HashDesactualizadoError);
       expect(await nRegistros(db, clienteId, w.piezaId)).toBe(0);
-      expect(await estadoDe(db, clienteId, w.piezaId)).toBe('en_control_calidad');
+      expect(await estadoDe(db, clienteId, w.piezaId)).toBe('revision_novaciel');
       await expect(
         registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: w.hashHex }),
       ).resolves.toMatchObject({ pieza: { estado: 'esperando_aprobacion' } });
@@ -220,7 +222,10 @@ describe('registrarDecision: the approver confirms what they saw', () => {
   it('after a new production version the old hash is stale', async () => {
     await withTestTransaction(async (db) => {
       const { w, actores, clienteId } = await world(db);
+      // A new version can only be produced after the piece went back (con_cambios) and through QC again.
+      await transitionPieza(db, clienteId, w.piezaId, 'con_cambios', { tipo: 'sistema' });
       await createProduccion(db, { piezaId: w.piezaId });
+      for (const estado of ['en_produccion', 'en_control_calidad', 'revision_novaciel'] as const) await transitionPieza(db, clienteId, w.piezaId, estado, { tipo: 'sistema' });
       await expect(
         registrarDecision({ db }, clienteId, w.piezaId, actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: w.hashHex }),
       ).rejects.toBeInstanceOf(HashDesactualizadoError);
@@ -240,8 +245,10 @@ describe('change rounds and escalation', () => {
       const x = await world(db);
       // An internal change request first: it does not count.
       await registrarDecision({ db }, x.clienteId, x.w.piezaId, x.actores.novaciel, { nivel: 'interno', decision: 'cambios', hashVisto: x.w.hashHex, motivo: 'toma' });
+      await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_produccion', { tipo: 'sistema' });
       await createProduccion(db, { piezaId: x.w.piezaId });
       await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_control_calidad', { tipo: 'sistema' });
+      await transitionPieza(db, x.clienteId, x.w.piezaId, 'revision_novaciel', { tipo: 'sistema' });
 
       const flags = [];
       for (let i = 0; i < 4; i++) {
@@ -250,6 +257,7 @@ describe('change rounds and escalation', () => {
         await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_produccion', { tipo: 'sistema' });
         await createProduccion(db, { piezaId: x.w.piezaId });
         await transitionPieza(db, x.clienteId, x.w.piezaId, 'en_control_calidad', { tipo: 'sistema' });
+        await transitionPieza(db, x.clienteId, x.w.piezaId, 'revision_novaciel', { tipo: 'sistema' });
       }
       expect(flags).toEqual([
         { rondas: 1, escalada: false, notificarAhora: false },
@@ -261,7 +269,7 @@ describe('change rounds and escalation', () => {
   });
 });
 
-describe('reabrirPieza (aprobada or programada back to con_cambios)', () => {
+describe('reabrirPieza (revision_novaciel, aprobada or programada back to con_cambios)', () => {
   async function approved(db: Db) {
     const x = await world(db);
     await registrarDecision({ db }, x.clienteId, x.w.piezaId, x.actores.novaciel, { nivel: 'interno', decision: 'aprobada', hashVisto: x.w.hashHex });
@@ -284,8 +292,10 @@ describe('reabrirPieza (aprobada or programada back to con_cambios)', () => {
       const a = await approved(db);
       await expect(reabrirPieza({ db }, a.clienteId, a.w.piezaId, a.actores.cliente, 'x')).rejects.toBeInstanceOf(PermisoDenegadoError);
       expect(await estadoDe(db, a.clienteId, a.w.piezaId)).toBe('aprobada');
-      const b = await world(db);
-      await expect(reabrirPieza({ db }, b.clienteId, b.w.piezaId, b.actores.novaciel, 'x')).rejects.toBeInstanceOf(InvalidTransitionError);
+      // A piece still in QC (en_control_calidad) has no way to con_cambios.
+      const inQc = await createPiezaAprobable(db, new FakeStorage(), { estado: 'en_control_calidad' });
+      const actoresQc = await createActores(db, inQc.clienteId);
+      await expect(reabrirPieza({ db }, asClienteId(inQc.clienteId), inQc.piezaId, actoresQc.novaciel, 'x')).rejects.toBeInstanceOf(InvalidTransitionError);
     });
   });
 });

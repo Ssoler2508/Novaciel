@@ -13,7 +13,7 @@ export type { AprobadoresRow } from './aprobadoresRepository.js';
 export { esPersonalNovaciel, requireAction, rolParaNivel } from './actor.js';
 export type { AprobadorActor } from './actor.js';
 export { getHuellaPlan, getProduccionActualBasica, listRegistros } from './aprobacionesRepository.js';
-export { MOTIVO_PUENTE_PASO_8, reabrirPieza, registrarDecision } from './aprobacionesService.js';
+export { reabrirPieza, registrarDecision } from './aprobacionesService.js';
 export type { AprobacionesDeps, AprobacionRegistrada, DecisionInput, DecisionRegistrada } from './aprobacionesService.js';
 export { crearColasRecordatorios, listarAvisosEncolados, createPgBossRecordatorios, ejecutarJobEscalada, ejecutarJobRecordatorio, ESCALADA_QUEUE, RECORDATORIO_QUEUE, registerRecordatoriosJobs } from './recordatoriosJobs.js';
 export type { AvisoEncolado, RecordatoriosJobDeps, SalidaAviso } from './recordatoriosJobs.js';

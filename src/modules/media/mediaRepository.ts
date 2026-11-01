@@ -125,6 +125,24 @@ export interface ListMediaFilters {
   offset?: number;
 }
 
+/** The ids of every media row of the client, deleted ones included: the library for "is this really ours". */
+export async function listMediaIds(db: Db, clienteId: ClienteId): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>('SELECT id FROM media WHERE cliente_id = $1', [clienteId]);
+  return rows.map((r) => r.id);
+}
+
+/** Of these media ids, the ones that cannot be used now (deleted, rights ended, authorization missing). Never throws for them. */
+export async function listMediaNoUsable(db: Db, clienteId: ClienteId, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT id FROM unnest($2::uuid[]) AS pedido(id)
+     WHERE NOT EXISTS (SELECT 1 FROM media m WHERE m.id = pedido.id AND m.cliente_id = $1 AND ${usableCondition('now()')})
+     ORDER BY id`,
+    [clienteId, ids],
+  );
+  return rows.map((r) => r.id);
+}
+
 export async function listMedia(db: Db, clienteId: ClienteId, filters: ListMediaFilters = {}): Promise<MediaRow[]> {
   const params: unknown[] = [clienteId];
   const where = ['m.cliente_id = $1'];

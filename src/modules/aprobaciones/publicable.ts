@@ -3,16 +3,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Db } from '../../db/types.js';
 import type { Storage } from '../../lib/media/storage/types.js';
+import { getUltimaRevision } from '../controlCalidad/revisionesRepository.js';
 import { PiezaNotFoundError } from '../piezas/errors.js';
 import { getPieza } from '../piezas/piezasRepository.js';
 import { computePieceHash } from '../produccion/pieceHash.js';
 import { hashFile, verificarMediaYHechos } from '../produccion/produccionService.js';
 import type { ClienteId } from '../shared/clienteId.js';
 import { getProduccionActualBasica, listRegistros } from './aprobacionesRepository.js';
-import { ArchivoAlteradoError, HashPiezaNoCoincideError, PiezaNoPublicableError, SinAprobacionVigenteError } from './errors.js';
+import { ArchivoAlteradoError, ControlCalidadNoAprobadoError, HashPiezaNoCoincideError, PiezaNoPublicableError, SinAprobacionVigenteError } from './errors.js';
 import { estadoAprobacion } from './estadoAprobacion.js';
 
-// THE GATE (rule 1): Step 10 calls this right before sending. It READS only: it changes nothing and it
+// THE GATE (rule 1): Step 10 calls this right before sending. Both approvals AND a passing quality-control report
+// of the exact production are needed. It READS only: it changes nothing and it
 // does NOT lock. Step 10 must call it with the piece locked, or re-check immediately before sending, so
 // nothing can change between the check and the publish (ADR-05).
 //
@@ -69,6 +71,15 @@ export async function assertPublicable(deps: PublicableDeps, clienteId: ClienteI
   const estado = estadoAprobacion(actual, registros);
   if (estado.estado !== 'aprobada') throw new SinAprobacionVigenteError(estado.estado);
   const aprobado = registros.find((r) => BigInt(r.seq) === estado.clienteSeq)!;
+
+  // 1b. Quality control passed for EXACTLY this production: the latest report of this production, with the
+  // same version and hash (a report of an older production never counts).
+  const informe = await getUltimaRevision(db, clienteId, actual.id);
+  const hashActual = Buffer.from(actual.hashPieza).toString('hex');
+  if (!informe || informe.produccion_version !== actual.version || informe.hash_version !== actual.hashVersion || informe.hash_pieza !== hashActual) {
+    throw new ControlCalidadNoAprobadoError('sin_informe');
+  }
+  if (informe.resultado !== 'aprobado') throw new ControlCalidadNoAprobadoError('rechazado');
 
   // 2. The stored data of that production, as it is now.
   const { rows: prodRows } = await db.query<ProduccionBruta>(

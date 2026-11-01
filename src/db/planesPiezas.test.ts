@@ -46,6 +46,8 @@ const SIDE: [string, string][] = [
   ['esperando_aprobacion', 'rechazada'], ['programada', 'fallo_publicacion'], ['fallo_publicacion', 'programada'],
   // Added in Step 9 (ADR-05, spec 11.3): a change after approval or scheduling. NovaCiel only.
   ['aprobada', 'con_cambios'], ['programada', 'con_cambios'],
+  // Added in Step 8 (ADR-05): the internal "cambios" decision, now that the internal level decides only in revision_novaciel. NovaCiel only.
+  ['revision_novaciel', 'con_cambios'],
 ];
 const TERMINAL = ['cerrada', 'rechazada'];
 const PAUSABLE = STATES.filter((s) => s !== 'pausada' && !TERMINAL.includes(s));
@@ -58,9 +60,9 @@ const ALLOWED: [string, string][] = [
 const key = ([a, b]: [string, string]) => `${a}>${b}`;
 
 describe('transiciones_pieza (section 15)', () => {
-  it('has exactly the 45 transitions (the spec plus aprobada and programada > con_cambios of Step 9)', async () => {
+  it('has exactly the 46 transitions (the spec plus aprobada, programada and revision_novaciel > con_cambios of Steps 9 and 8)', async () => {
     await withTestTransaction(async (db) => {
-      expect(ALLOWED).toHaveLength(45);
+      expect(ALLOWED).toHaveLength(46);
       const { rows } = await db.query('SELECT desde, hacia FROM transiciones_pieza');
       expect(rows.map((r) => `${r.desde}>${r.hacia}`).sort()).toEqual(ALLOWED.map(key).sort());
     });

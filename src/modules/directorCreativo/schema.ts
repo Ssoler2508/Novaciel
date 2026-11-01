@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { containsText, containsWord, mentionsPrice, mentionsPromotion, mentionsSchedule } from '../planificador/textMatch.js';
+import { mentionsPrice, mentionsPromotion, mentionsSchedule } from '../planificador/textMatch.js';
 import { FORMATOS, type HechoTipo } from '../planificador/types.js';
 import { esTextoSoportado } from '../produccion/glyphCoverage.js';
+import { reglaViolada } from '../reglasProhibidas/matcher.js';
 import { reelSceneMs } from '../produccion/reelTimeline.js';
 import { mentionsAi, mentionsAiGenerationRequest, mentionsNumber } from './detectors.js';
 import { MAX_HECHOS_OMITIDOS } from './limits.js';
@@ -127,7 +128,8 @@ function textFields(brief: BriefContent, context: BriefContext): TextField[] {
   return fields;
 }
 
-const HASHTAG = /^#[\p{L}\p{N}_]+$/u;
+/** The shape of a hashtag, with its `#`. Quality control checks the stored copy with the same rule. */
+export const HASHTAG = /^#[\p{L}\p{N}_]+$/u;
 
 export function buildBriefSchema(context: BriefContext): z.ZodType<BriefContent> {
   const { formato: limitesFormato } = context.limites;
@@ -239,11 +241,7 @@ export function buildBriefSchema(context: BriefContext): z.ZodType<BriefContent>
 
       // 7. Banned terms, after rendering the tokens: palabra = whole word, promesa and tema = anywhere.
       const rendered = value.replace(/\{\{hecho:([0-9a-f-]{36})\}\}/gi, (_t, id: string) => hechosPorId.get(id.toLowerCase())?.enunciado ?? ' ');
-      const banned = context.reglas.some((regla) => {
-        if (regla.tipo === 'palabra') return containsWord(rendered, regla.texto);
-        if (regla.tipo === 'promesa' || regla.tipo === 'tema') return containsText(rendered, regla.texto);
-        return false; // elemento_visual is applied to the media candidates
-      });
+      const banned = context.reglas.some((regla) => reglaViolada(rendered, regla)); // elemento_visual is applied to the media candidates
       if (banned) issue(path, BRIEF_ISSUES.bannedTerm);
 
       // 9. The on-screen text is DRAWN with the bundled font: no character it cannot draw (emoji...), also

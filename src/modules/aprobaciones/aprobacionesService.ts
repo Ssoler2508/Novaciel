@@ -4,8 +4,8 @@ import { runInTransaction } from '../../db/transaction.js';
 import { recordAudit } from '../auditoria/recordAudit.js';
 import { PiezaNotFoundError } from '../piezas/errors.js';
 import type { EstadoPieza } from '../piezas/estados.js';
-import { getPieza, PIEZA_COLUMNS, PIEZA_FROM, type PiezaRow } from '../piezas/piezasRepository.js';
-import { transitionPieza } from '../piezas/piezasService.js';
+import { getPieza, type PiezaRow } from '../piezas/piezasRepository.js';
+import { lockPlanYPieza, transitionPieza } from '../piezas/piezasService.js';
 import { PlanNoAprobadoError } from '../planificador/errors.js';
 import type { ClienteId } from '../shared/clienteId.js';
 import { esPersonalNovaciel, requireAction, rolParaNivel, type AprobadorActor } from './actor.js';
@@ -58,34 +58,17 @@ export interface DecisionRegistrada {
   escalada: DecisionEscalada;
 }
 
-export const MOTIVO_PUENTE_PASO_8 = 'puente_temporal_paso_8';
-
 /** `recordatorios` is optional: without it nothing is scheduled (callers with no queue, most tests). */
 export interface AprobacionesDeps {
   db: Db;
   recordatorios?: Recordatorios;
 }
 
-/** Locks the plan, then the piece (FOR UPDATE), of this client. Null when the piece is not the client's. */
-async function lockPlanYPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise<PiezaRow | null> {
-  const { rows: ids } = await tx.query<{ plan_id: string }>('SELECT plan_id FROM piezas WHERE id = $1 AND cliente_id = $2', [piezaId, clienteId]);
-  const planId = ids[0]?.plan_id;
-  if (!planId) return null;
-  await tx.query('SELECT id FROM planes_semanales WHERE id = $1 AND cliente_id = $2 FOR SHARE', [planId, clienteId]);
-  const { rows } = await tx.query<PiezaRow>(
-    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE p.id = $1 AND p.cliente_id = $2 FOR UPDATE OF p`,
-    [piezaId, clienteId],
-  );
-  return rows[0] ?? null;
-}
-
 /**
  * Records a decision and moves the piece, atomically.
  *
- *   interno + aprobada   en_control_calidad -> revision_novaciel -> esperando_aprobacion
- *                        (the first step is the TEMPORARY Step 8 bridge: until automatic QC exists the
- *                        internal approval also performs it); revision_novaciel -> esperando_aprobacion
- *   interno + cambios    en_control_calidad -> en_produccion (not a change round)
+ *   interno + aprobada   revision_novaciel -> esperando_aprobacion (the piece got there by passing QC)
+ *   interno + cambios    revision_novaciel -> con_cambios (NovaCiel only; not a client change round)
  *   cliente + aprobada   esperando_aprobacion -> aprobada
  *   cliente + cambios    esperando_aprobacion -> con_cambios
  *   cliente + rechazada  esperando_aprobacion -> rechazada
@@ -116,7 +99,7 @@ export async function registrarDecision(
     const pieza = await lockPlanYPieza(tx, clienteId, piezaId);
     if (!pieza) throw new PiezaNotFoundError();
     if (pieza.plan_estado !== 'aprobado') throw new PlanNoAprobadoError(pieza.plan_estado);
-    const estadosValidos: EstadoPieza[] = d.nivel === 'interno' ? ['en_control_calidad', 'revision_novaciel'] : ['esperando_aprobacion'];
+    const estadosValidos: EstadoPieza[] = d.nivel === 'interno' ? ['revision_novaciel'] : ['esperando_aprobacion'];
     if (!estadosValidos.includes(pieza.estado)) throw new PiezaEstadoNoDecidibleError(d.nivel, pieza.estado);
 
     const actual = await getProduccionActualBasica(tx, clienteId, piezaId);
@@ -139,12 +122,9 @@ export async function registrarDecision(
 
     const quien = { tipo: 'usuario', usuarioId: actor.usuarioId } as const;
     if (d.nivel === 'interno' && d.decision === 'aprobada') {
-      if (pieza.estado === 'en_control_calidad') {
-        await transitionPieza(tx, clienteId, piezaId, 'revision_novaciel', quien, { motivo: MOTIVO_PUENTE_PASO_8 });
-      }
       await transitionPieza(tx, clienteId, piezaId, 'esperando_aprobacion', quien, { motivo: 'aprobacion_interna' });
     } else if (d.nivel === 'interno') {
-      await transitionPieza(tx, clienteId, piezaId, 'en_produccion', quien, { motivo: 'cambios_internos' });
+      await transitionPieza(tx, clienteId, piezaId, 'con_cambios', quien, { motivo: 'cambios_internos' });
     } else {
       const hacia = { aprobada: 'aprobada', cambios: 'con_cambios', rechazada: 'rechazada' }[d.decision] as EstadoPieza;
       await transitionPieza(tx, clienteId, piezaId, hacia, quien, { motivo: `decision_cliente_${d.decision}` });
@@ -196,7 +176,7 @@ export async function registrarDecision(
 }
 
 /**
- * NovaCiel pulls an approved or scheduled piece back to `con_cambios` (spec 11.3: any change after the
+ * NovaCiel pulls a reviewed, approved or scheduled piece back to `con_cambios` (spec 11.3: any change after the
  * approval voids it). Only NovaCiel (manage_plans); the database refuses a client user too. The piece
  * then goes through production again, and the new production version voids every earlier approval.
  */

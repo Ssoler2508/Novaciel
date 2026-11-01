@@ -25,6 +25,8 @@ export interface ProduccionRow {
   /** The animated text template (Step 7c), or null. */
   plantilla: string | null;
   plantilla_version: number | null;
+  /** The brand profile version the files were rendered with (Step 8); null only for old rows. */
+  perfil_marca_id: string | null;
   creado_por: string | null;
   creado_en: Date;
 }
@@ -98,6 +100,8 @@ export interface ProduccionOverrides {
   piezaId?: string;
   /** Defaults to the piece's current brief. */
   guionId?: string;
+  /** The profile version the production was rendered with. Defaults to the one of the brief. */
+  perfilMarcaId?: string;
   /** Defaults to the next version of the piece. */
   version?: number;
   /**
@@ -195,17 +199,22 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
   }
   const pieza = (await db.query<{ cliente_id: string; red: string }>('SELECT cliente_id, red FROM piezas WHERE id = $1', [piezaId])).rows[0]!;
   clienteId ??= pieza.cliente_id;
-  const guionId =
-    overrides.guionId ??
-    (await db.query<{ id: string }>('SELECT id FROM guiones WHERE pieza_id = $1 AND es_actual', [piezaId])).rows[0]!.id;
+  const guion = (
+    await db.query<{ id: string; perfil_marca_id: string }>(
+      overrides.guionId ? 'SELECT id, perfil_marca_id FROM guiones WHERE id = $1' : 'SELECT id, perfil_marca_id FROM guiones WHERE pieza_id = $1 AND es_actual',
+      [overrides.guionId ?? piezaId],
+    )
+  ).rows[0]!;
+  const guionId = guion.id;
+  const perfilMarcaId = overrides.perfilMarcaId ?? guion.perfil_marca_id;
 
   const last = (await db.query<{ n: number }>('SELECT COALESCE(max(version), 0)::int AS n FROM producciones WHERE pieza_id = $1', [piezaId])).rows[0]!.n;
   await db.query('UPDATE producciones SET es_actual = false WHERE pieza_id = $1 AND es_actual', [piezaId]);
   const archivos = overrides.archivos ?? [{}];
   const { rows } = await db.query<ProduccionRow>(
     `INSERT INTO producciones
-       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version)
-     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id)
+     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
     [
       clienteId,
       piezaId,
@@ -221,6 +230,7 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
       overrides.creadoPor ?? null,
       overrides.plantilla ?? null,
       overrides.plantillaVersion ?? null,
+      perfilMarcaId,
     ],
   );
   const produccion = rows[0]!;

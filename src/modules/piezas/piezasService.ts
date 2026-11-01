@@ -42,6 +42,19 @@ async function lockPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise
   return pieza;
 }
 
+/** Locks the plan, then the piece (FOR UPDATE), of this client (the lock order of every service: plan first). Null when the piece is not the client's. */
+export async function lockPlanYPieza(tx: Db, clienteId: ClienteId, piezaId: string): Promise<PiezaRow | null> {
+  const { rows: ids } = await tx.query<{ plan_id: string }>('SELECT plan_id FROM piezas WHERE id = $1 AND cliente_id = $2', [piezaId, clienteId]);
+  const planId = ids[0]?.plan_id;
+  if (!planId) return null;
+  await tx.query('SELECT id FROM planes_semanales WHERE id = $1 AND cliente_id = $2 FOR SHARE', [planId, clienteId]);
+  const { rows } = await tx.query<PiezaRow>(
+    `SELECT ${PIEZA_COLUMNS} ${PIEZA_FROM} WHERE p.id = $1 AND p.cliente_id = $2 FOR UPDATE OF p`,
+    [piezaId, clienteId],
+  );
+  return rows[0] ?? null;
+}
+
 /** The transition itself, on a piece that is already locked. */
 async function applyTransition(
   tx: Db,

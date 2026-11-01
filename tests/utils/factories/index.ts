@@ -24,6 +24,8 @@ export { createMedia, createMediaAutorizacion } from './media.js';
 export { createPlanSemanal, createPieza, createPiezaHecho, insertHistorial, moverPieza, DEFAULT_MONDAY } from './planesPiezas.js';
 export { createGuion, createToma, createGuionHecho, guionContenido } from './guiones.js';
 export { createProduccion, createProduccionArchivo, createProduccionFuente } from './producciones.js';
+export { createRevisionCalidad, checkQC } from './revisionesCalidad.js';
+export type { RevisionCalidadRow, CheckQC } from './revisionesCalidad.js';
 export {
   createAprobableWorld,
   createActores,
