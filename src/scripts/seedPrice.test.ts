@@ -19,7 +19,7 @@ describe('seed: fake model price', () => {
       ]);
       expect(rows).toEqual([{ nota: SEED_PRICE_NOTE, entrada: '1.000000' }]);
       const audit = await db.query(`SELECT 1 FROM auditoria WHERE tabla = 'precios_modelos' AND accion = 'crear'`);
-      expect(audit.rows).toHaveLength(2); // one per priced model (heavy and light)
+      expect(audit.rows).toHaveLength(3); // one per priced model (heavy and light) and the fake voice (characters)
       await expect(
         estimateCost(db, { provider: SEED_PRICE_PROVIDER, model: SEED_PRICE_MODEL, maxInputTokens: 1_000_000, maxOutputTokens: 1_000_000 }),
       ).resolves.toBe(3_000_000n);

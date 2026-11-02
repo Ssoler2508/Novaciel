@@ -16,7 +16,7 @@ The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). Th
 | 5 | Weekly planner and piece states | Done |
 | 6 | Creative director (briefs) | Done |
 | 7a, 7b, 7c | Production: carousels, reels with FFmpeg, Remotion text templates | Done |
-| 7d | Voice | Blocked (provider not chosen) |
+| 7d | Voice-over (ElevenLabs behind an adapter, fake voice by default) | Done |
 | 8 | Automatic quality control | Done |
 | 9 | Two-level approval | Done |
 | 10 | Publishing | Not built |
@@ -54,6 +54,7 @@ Details per step, what is a real adapter and what is a fake: [`docs/ENTREGA.md`]
 | Port | Real implementation | Fake |
 | --- | --- | --- |
 | Language model | Claude (`LLM_PROVIDER=claude`) | `FakeLLMProvider`, the default in development |
+| Voice-over | ElevenLabs (`VOICE_PROVIDER=elevenlabs`; `none` is written explicitly in production) | `FakeVoiceProvider`, the default in development |
 | Vision (media description) | none yet | `FakeVisionProvider` |
 | Storage | `LocalFileStorage` (development), `S3Storage` (production, never run against a real server) | `FakeStorage` |
 | Media probe | ffprobe | `FakeMediaProbe` |
@@ -106,7 +107,7 @@ node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64
 node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" | Set-Clipboard      # LOCAL_STORAGE_SIGNING_SECRET
 ```
 
-Leave `LLM_PROVIDER` empty or `fake` in development (no Anthropic key needed). To use Remotion read [`docs/ADR-06_REMOTION_LICENCIA.md`](docs/ADR-06_REMOTION_LICENCIA.md) first and then set `REMOTION_LICENCIA`; with it empty, reels use plain text overlays.
+Leave `LLM_PROVIDER` and `VOICE_PROVIDER` empty or `fake` in development (no Anthropic or ElevenLabs key needed). In production `VOICE_PROVIDER` has no default: write `none` for no voice-over. To use Remotion read [`docs/ADR-06_REMOTION_LICENCIA.md`](docs/ADR-06_REMOTION_LICENCIA.md) first and then set `REMOTION_LICENCIA`; with it empty, reels use plain text overlays.
 
 ```powershell
 # 4. Migrations and fictional data (the test database is migrated by the tests; never run migrate:up on it)
@@ -131,7 +132,7 @@ npm run test:fast      # skips *.render.test.ts (real video rendering); for iter
 ```
 
 - The tests use only `TEST_DATABASE_URL` and run one file at a time because they share the database. They need no running server.
-- **Times on the development laptop:** the full suite takes about 16 to 24 minutes and `test:fast` about 6 to 13 minutes, depending on load. As of this delivery: 127 files, 2087 tests (122 files, 2024 tests in `test:fast`).
+- **Times on the development laptop:** the full suite takes about 16 to 24 minutes and `test:fast` about 6 to 13 minutes, depending on load. As of this delivery (Step 7d): 167 files, 2578 tests (160 files, 2485 tests in `test:fast`).
 - **Keep the laptop plugged in and awake** while the suite runs. A sleeping laptop stalls the render tests and can cause timeouts.
 - Tests that need the real FFmpeg or the Remotion browser **fail** when they are missing. To skip them on purpose: `$env:NOVACIEL_SKIP_FFMPEG_TESTS = "1"` and/or `$env:NOVACIEL_SKIP_REMOTION_TESTS = "1"`. Vitest then lists them as skipped; this never replaces a full run before closing a step.
 
@@ -152,7 +153,7 @@ npm run piece:publicable -- --cliente $C --pieza <PIECE_ID>       # 7. PUBLICABL
 
 Quality control runs by itself after each production when the server is up (`npm run dev`): the piece moves to `revision_novaciel` on a pass and back to `en_produccion` on a fail, with the failed codes in the report. `qc:run` does the same directly (`--pieza <id>` or `--plan <id>`) and is also the way to control pieces left in `en_control_calidad` in development data. The internal approval only accepts `revision_novaciel`.
 
-Others: `piece:reopen` (send a piece back for changes), `password:set-dev`, `set-price`, `llm:smoke` (a real, paid call to Claude; needs `LLM_PROVIDER=claude`). Exact arguments are in the header of each script in `src/scripts/`.
+Others: `piece:reopen` (send a piece back for changes), `password:set-dev`, `set-price`, `llm:smoke` (a real, paid call to Claude; needs `LLM_PROVIDER=claude`), `voice:configure` (the client's voice-over in the profile), `voice:smoke` (one real, paid call to ElevenLabs; needs `VOICE_PROVIDER=elevenlabs`, a price in characters and budget). Exact arguments are in the header of each script in `src/scripts/`.
 
 ## Repository layout
 

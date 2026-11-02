@@ -1,8 +1,8 @@
 # Notas de entrega: novaciel-core
 
-Para NovaCiel y el Senior. Estado a 2026-10-31: Pasos 0 a 7c, 8 y 9 construidos; Paso 10, Paso 11 y 7d no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
+Para NovaCiel y el Senior. Estado a 2026-11-02: Pasos 0 a 7d, 8 y 9 construidos; Paso 10, Paso 11 y Paso 12 no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
 
-Resultado de la verificación final de esta entrega: 146 archivos de pruebas y 2321 pruebas en verde con `npm test` (16 min) y 140 archivos y 2249 pruebas con `npm run test:fast` (10 min); `npm run typecheck` limpio (verificado en el Paso 8, 2026-10-31). `npm run build` y `npm audit` se verificaron por última vez en la limpieza anterior (127 archivos y 2087 pruebas), no en el Paso 8.
+Resultado de la verificación final de esta entrega (Paso 7d, 2026-11-02): 167 archivos de pruebas y 2578 pruebas en verde con `npm test` (15 min) y 160 archivos y 2485 pruebas con `npm run test:fast` (6 min); `npm run typecheck` limpio. `npm run build` y `npm audit` se verificaron por última vez en la limpieza anterior (127 archivos y 2087 pruebas), no en los Pasos 8 ni 7d.
 
 ## 1. Qué está construido
 
@@ -18,10 +18,11 @@ Resultado de la verificación final de esta entrega: 146 archivos de pruebas y 2
 | 7a | Carruseles con media real y texto encima, hash de cada archivo y hash de la pieza | Real (`@napi-rs/canvas`, fuente Inter). |
 | 7b | Reels: cortes y montaje con FFmpeg, verificación de la salida y de los metadatos | Real (FFmpeg del sistema). |
 | 7c | Plantillas de texto animado y subtítulos palabra a palabra con Remotion | Real si `REMOTION_LICENCIA` está definida; si no, los reels usan el texto plano de 7b. |
-| 8 | Control de calidad automático: 38 comprobaciones deterministas (archivos releídos y re-hasheados, imágenes, reels, formato de los textos, palabras y promesas prohibidas, cifras contra hechos verificados, media usable, horario, marca), informe atado a la producción exacta, trabajo automático tras cada producción y rutas de lectura y reejecución solo para NovaCiel (ADR-07) | Real. **Ninguna comprobación usa un modelo**; las de visión y de tono son deuda. |
+| 7d | Locución sintética de los reels: ElevenLabs detrás de un puerto `VoiceProvider` con versión falsa, precios por unidad (caracteres) en el control de presupuesto, voz por cliente en el perfil (`voz.locucion`, con `voice:configure`), caché de locuciones por cliente, mezcla en la pasada de FFmpeg con ganancia estática a −16 LUFS, subtítulos palabra por palabra con los tiempos reales de la voz y control de calidad de la voz (ADR-08) | Adaptador ElevenLabs escrito y probado con `fetch` simulado, **nunca llamado de verdad**: `voice:smoke` es la primera llamada real. **Voz simulada (`fake`) por defecto en desarrollo**; en producción `VOICE_PROVIDER` debe fijarse (`none` para no usar voz). Sin plantilla de subtítulos (Remotion apagado) el reel sale sin voz y el control de calidad lo avisa. |
+| 8 | Control de calidad automático: 43 comprobaciones deterministas (38 del Paso 8 y 5 de la voz del Paso 7d: archivos releídos y re-hasheados, imágenes, reels, formato de los textos, palabras y promesas prohibidas, cifras contra hechos verificados, media usable, horario, marca), informe atado a la producción exacta, trabajo automático tras cada producción y rutas de lectura y reejecución solo para NovaCiel (ADR-07) | Real. **Ninguna comprobación usa un modelo**; las de visión y de tono son deuda. |
 | 9 | Aprobación en dos niveles sobre el hash exacto de la pieza, rondas de cambios, escalada, recordatorios, suplente, puerta de publicación (`assertPublicable`) | Real. **Notificador simulado**: solo registra ids y nombres de plantilla. |
 
-Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, visión `fake`, notificador `fake`/log, almacenamiento local en disco, **no hay publicación en ninguna red**.
+Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, voz `fake` por defecto, visión `fake`, notificador `fake`/log, almacenamiento local en disco, **no hay publicación en ninguna red**.
 
 ## 2. Reglas innegociables y dónde se aplica cada una
 
@@ -39,10 +40,9 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vi
 
 ## 3. Qué NO está construido
 
-- **Controles de calidad con modelo** (consistencia visual de marca, tono de voz, ortografía, defectos de tomas con IA) y los técnicos que la espec. 10 pide y no se decidieron en código (volumen de audio normalizado, cuadros negros o congelados, medición de zonas seguras, licencia de música). Ver ADR-07, sección 8.
+- **Controles de calidad con modelo** (consistencia visual de marca, tono de voz, ortografía, defectos de tomas con IA) y los técnicos que la espec. 10 pide y no se decidieron en código (volumen de audio normalizado solo existe para los reels con locución; cuadros negros o congelados, medición de zonas seguras, licencia de música). Ver ADR-07, sección 8.
 - **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios**. Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
 - **Paso 11, tablero y alertas reales.** Las alertas de hoy van al log; no hay vistas ni rutas de gestión de aprobadores.
-- **Paso 7d, voz.** Sin proveedor elegido.
 - **Paso 12, prueba de punta a punta** de la semana completa.
 - **Interfaz web** (`web/`): la mantiene otra herramienta y está fuera de estas notas; las rutas de plan, pieza y aprobación mantienen su forma porque la interfaz depende de ellas.
 
@@ -93,6 +93,9 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 24. El prompt del director creativo sigue escribiendo `texto_en_pantalla` y `voz_en_off` como dos campos separados. En una escena con voz solo se dibuja el texto hablado (como subtítulos); conviene ajustar el prompt para que `voz_en_off` funcione como subtítulo (corto, cabe en la duración de la escena) y tratar `texto_en_pantalla` como no usado en esas escenas.
 25. La cota mínima de duración antes de pagar usa 24 caracteres por segundo (VERIFY): una voz demasiado larga, pero no por tanto, se descubre después de pagarla (queda en caché).
 26. Los valores de sonoridad (−16 LUFS ± 2 LU, pico −0,5 dBTP, techo del limitador −1 dBFS, silencio −50 LUFS) son valores de la casa por verificar con las redes.
+27. **"Voz omitida" vive en la auditoría de la producción** (`voz_omitida` en el `despues` de la fila `crear`) y el control de calidad la lee de ahí (`voz_omitida_sin_plantilla`). Hay que pasarla a una columna de `producciones` en una migración posterior.
+28. `voice:smoke` y la primera llamada real de ElevenLabs siguen sin hacerse: hasta entonces están por verificar la cabecera `xi-api-key`, la cabecera `request-id` y que la cantidad facturada coincida con los caracteres enviados (ADR-08).
+29. La voz solo existe en reels. Voces clonadas, varias voces por reel, emoción por escena, música y efectos son deuda (spec 9.5 y 16).
 
 ## 5. Preguntas abiertas para NovaCiel
 

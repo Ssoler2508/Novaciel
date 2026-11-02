@@ -256,6 +256,12 @@ export async function getUnitPriceAt(db: Db, provider: string, model: string, un
   return toUnitPrice(rows[0]);
 }
 
+/** Lookup for idempotent seeding: true when any price in that unit exists for the provider and model. */
+export async function hasAnyUnitPrice(db: Db, provider: string, model: string, unit: NonTokenUnit): Promise<boolean> {
+  const { rows } = await db.query('SELECT 1 FROM precios_modelos WHERE proveedor = $1 AND modelo = $2 AND unidad = $3 LIMIT 1', [provider, model, unit]);
+  return rows.length > 0;
+}
+
 /** Lookup for idempotent seeding: true when any token price exists for the provider and model. */
 export async function hasAnyPrice(db: Db, provider: string, model: string): Promise<boolean> {
   const { rows } = await db.query("SELECT 1 FROM precios_modelos WHERE proveedor = $1 AND modelo = $2 AND unidad = 'tokens' LIMIT 1", [provider, model]);

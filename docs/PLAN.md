@@ -5,14 +5,13 @@ Rule of thumb: one branch per step (`step-XX`), one commit per checkpoint, plan 
 
 ---
 
-## Status (2026-10-22)
+## Status (2026-11-02)
 
 | Step | State |
 | --- | --- |
 | 0, 1, 1b, 2, 2b, 3, 4, 5, 6 | Done |
-| 7a, 7b, 7c | Done |
-| 7d (voice) | Blocked: provider not chosen |
-| 8 (automatic quality control) | Pending |
+| 7a, 7b, 7c, 7d | Done (7d: ElevenLabs behind an adapter; the fake voice is the default in development) |
+| 8 (automatic quality control) | Done |
 | 9 (two-level approval) | Done |
 | 10 (publishing) | Pending |
 | 11 (dashboard and alerts) | Pending |
@@ -112,11 +111,11 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Schema-validated LLM output; every factual claim traced to a `hechos_verificados` record.
 - **Done when:** briefs are generated with the fake and contain no untraceable facts.
 
-### Step 7 — Production with real media (carousels first) — 7a, 7b, 7c done; 7d blocked
+### Step 7 — Production with real media (carousels first) — 7a, 7b, 7c, 7d done
 - ✅ 7a (merge `1d83e07`): carousels from library media plus text overlays, with `@napi-rs/canvas` (free, MIT; alternative: `sharp`). No Remotion. Each final file is hashed, and the piece gets a piece-level hash covering everything that gets published: target network, the ordered list of file hashes, caption, hashtags and alt text (canonical serialization).
 - ✅ 7b (merge `33d5ce7`): video cuts and assembly with FFmpeg (native).
 - ✅ 7c (merge `575c8d3`, final fixes `1801806`): animated templates and word-level subtitles with Remotion. **Unblocked (2026-10-22):** NovaCiel is 3 people and its Remotion account is on the free plan (confirmed by the developer); use `REMOTION_LICENCIA=gratuita`, no `licenseKey`, nothing is sent to Remotion. The contractor question (3 or 4 people) is open for NovaCiel before production use. Design, license gate and decisions in `docs/ADR-06_REMOTION_LICENCIA.md`; `REMOTION_LICENCIA` has no default (unset = Remotion disabled, reels keep the 7b overlays).
-- 7d: voice. **Blocked:** the provider must be chosen first (open question).
+- ✅ 7d (branch `step-07d`, checkpoints A to E): voice-over with ElevenLabs behind a `VoiceProvider` port with a fake (the default outside production), prices by unit (characters) in the budget, per-client voice in the profile (`voz.locucion`, set with `voice:configure`), cached append-only `locuciones`, the voice mixed into the 7b FFmpeg pass with a static gain to -16 LUFS, word-level subtitles drawn from the voice's real times, five QC codes (43 in all), `voice:smoke`. Design, terms, VERIFY values and known debt in `docs/ADR-08_ELEVENLABS.md`.
 - AI never generates the product, premises or real people of the client.
 - **Done when:** a carousel is produced end to end from real media and stored as a final file.
 
@@ -164,7 +163,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Confirm the `clientes` and `usuarios` columns, the JSON keys of the profile blocks and the required fields per block (proposed in Step 2, see ADR-04).
 - Should the fictional test client use USD prices and US data?
 - Image consent in the US: is "end date required + revocation" enough legally?
-- Voice provider: ElevenLabs chosen for Step 7d (ADR-08, in progress on branch `step-07d`). **Open:** which ElevenLabs plan NovaCiel buys and whether its terms allow commercial use of TTS output (the pricing page does not say); which AI-disclosure label Meta and TikTok require for synthetic audio; whether cloning the voice of a client's owner will ever be offered (needs written consent, known debt).
+- Voice provider: ElevenLabs, built in Step 7d (ADR-08). **Open:** which ElevenLabs plan NovaCiel buys and whether its terms allow commercial use of TTS output (the pricing page does not say); which AI-disclosure label Meta and TikTok require for synthetic audio; whether cloning the voice of a client's owner will ever be offered (needs written consent, known debt).
 - Publishing intermediary (after Phase 0).
 - Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
 - Third NovaCiel-only edge `revision_novaciel → con_cambios` (Step 8, docs/ADR-05_APROBACION_DOS_NIVELES.md): section 15 has no exit from `revision_novaciel` other than `esperando_aprobacion`, and the internal "cambios" decision needs one now that the Step 8 bridge is gone. Confirm with the Senior (together with `aprobada` and `programada` → `con_cambios`).

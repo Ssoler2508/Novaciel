@@ -2,6 +2,7 @@ import { config } from '../config/index.js';
 import { closePool, pool } from '../db/pool.js';
 import { createStorage } from '../lib/media/storage/index.js';
 import { getClienteById } from '../modules/clientes/clientesRepository.js';
+import { reelQcConfig } from '../modules/controlCalidad/reelQcConfig.js';
 import { assertDevScriptAllowed, confirmDevScriptDatabase } from './devScriptGuard.js';
 import { parseQcRunArgs } from './qcRunArgs.js';
 import { runQcRun } from './qcRunCore.js';
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
   if (!(await getClienteById(pool, args.clienteId))) throw new Error(`${SCRIPT} refused: that client does not exist`);
 
   const result = await runQcRun(
-    { db: pool, storage: createStorage(config.storage), reel: { ffprobePath: config.media.ffprobePath, ffprobeTimeoutMs: config.media.ffprobeTimeoutMs } },
+    { db: pool, storage: createStorage(config.storage), reel: reelQcConfig(config.media) },
     args,
   );
   for (const line of result.lines) (result.ok ? console.log : console.error)(line);

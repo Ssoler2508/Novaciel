@@ -1,4 +1,13 @@
 import { FfmpegRunError } from '../lib/media/ffmpeg/runFfmpeg.js';
+import { listEscenasConVoz, vozOmitidaDeProduccion } from '../modules/locuciones/locucionesRepository.js';
+import type { ClienteId } from '../modules/shared/clienteId.js';
+import { VoiceProviderError } from '../lib/ai/voice/types.js';
+import { ConfiguracionVozInvalidaError } from '../modules/locuciones/configuracionVoz.js';
+import { DuracionReelFueraDeRangoError, LocucionMasLargaQueEscenaError, LocucionOcupadaError, LocucionRespuestaInvalidaError } from '../modules/locuciones/errors.js';
+import { PriceNotFoundError } from '../modules/precios/preciosRepository.js';
+import { BudgetRefusedError } from '../modules/presupuesto/presupuestoService.js';
+import { SonoridadFueraDeRangoError, VocesSinPlantillaError, VozSilenciosaError } from '../modules/produccion/errors.js';
+import { VozEscenaInvalidaError } from '../modules/produccion/vozReel.js';
 import { FfmpegToolingError } from '../lib/media/ffmpeg/tooling.js';
 import { PiezaNotFoundError, PlanDescartadoError } from '../modules/piezas/errors.js';
 import { listPiezas } from '../modules/piezas/piezasRepository.js';
@@ -46,7 +55,7 @@ export interface PieceProduceDeps extends ProduccionDeps {
   localPath?: (key: string) => string;
 }
 
-function describe(deps: PieceProduceDeps, done: PiezaProducida): string[] {
+async function describe(deps: PieceProduceDeps, clienteId: ClienteId, done: PiezaProducida): Promise<string[]> {
   const { produccion, pieza } = done;
   const lines = [`Piece ${pieza.id}: production version ${produccion.version} (${pieza.estado}), ${produccion.archivos.length} file(s)`];
   for (const a of produccion.archivos) {
@@ -58,6 +67,12 @@ function describe(deps: PieceProduceDeps, done: PiezaProducida): string[] {
       for (const f of a.fuentes) lines.push(`     scene ${f.escena}: media ${f.media_id} ${f.entrada_ms}-${f.salida_ms} ms`);
     }
     lines.push(`     ${where}`);
+  }
+  if (pieza.formato === 'reel') {
+    // The voice-over (Step 7d): the voiced scenes, or why there is none. Scene numbers and a closed reason only.
+    const escenas = await listEscenasConVoz(deps.db, clienteId, produccion.id);
+    const omitida = escenas.length === 0 ? await vozOmitidaDeProduccion(deps.db, clienteId, produccion.id) : null;
+    lines.push(escenas.length > 0 ? `  voice-over: scenes ${escenas.join(', ')}` : `  voice-over: none${omitida ? ` (${omitida})` : ''}`);
   }
   lines.push(`  piece hash (${produccion.hash_version}): ${produccion.hash_pieza}`);
   return lines;
@@ -71,7 +86,7 @@ export async function runPieceProduce(deps: PieceProduceDeps, args: PieceProduce
   try {
     if (args.modo === 'pieza') {
       const done = await producirPieza(deps, args.clienteId, args.piezaId, { tipo: 'sistema' }, { reproducir: args.reproducir });
-      return { ok: true, lines: describe(deps, done) };
+      return { ok: true, lines: await describe(deps, args.clienteId, done) };
     }
 
     const plan = await getPlan(deps.db, args.clienteId, args.planId);
@@ -84,7 +99,7 @@ export async function runPieceProduce(deps: PieceProduceDeps, args: PieceProduce
     let fallidas = 0;
     for (const pieza of piezas) {
       try {
-        lines.push(...describe(deps, await producirPieza(deps, args.clienteId, pieza.id, { tipo: 'sistema' })));
+        lines.push(...(await describe(deps, args.clienteId, await producirPieza(deps, args.clienteId, pieza.id, { tipo: 'sistema' }))));
         ok++;
       } catch (error) {
         fallidas++;
@@ -137,5 +152,18 @@ export function failureLine(error: unknown): string {
   if (error instanceof RemotionNoDisponibleError) return `The animated text engine is not available (${error.razon}); run npm run remotion:browser once (needs the network) and check REMOTION_NAVEGADOR`;
   if (error instanceof CapaTextoError) return `The animated text layer could not be rendered (${error.razon}); nothing was kept`;
   if (error instanceof ReelNoConfiguradoError) return 'Reel production is not configured in this process';
+  // Voice-over (Step 7d): fixed messages, scene numbers and reasons only, never the spoken text.
+  if (error instanceof VozEscenaInvalidaError) return `The voice-over of scene ${error.escena} cannot be spoken (${error.motivos.join(', ')}): regenerate the brief`;
+  if (error instanceof LocucionMasLargaQueEscenaError) return `The voice-over is longer than its scene in scene(s) ${error.escenas.map((e) => `${e.escena} (+${e.excesoMs} ms)`).join(', ')}: regenerate the brief with a shorter voice-over; nothing was kept`;
+  if (error instanceof DuracionReelFueraDeRangoError) return `The reel would last ${error.totalMs} ms; it must last ${error.minMs} to ${error.maxMs} ms: regenerate the brief`;
+  if (error instanceof ConfiguracionVozInvalidaError) return `The voice configuration of the profile is invalid (${error.campos.join(', ')}): run npm run voice:configure`;
+  if (error instanceof VoiceProviderError) return `The voice provider failed (${error.kind}${error.status ? `, status ${error.status}` : ''}${error.reason ? `, ${error.reason}` : ''}); nothing was kept`;
+  if (error instanceof PriceNotFoundError) return 'There is no price loaded for the model (npm run set-price; the voice is priced per 1000 characters with --unit caracteres)';
+  if (error instanceof BudgetRefusedError) return `The budget refused the spend (${error.reason}); nothing was sent`;
+  if (error instanceof LocucionRespuestaInvalidaError) return `The voice reply could not be used (${error.reason}); the call was paid and nothing was kept`;
+  if (error instanceof LocucionOcupadaError) return 'The same voice-over is still being generated by another call: run it again in a moment';
+  if (error instanceof VocesSinPlantillaError) return 'A reel with a voice-over needs a text template for its subtitles';
+  if (error instanceof VozSilenciosaError) return 'The voice-over track is silent; nothing was kept';
+  if (error instanceof SonoridadFueraDeRangoError) return `The reel loudness is out of range (${error.integradaLufs} LUFS); nothing was kept`;
   return `Production failed (${error instanceof Error ? error.name : 'unknown error'})`;
 }
