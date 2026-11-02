@@ -6,6 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { describeFfmpeg } from '../../../tests/utils/ffmpeg.js';
 import { hdrClip, solidClip } from '../../../tests/utils/ffmpegClips.js';
 import { auditRowsFor } from '../../../tests/utils/auditRows.js';
+import { cleanupDomainTables } from '../../../tests/utils/cleanup.js';
+import { createRenderCache, type RenderCache } from '../../../tests/utils/renderCache.js';
+import { closeTestPool, getTestPool } from '../../../tests/utils/testPool.js';
 import {
   createAutorizacionImagen,
   createCliente,
@@ -15,8 +18,9 @@ import {
 } from '../../../tests/utils/factories/index.js';
 import { producibleWorld, type WorldClip } from '../../../tests/utils/produccionWorld.js';
 import { withTestTransaction } from '../../../tests/utils/transaction.js';
+import { runInTransaction } from '../../db/transaction.js';
 import type { Db } from '../../db/types.js';
-import { FfmpegRunError, runFfmpeg } from '../../lib/media/ffmpeg/runFfmpeg.js';
+import { FfmpegRunError } from '../../lib/media/ffmpeg/runFfmpeg.js';
 import { createLogger } from '../../lib/logger/index.js';
 import { FakeStorage } from '../../lib/media/storage/fakeStorage.js';
 import { SEED_PROFILE } from '../../scripts/seedProfile.js';
@@ -41,6 +45,12 @@ import { producirPieza, type ProduccionDeps, type ReelRuntime } from './producci
 
 // Reels through producirPieza, with the real FFmpeg and a fake storage. The 7a tests cover the parts
 // that do not depend on the format (states, locks, versions); these cover what a reel adds.
+//
+// Speed (chore deuda-01): scenario A (the happy path) is produced ONCE in beforeAll, committed through the pool, and
+// three tests read the same result. The tests about what happens AROUND the render (storage failure, a pause, a race,
+// rights lost mid-flow, re-production, clients, the job) use `tests/utils/renderCache.ts`: the first render of a given
+// input is real FFmpeg, later ones get a byte-identical copy, and everything after the render still runs for real.
+// The cache is test-only; src/ always runs FFmpeg. The HDR test keeps its own real render (a distinct input).
 
 const SISTEMA = { tipo: 'sistema' } as const;
 const SECRET = 'SECRETO-DEL-REEL';
@@ -48,6 +58,9 @@ const FAST = { preset: 'veryfast' } as const;
 
 let root: string;
 let tempRoot: string;
+let cache: RenderCache;
+/** Scenario A: the committed world and what its one production returned. */
+let A: { w: ReelWorld } & Awaited<ReturnType<typeof producirPieza>>;
 const clips = {} as Record<'ok' | 'corto' | 'pequeno' | 'hdr' | 'corrupto', WorldClip>;
 
 beforeAll(async () => {
@@ -62,9 +75,19 @@ beforeAll(async () => {
   clips.pequeno = { bytes: await bytes(solidClip(dir, 'pequeno.mp4', 'cc3333', { width: 640, height: 360 })), ancho: 640, alto: 360, duracionMs: 6000 };
   clips.hdr = { bytes: await bytes(hdrClip(dir, 'hdr.mp4', 'smpte2084')), ancho: 720, alto: 1280, duracionMs: 6000 };
   clips.corrupto = { bytes: Buffer.from(Array.from({ length: 4000 }, (_v, i) => (i * 131 + 7) % 256)), ancho: 720, alto: 1280, duracionMs: 6000 };
-}, 120_000);
+  cache = createRenderCache(path.join(root, 'cache'));
+
+  // Scenario A: the happy path, produced once. Scene 2 starts one second into its clip: the stretch used is 1000 to 6000 ms.
+  const pool = getTestPool();
+  await cleanupDomainTables(pool);
+  const built = await runInTransaction(pool, (tx) => reelWorld(tx, { clips: [clips.ok, { ...clips.ok, entradaMs: 1000, salidaMs: 6000 }, clips.ok], texts: [`${SECRET} uno`, 'Dos', 'Tres'] }));
+  const world: ReelWorld = { ...built, db: pool, deps: { ...built.deps, db: pool } };
+  A = { w: world, ...(await producirPieza(world.deps, world.clienteId, world.piezaId, SISTEMA)) };
+}, 300_000);
 
 afterAll(async () => {
+  await cleanupDomainTables(getTestPool());
+  await closeTestPool();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -154,7 +177,7 @@ async function reelWorld(db: Db, o: ReelWorldOptions = {}): Promise<ReelWorld> {
       o.runFfmpeg ??
       (async (args, options) => {
         runs.count += 1;
-        return runFfmpeg(args, options);
+        return cache.run(args, options);
       }),
   };
   return { db, clienteId, planId, perfilId, piezaId: world.piezaId, storage, media: world.media, logs, runs, deps: { db, storage, logger, ...(o.sinRuntime ? {} : { reel }) } };
@@ -173,12 +196,11 @@ async function expectNothingProduced(w: ReelWorld, estado = 'guion_listo') {
   expect(await tempLeftovers()).toEqual([]);
 }
 
-describeFfmpeg('producirPieza: a reel is produced', () => {
+describeFfmpeg('producirPieza: a reel is produced (scenario A, rendered once in beforeAll)', () => {
   it('stores one MP4 with its record, its sources scene by scene, the piece hash, state, history and audit', async () => {
-    await withTestTransaction(async (db) => {
-      // Scene 2 starts one second into its clip: the stretch used is 1000 to 6000 ms.
-      const w = await reelWorld(db, { clips: [clips.ok, { ...clips.ok, entradaMs: 1000, salidaMs: 6000 }, clips.ok] });
-      const { produccion, pieza } = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
+    {
+      const { w, produccion, pieza } = A;
+      const db = w.db;
 
       expect(produccion).toMatchObject({ pieza_id: w.piezaId, version: 1, es_actual: true, red: 'instagram', hash_version: 'np1', creado_por: null });
       expect(produccion.archivos).toHaveLength(1);
@@ -212,27 +234,27 @@ describeFfmpeg('producirPieza: a reel is produced', () => {
       const audit = await auditRowsFor(db, 'producciones', produccion.id);
       expect(audit.map((a) => a.accion)).toEqual(['crear']);
       expect(audit[0]!.datos_despues).toMatchObject({ archivos: 1, escenas: 3, hash_pieza: produccion.hash_pieza });
-      expect(JSON.stringify(audit)).not.toMatch(/Hecho con calma|Escena|Nuestro barrio/);
+      expect(JSON.stringify(audit)).not.toMatch(/Hecho con calma|Escena|Nuestro barrio|SECRETO/);
 
       expect(await getProduccionActual(db, w.clienteId, w.piezaId)).toEqual(produccion);
       expect(await count(db, 'producciones_fuentes', w.clienteId)).toBe(3);
       expect(await tempLeftovers()).toEqual([]);
-    });
-  }, 120_000);
+    }
+  });
 
   it('hash drift: recomputing the hash from the rows and the stored bytes gives the stored hash', async () => {
-    await withTestTransaction(async (db) => {
-      const w = await reelWorld(db);
-      const { produccion } = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
+    {
+      const { w, produccion } = A;
+      const db = w.db;
       const row = (await db.query('SELECT red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_pieza FROM producciones WHERE id = $1', [produccion.id])).rows[0];
       const files = (await db.query('SELECT clave_almacenamiento FROM producciones_archivos WHERE produccion_id = $1 ORDER BY orden', [produccion.id])).rows;
       const hashes = await Promise.all(files.map(async (f) => createHash('sha256').update(await w.storage.get(f.clave_almacenamiento)).digest()));
       const recomputed = computePieceHash({ red: row.red, archivos: hashes, textoPublicacion: row.texto_publicacion, hashtags: row.hashtags, textosAlternativos: row.textos_alternativos, ubicacion: row.ubicacion });
       expect(recomputed.equals(row.hash_pieza)).toBe(true);
-    });
-  }, 120_000);
+    }
+  });
 
-  it('tone-maps an HDR clip: the reel is produced and stored as SDR', async () => {
+  it('tone-maps an HDR clip: the reel is produced and stored as SDR (its own real render: a distinct input)', async () => {
     await withTestTransaction(async (db) => {
       const w = await reelWorld(db, { clips: [clips.hdr, clips.ok, clips.ok] });
       const { produccion } = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
@@ -241,17 +263,13 @@ describeFfmpeg('producirPieza: a reel is produced', () => {
     });
   }, 120_000);
 
-  it('logs hold ids, counts and keys: no copy, no FFmpeg output, no temporary path', async () => {
-    await withTestTransaction(async (db) => {
-      const w = await reelWorld(db, { texts: [`${SECRET} uno`, 'Dos', 'Tres'] });
-      const { produccion } = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
-      const logs = w.logs.join('\n');
-      expect(logs).toContain('production stored');
-      expect(logs).toContain('reel rendered');
-      expect(logs).toContain(produccion.id);
-      for (const forbidden of [SECRET, 'Hecho con calma', 'Escena', 'Nuestro barrio', 'El origen', 'novaciel-reel', 'ñá', tempRoot, 'libx264', 'Lavf']) expect(logs.includes(forbidden), forbidden).toBe(false);
-    });
-  }, 120_000);
+  it('logs hold ids, counts and keys: no copy, no FFmpeg output, no temporary path', () => {
+    const logs = A.w.logs.join('\n');
+    expect(logs).toContain('production stored');
+    expect(logs).toContain('reel rendered');
+    expect(logs).toContain(A.produccion.id);
+    for (const forbidden of [SECRET, 'Hecho con calma', 'Escena', 'Nuestro barrio', 'El origen', 'novaciel-reel', 'ñá', tempRoot, 'libx264', 'Lavf']) expect(logs.includes(forbidden), forbidden).toBe(false);
+  });
 });
 
 describeFfmpeg('producirPieza: a reel that cannot be produced leaves nothing behind', () => {
