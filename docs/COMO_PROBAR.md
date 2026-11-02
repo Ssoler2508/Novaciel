@@ -36,6 +36,8 @@ Copy-Item .env.example .env
 | `TEST_DATABASE_URL` | `postgresql://USER:PASSWORD@localhost:5432/novaciel_test?sslmode=disable` | Base exclusiva de pruebas. |
 | `PUBLIC_BASE_URL` | `http://localhost:5173` | Origen del panel. Es el único `Origin` aceptado en peticiones que cambian algo. |
 | `LLM_PROVIDER` | `fake` | Modelo simulado: no hace falta ninguna clave de Anthropic. |
+| `VOICE_PROVIDER` | `fake` (o vacío) | Voz simulada: no hace falta ninguna clave de ElevenLabs. Con `elevenlabs` hacen falta `TTS_MODEL` (sin valor por defecto) y `ELEVENLABS_API_KEY`; con `none` los reels salen sin voz. En producción hay que escribirlo (`none` si no se usa voz). |
+| `TTS_TIMEOUT_MS` | vacío (30000) | Tiempo límite de una llamada de voz. |
 | `STORAGE_DRIVER` | `local` | Guarda los archivos en disco (`LOCAL_STORAGE_DIR`). |
 | `LOCAL_STORAGE_SIGNING_SECRET` | cadena aleatoria de 32+ caracteres | Firma las URLs de descarga locales. |
 | `SECRETS_KEYS` | `1:<base64>` | Clave AES-256-GCM. Debe decodificar a 32 bytes. |
@@ -127,6 +129,25 @@ npm run piece:produce  -- --cliente $C --pieza <PIEZA_ID>       # imprime la rut
 npm run qc:run         -- --cliente $C --pieza <PIEZA_ID>       # control de calidad directo (si el servidor no está corriendo)
 npm run piece:approve  -- --cliente $C --pieza <PIEZA_ID>       # aprobación interna y del cliente
 npm run piece:publicable -- --cliente $C --pieza <PIEZA_ID>     # PUBLICABLE solo con control de calidad aprobado y las dos aprobaciones
+```
+
+**Voz en off (Paso 7d).** Un reel lleva voz sintética si el cliente la tiene configurada, el proceso tiene un proveedor de voz, hay una plantilla de subtítulos (Remotion con `REMOTION_LICENCIA`) y alguna escena trae `voz_en_off`. Si falta algo de eso, el reel sale como antes, con la pista en silencio, y `piece:produce` imprime el motivo (`voice-over: none (sin_plantilla)`). En una escena con voz se dibuja el texto hablado como subtítulos, con los tiempos reales de la voz; el texto en pantalla de esa escena no se dibuja.
+
+```powershell
+# La voz del cliente (versión nueva del perfil; el semillero la pone solo en una base nueva)
+npm run voice:configure -- --cliente $C --admin-email admin.novaciel@example.test --voz voz-ficticia-aurora --idioma es
+# Con la voz simulada hace falta un precio por 1000 caracteres: el semillero lo carga (proveedor fake_voice).
+$env:REMOTION_LICENCIA = 'gratuita'      # solo en esta sesión de PowerShell, nunca en .env
+npm run piece:produce -- --cliente $C --pieza <PIEZA_REEL_ID>      # imprime "voice-over: scenes 1, 2, 3"
+```
+
+Una segunda producción (`--reproducir`) reutiliza las voces ya generadas: ninguna llamada nueva y ningún gasto nuevo. Si una voz no cabe en su escena, la producción se rechaza antes de renderizar y hay que regenerar el brief con una voz más corta (`brief:generate ... --regenerar`). Los briefs de reel antiguos tienen marcas de 3 s y también hay que regenerarlos; un reel necesita 3 o más clips distintos de 7 s o más, verticales de al menos 720×1280.
+
+**Voz real (opcional, cuesta dinero).** Con `VOICE_PROVIDER=elevenlabs`, `TTS_MODEL` y `ELEVENLABS_API_KEY` escritos a mano en `.env`, y el precio de la página oficial de ElevenLabs cargado por 1000 caracteres:
+
+```powershell
+npm run set-price -- --provider elevenlabs --model <TTS_MODEL> --unit caracteres --price <USD-por-bloque> --block-size 1000 --admin-email admin.novaciel@example.test
+npm run voice:smoke -- --cliente $C [--voz <id-de-voz-de-la-biblioteca>]    # una llamada corta; imprime modelo, voz, caracteres, duración y costo
 ```
 
 **Control de calidad (Paso 8).** Con el servidor encendido (`npm run dev`), el control corre solo después de cada producción: la pieza pasa a `revision_novaciel` si aprueba, o vuelve a `en_produccion` con los códigos del fallo. Si el servidor está apagado, el trabajo queda en cola y `qc:run` hace el control directamente. `qc:run` también sirve para las piezas que quedaron en `en_control_calidad` en los datos de desarrollo (con `--plan <PLAN_ID>` controla todas las del plan). Imprime solo ids, resultado y códigos. La aprobación interna solo acepta piezas en `revision_novaciel`.

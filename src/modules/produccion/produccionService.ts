@@ -37,7 +37,8 @@ import { getProduccionActual, type ProduccionView } from './produccionRepository
 import { elegirPlantilla } from './plantillas.js';
 import type { CapaTextoAnimado } from './capaTexto.js';
 import type { LicenciaRemotion } from './remotionLicencia.js';
-import { renderReel, type ReelRenderDeps, type ReelRenderInput } from './reelRenderer.js';
+import { renderReel, type ReelRenderDeps, type ReelRenderInput, type VozDeReel } from './reelRenderer.js';
+import { prepararVozDelReel, type VozPreparada, type VozRuntime } from './vozReel.js';
 import { renderSlide } from './renderer.js';
 
 // The production service: turns a piece with a complete brief into stored final files and a
@@ -85,6 +86,8 @@ export interface ProduccionDeps {
   controlCalidad?: ControlCalidadEncolador;
   /** Needed to produce a reel; image pieces do not use it. */
   reel?: ReelRuntime;
+  /** The voice-over provider (Step 7d). Absent: reels are made with the silent track, whatever the client's profile says. */
+  voz?: VozRuntime;
 }
 
 export interface ProducirOptions {
@@ -239,6 +242,10 @@ async function renderizarYGuardarReel(args: {
   claves: ReadonlyMap<string, string>;
   tipos: ReadonlyMap<string, string>;
   registrarClave: (clave: string) => void;
+  /** The template picked by code for this reel, or null for the PNG overlays. */
+  plantilla: { id: string; version: number } | null;
+  /** The voice-overs to mix and subtitle (empty: the silent track). */
+  voces: readonly VozDeReel[];
 }): Promise<Guardado> {
   const { deps, log, clienteId, brief, claves, tipos } = args;
   const runtime = deps.reel;
@@ -261,8 +268,7 @@ async function renderizarYGuardarReel(args: {
     ...(runtime.probeVideo !== undefined ? { probeVideo: runtime.probeVideo } : {}),
     ...(runtime.remotion ? { capaTexto: runtime.remotion.capaTexto, ...(runtime.remotion.timeoutMs !== undefined ? { capaTimeoutMs: runtime.remotion.timeoutMs } : {}) } : {}),
   };
-  // CODE picks the template (the brief does not): the client's default or the piece's "trabajo". No runtime or no license: none.
-  const plantilla = runtime.remotion ? elegirPlantilla({ licencia: runtime.remotion.licencia, kitVisual: args.kitVisual, trabajo: args.pieza.trabajo }) : null;
+  const plantilla = args.plantilla;
   return renderReel(
     renderDeps,
     {
@@ -270,6 +276,7 @@ async function renderizarYGuardarReel(args: {
       fuentes: Object.fromEntries(claves),
       kitVisual: args.kitVisual,
       ...(plantilla ? { plantilla: { id: plantilla.id, version: plantilla.version } } : {}),
+      ...(args.voces.length > 0 ? { voces: args.voces } : {}),
       ...(runtime.outputSpec !== undefined ? { outputSpec: runtime.outputSpec } : {}),
     },
     async (reel) => {
@@ -331,6 +338,8 @@ export async function producirPieza(
   const claves = new Map(mediaRows.map((m) => [m.id, m.clave_almacenamiento]));
   const guardados: Guardado[] = [];
   const claves_guardadas: string[] = [];
+  // The voice-over a reel used, or why it has none (Step 7d).
+  let vozProducida: VozPreparada | null = null;
   const borrar = async () => {
     for (const clave of claves_guardadas) {
       try {
@@ -343,6 +352,25 @@ export async function producirPieza(
 
   try {
     if (pieza.formato === 'reel') {
+      // The free refusals of the reel come before any voice is paid for.
+      if (!deps.reel) throw new ReelNoConfiguradoError();
+      for (const m of mediaRows) if (m.tipo !== 'video') throw new FuenteDeVideoIlegibleError(m.id, 'sin_video');
+      // CODE picks the template (the brief does not): the client's default or the piece's "trabajo". No runtime or no license: none.
+      const plantilla = deps.reel.remotion ? elegirPlantilla({ licencia: deps.reel.remotion.licencia, kitVisual, trabajo: pieza.trabajo }) : null;
+      vozProducida = await prepararVozDelReel({
+        db,
+        storage,
+        voz: deps.voz,
+        logger: log,
+        clienteId,
+        brief,
+        piezaId,
+        instantePieza: pieza.fecha_hora,
+        perfilVoz: perfil.voz,
+        hayPlantilla: plantilla !== null,
+        actor,
+        ahora: new Date(),
+      });
       guardados.push(
         await renderizarYGuardarReel({
           deps,
@@ -354,6 +382,8 @@ export async function producirPieza(
           claves,
           tipos: new Map(mediaRows.map((m) => [m.id, m.tipo])),
           registrarClave: (clave) => claves_guardadas.push(clave),
+          plantilla: plantilla ? { id: plantilla.id, version: plantilla.version } : null,
+          voces: vozProducida.voces,
         }),
       );
     } else {
@@ -499,6 +529,10 @@ export async function producirPieza(
           );
         }
       }
+      // The voice-overs this production used, one per voiced scene (append-only records).
+      for (const l of vozProducida?.locuciones ?? []) {
+        await tx.query('INSERT INTO producciones_locuciones (produccion_id, cliente_id, escena, locucion_id) VALUES ($1, $2, $3, $4)', [produccionId, clienteId, l.escena, l.locucionId]);
+      }
       await recordAudit(tx, {
         actor,
         accion: 'crear',
@@ -513,6 +547,9 @@ export async function producirPieza(
           red: pieza.red,
           archivos: guardados.length,
           ...(pieza.formato === 'reel' ? { escenas: guardados[0]?.fuentes?.length ?? 0 } : {}),
+          // The voice-over: how many scenes were voiced, or why there is none. Ids and counts only.
+          ...(vozProducida && vozProducida.voces.length > 0 ? { voces: vozProducida.voces.length } : {}),
+          ...(vozProducida?.omitida ? { voz_omitida: vozProducida.omitida } : {}),
           hash_version: HASH_VERSION,
           hash_pieza: hashPieza.toString('hex'),
           perfil_marca_id: perfilMarcaId,

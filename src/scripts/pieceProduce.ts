@@ -3,6 +3,7 @@ import { closePool, pool } from '../db/pool.js';
 import { createStorage, LocalFileStorage } from '../lib/media/storage/index.js';
 import { getClienteById } from '../modules/clientes/clientesRepository.js';
 import { createReelRuntime } from '../modules/produccion/index.js';
+import { createVozRuntime } from '../modules/produccion/vozRuntime.js';
 import { withDevControlCalidad } from './devQueue.js';
 import { assertDevScriptAllowed, confirmDevScriptDatabase } from './devScriptGuard.js';
 import { parsePieceProduceArgs } from './pieceProduceArgs.js';
@@ -29,7 +30,7 @@ async function main(): Promise<void> {
 
   const result = await withDevControlCalidad((controlCalidad) =>
     runPieceProduce(
-      { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), controlCalidad, ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
+      { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad, ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
       args,
     ),
   );

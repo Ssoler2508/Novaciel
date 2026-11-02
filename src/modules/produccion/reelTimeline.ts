@@ -75,7 +75,7 @@ export interface ReelTimeline {
   segmentos: readonly ReelSegment[];
 }
 
-const framesToMs = (frames: number): number => Math.round((frames * 1000) / REEL_FPS);
+export const framesToMs = (frames: number): number => Math.round((frames * 1000) / REEL_FPS);
 
 /**
  * How many milliseconds of source a scene of `duracionS` seconds needs: the scene is cut to whole

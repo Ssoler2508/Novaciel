@@ -105,6 +105,13 @@ function setPath(target: Record<string, unknown>, path: string, value: unknown):
 }
 
 /**
+ * The fictional client's voice-over (Step 7d): a made-up voice id, for the fake voice provider. It goes into the
+ * profile ONLY when the seed creates the first version; an already-seeded database is never given a new profile
+ * version for it (use `npm run voice:configure`).
+ */
+export const SEED_LOCUCION = { habilitada: true, voice_id: 'voz-ficticia-aurora', idioma: 'es' } as const;
+
+/**
  * Fills only the required fields that are missing in `existing`, with the seed's values; everything
  * already filled (possibly edited by hand) is kept. Returns the blocks that changed, or {} if none.
  */

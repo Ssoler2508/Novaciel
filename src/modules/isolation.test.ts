@@ -15,6 +15,8 @@ import {
   createConfiguracionGastoCliente,
   createHechoVerificado,
   createLibroGasto,
+  createLocucion,
+  createProduccionLocucion,
   createMedia,
   createMediaAutorizacion,
   createGuion,
@@ -77,7 +79,7 @@ import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from '.
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad', 'locuciones', 'producciones_locuciones'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -108,6 +110,8 @@ interface World {
   /** Step 8: a piece in en_control_calidad with a QC report of its production. */
   qcPiezaId: string;
   revisionId: string;
+  /** Step 7d: a voice-over of the brief and the production that used it. */
+  locucionId: string;
   extraPiezaIds: string[];
   extraPlanIds: string[];
   extraMediaIds: string[];
@@ -150,6 +154,8 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   // A production needs the piece ready for it (guion_listo) and a final file made from real media.
   await moverPieza(db, piezaConGuion.id, 'guion_listo');
   const produccion = await createProduccion(db, { piezaId: piezaConGuion.id, archivos: [{ mediaId: media.id }] });
+  const locucion = await createLocucion(db, { clienteId: cliente.id, guionId: guion.id });
+  await createProduccionLocucion(db, { produccionId: produccion.id, clienteId: cliente.id, locucionId: locucion.id });
   await assignRole(db, { usuarioId: usuarioSolo.id, rolCodigo: 'dueno_cliente', clienteId: cliente.id });
   await assignRole(db, { usuarioId: sharedUsuarioId, rolCodigo: 'aprobador_cliente', clienteId: cliente.id });
   await createAprobadoresCliente(db, { clienteId: cliente.id, principalUsuarioId: usuarioSolo.id, suplenteUsuarioId: sharedUsuarioId });
@@ -187,6 +193,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     aprobacionPlanId: aprobacionPlan.id,
     qcPiezaId: enQc.piezaId,
     revisionId: revision.id,
+    locucionId: locucion.id,
     extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id, enQc.piezaId],
     extraPlanIds: [aprobable.planId, planPropuesto.id, enQc.planId],
     extraMediaIds: [aprobableMediaId, enQcMediaId],
@@ -434,6 +441,30 @@ describe('isolation: briefs', () => {
       }
       // Filtered by A's client id, B's brief cannot be touched.
       expect((await db.query('UPDATE guiones SET es_actual = false WHERE cliente_id = $1 AND id = $2', [a.clienteId, b.guionId])).rowCount).toBe(0);
+    });
+  });
+});
+
+describe('isolation: voice-overs', () => {
+  it("A never reads B's voice-overs or their production links, and cannot change or delete them: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      for (const [table, column] of [['locuciones', 'id'], ['producciones_locuciones', 'locucion_id']] as const) {
+        const own = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1`, [a.clienteId])).rows;
+        const foreign = (await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1 AND ${column} = $2`, [a.clienteId, b.locucionId])).rows;
+        expect(own.length).toBeGreaterThan(0);
+        expect(foreign).toEqual([]);
+      }
+    });
+  });
+
+  it("a voice-over cannot point to another client's brief, and a production link cannot point to another client's voice-over", async () => {
+    await withTwoClients(async (a, b, db) => {
+      await db.query('SAVEPOINT locucion_b');
+      await expect(createLocucion(db, { clienteId: a.clienteId, guionId: b.guionId })).rejects.toThrow();
+      await db.query('ROLLBACK TO SAVEPOINT locucion_b');
+      await db.query('SAVEPOINT enlace_b');
+      await expect(createProduccionLocucion(db, { produccionId: a.produccionId, clienteId: a.clienteId, locucionId: b.locucionId, escena: 2 })).rejects.toThrow();
+      await db.query('ROLLBACK TO SAVEPOINT enlace_b');
     });
   });
 });

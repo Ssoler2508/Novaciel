@@ -4,7 +4,7 @@ import { PlantillaInvalidaError } from './errors.js';
 import { assertGlifosSoportados, FUENTE_POR_DEFECTO } from './fonts.js';
 import { distribuirPalabras } from './lineasPalabras.js';
 import { getPlantilla } from './plantillas.js';
-import { calcularTiemposPalabras, palabrasDe, REGLAS_TIEMPOS } from './tiemposPalabras.js';
+import { calcularTiemposPalabras, palabrasDe, REGLAS_TIEMPOS, type TiempoPalabra } from './tiemposPalabras.js';
 import type { Medir } from './textLayout.js';
 
 // The props of the animated text templates (Step 7c). PURE: from a scene, the colors and the canvas it
@@ -90,6 +90,12 @@ export interface EntradaPropsPlantilla {
     /** Exact frames of the scene in the 7b timeline. */
     fotogramas: number;
   };
+  /**
+   * The real time of each word of `escena.texto`, in ms from the start of the scene (Step 7d: the voice-over's
+   * alignment, where `texto` is the SPOKEN text). Absent: the computed times of 7c. Block and title modes show
+   * the whole text when the first word is spoken.
+   */
+  tiempos?: readonly TiempoPalabra[];
   fps: number;
   /** From elegirColores(kitVisual): the 7a contrast rule. */
   colores: ColoresSlide;
@@ -138,12 +144,22 @@ export function construirPropsPlantilla(entrada: EntradaPropsPlantilla): PropsPl
     posicion: esTitulo ? 'centro' : 'abajo',
   });
 
-  // When each word appears: together at the lead-in (block and title card), or at its own time.
+  // Real times (the voice) must be those of THESE words, inside the scene.
+  const reales = entrada.tiempos;
+  if (reales !== undefined) {
+    const palabras = palabrasDe(texto);
+    const bien =
+      reales.length === palabras.length &&
+      reales.every((t, i) => t.palabra === palabras[i] && Number.isInteger(t.inicioMs) && Number.isInteger(t.finMs) && t.inicioMs >= 0 && t.finMs >= t.inicioMs && t.inicioMs < duracionMs && t.finMs <= duracionMs);
+    if (!bien) throw new PlantillaInvalidaError('entrada_invalida', ['tiempos']);
+  }
+
+  // When each word appears: together (block and title card), or at its own time.
   const tiempos =
     modo === 'palabras'
-      ? calcularTiemposPalabras(texto, duracionMs)
+      ? (reales ?? calcularTiemposPalabras(texto, duracionMs))
       : (() => {
-          const inicio = Math.min(REGLAS_TIEMPOS.entradaMs, duracionMs - 1);
+          const inicio = reales ? reales[0]!.inicioMs : Math.min(REGLAS_TIEMPOS.entradaMs, duracionMs - 1);
           return palabrasDe(texto).map((palabra) => ({ palabra, inicioMs: inicio, finMs: duracionMs }));
         })();
 

@@ -39,6 +39,7 @@ describeFfmpeg('piece:produce with a reel (real FFmpeg)', () => {
       expect(text).toMatch(/video: 1[45]\.\d s, 30 fps, h264\/aac/);
       for (const [i, m] of w.media.entries()) expect(text).toContain(`scene ${i + 1}: media ${m.id} 0-5000 ms`);
       expect(text).toContain(path.join(root, 'storage', w.clienteId, 'producidos'));
+      expect(text).toContain('voice-over: none (sin_configuracion)'); // the world has no voice configured
       expect(text).toMatch(/piece hash \(np1\): [0-9a-f]{64}/);
       expect(text).not.toContain('SECRETO');
       expect(text).not.toContain('Hecho con calma');

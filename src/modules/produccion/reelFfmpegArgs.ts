@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { HdrNoSoportadoError, RutaInvalidaError } from './errors.js';
 import { REEL_FPS, type ReelTimeline } from './reelTimeline.js';
+import { GANANCIA_MAXIMA_DB } from './sonoridadVoz.js';
 
 // The FFmpeg arguments of a reel (Step 7b): one pass that cuts, crops, scales, normalizes the frame
 // rate, overlays the text PNGs, joins the scenes, adds a silent AAC track and encodes. PURE: it
@@ -18,7 +19,7 @@ export interface ReelOutputSpec {
   bufsize: string;
   /** Frames between key frames. */
   gop: number;
-  /** Audio of the reel: a silent AAC track (decision of checkpoint A). Source audio is not built. */
+  /** Audio of the reel: a silent AAC track (7b), unless the paths carry voices (7d). Source audio is not built. */
   audio: 'silent';
   /** True when this FFmpeg has zscale and tonemap, so HDR sources can be tone-mapped to SDR. */
   hdrToneMap: boolean;
@@ -47,11 +48,85 @@ export interface ReelPaths {
   overlays: Readonly<Record<number, ReelOverlayInput>>;
   /** Absolute path of the MP4 to write. */
   salida: string;
+  /**
+   * The voice-over (Step 7d), by scene number: the absolute path of the audio file and where the voice starts
+   * inside its scene (ms). Scenes not listed are silent. Absent or empty: the whole track is silent (7b).
+   */
+  voces?: Readonly<Record<number, VozDeEscena>>;
+  /** Static gain applied to the voice-over track, dB (computed from its measured loudness). 0 when absent. */
+  gananciaDb?: number;
 }
+
+export interface VozDeEscena {
+  ruta: string;
+  /** Silence before the voice starts, inside the scene. */
+  entradaMs: number;
+}
+
+/** Ceiling of the voice-over track (house value, VERIFY): -1 dBFS as a linear sample value. */
+export const TECHO_VOZ_LINEAL = 0.891;
+/** Largest gain the builder accepts, dB. */
+export { GANANCIA_MAXIMA_DB } from './sonoridadVoz.js';
 
 /** Extra source read after the end of a scene, so the frame-rate filter never runs dry. */
 const MARGEN_MS = 200;
 const AUDIO_HZ = 48_000;
+const AUDIO_FORMATO = 'aformat=sample_fmts=fltp:channel_layouts=stereo';
+
+/** Samples of `frames` video frames at the audio rate (1600 per frame at 30 fps and 48 kHz: exact). */
+const muestras = (frames: number): number => Math.round((frames * AUDIO_HZ) / REEL_FPS);
+
+/**
+ * The audio graph of a reel with voices: scene by scene, the voice (resampled, delayed by its lead-in, padded
+ * with silence and cut to the scene's exact samples) or plain silence; then the scenes joined. The track is
+ * exactly as long as the video. `primerInput` is the index of the first voice input.
+ */
+function grafoDeVoz(timeline: ReelTimeline, voces: ReadonlyMap<number, { ruta: string; entradaMs: number }>, primerInput: number): { inputs: string[]; filters: string[] } {
+  const inputs: string[] = [];
+  const filters: string[] = [];
+  const etiquetas: string[] = [];
+  let siguiente = primerInput;
+  for (const segmento of timeline.segmentos) {
+    const voz = voces.get(segmento.escena);
+    const total = muestras(segmento.frames);
+    if (voz === undefined) {
+      filters.push(`anullsrc=r=${AUDIO_HZ}:cl=stereo,${AUDIO_FORMATO},atrim=end_sample=${total},asetpts=PTS-STARTPTS[as${segmento.escena}]`);
+    } else {
+      const indice = siguiente++;
+      inputs.push('-i', voz.ruta);
+      const retraso = Math.max(0, Math.round(voz.entradaMs));
+      filters.push(`[${indice}:a]aresample=${AUDIO_HZ},${AUDIO_FORMATO},adelay=${retraso}|${retraso},apad,atrim=end_sample=${total},asetpts=PTS-STARTPTS[as${segmento.escena}]`);
+    }
+    etiquetas.push(`[as${segmento.escena}]`);
+  }
+  filters.push(`${etiquetas.join('')}concat=n=${etiquetas.length}:v=0:a=1[amezcla]`);
+  return { inputs, filters };
+}
+
+/** Checks and normalizes the voices: scenes that exist, absolute paths, lead-ins that are whole non-negative ms. */
+function vocesValidas(timeline: ReelTimeline, voces: ReelPaths['voces']): Map<number, { ruta: string; entradaMs: number }> {
+  const salida = new Map<number, { ruta: string; entradaMs: number }>();
+  const escenas = new Set(timeline.segmentos.map((s) => s.escena));
+  for (const [clave, voz] of Object.entries(voces ?? {})) {
+    const escena = Number(clave);
+    if (!escenas.has(escena)) throw new RutaInvalidaError('voz_sobrante');
+    if (!Number.isInteger(voz.entradaMs) || voz.entradaMs < 0) throw new RutaInvalidaError('voz_faltante');
+    salida.set(escena, { ruta: filePath(voz.ruta, 'voz_faltante'), entradaMs: voz.entradaMs });
+  }
+  return salida;
+}
+
+/**
+ * The arguments that render ONLY the mixed voice track (no gain, no limiter) to a PCM WAV, to measure its
+ * loudness before the real render. Same graph as the reel, so the measurement is of what will be heard.
+ */
+export function buildAudioMezclaArgs(timeline: ReelTimeline, paths: { voces: NonNullable<ReelPaths['voces']>; salida: string }): string[] {
+  const voces = vocesValidas(timeline, paths.voces);
+  if (voces.size === 0) throw new RutaInvalidaError('voz_faltante');
+  const salida = filePath(paths.salida, 'salida_faltante');
+  const grafo = grafoDeVoz(timeline, voces, 0);
+  return ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', ...grafo.inputs, '-filter_complex', grafo.filters.join(';'), '-map', '[amezcla]', '-c:a', 'pcm_s16le', '-ar', String(AUDIO_HZ), '-ac', '2', '-fflags', '+bitexact', '-flags:a', '+bitexact', salida];
+}
 
 /** HLG/PQ BT.2020 to SDR BT.709 (verified on this machine's FFmpeg with PQ and HLG sources). */
 const TONEMAP = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
@@ -62,7 +137,7 @@ function seconds(ms: number): string {
   return `${Math.floor(whole / 1000)}.${String(whole % 1000).padStart(3, '0')}`;
 }
 
-function filePath(value: string | undefined, missing: 'fuente_faltante' | 'overlay_faltante' | 'salida_faltante'): string {
+function filePath(value: string | undefined, missing: 'fuente_faltante' | 'overlay_faltante' | 'salida_faltante' | 'voz_faltante'): string {
   if (value === undefined || value === '') throw new RutaInvalidaError(missing);
   if (/[\u0000-\u001f]/.test(value)) throw new RutaInvalidaError('ruta_con_caracter_de_control');
   if (!path.isAbsolute(value)) throw new RutaInvalidaError('ruta_no_absoluta');
@@ -107,6 +182,9 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
     }
   }
   const salida = filePath(paths.salida, 'salida_faltante');
+  const voces = vocesValidas(timeline, paths.voces);
+  const ganancia = paths.gananciaDb ?? 0;
+  if (typeof ganancia !== 'number' || !Number.isFinite(ganancia) || Math.abs(ganancia) > GANANCIA_MAXIMA_DB) throw new RutaInvalidaError('ganancia_invalida');
 
   const inputs: string[] = [];
   const filters: string[] = [];
@@ -143,8 +221,20 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
   }
   filters.push(`${labels.join('')}concat=n=${labels.length}:v=1:a=0[vout]`);
 
-  const audio = inputCount++;
-  inputs.push('-f', 'lavfi', '-t', seconds(timeline.totalMs), '-i', `anullsrc=r=${AUDIO_HZ}:cl=stereo`);
+  // The audio: a silent track (7b), or the voices scene by scene with the gain and the ceiling.
+  let mapaAudio: string;
+  if (voces.size === 0) {
+    const audio = inputCount++;
+    inputs.push('-f', 'lavfi', '-t', seconds(timeline.totalMs), '-i', `anullsrc=r=${AUDIO_HZ}:cl=stereo`);
+    mapaAudio = `${audio}:a`;
+  } else {
+    const grafo = grafoDeVoz(timeline, voces, inputCount);
+    inputCount += voces.size;
+    inputs.push(...grafo.inputs);
+    filters.push(...grafo.filters);
+    filters.push(`[amezcla]volume=${ganancia.toFixed(2)}dB,alimiter=limit=${TECHO_VOZ_LINEAL}:level=disabled[aout]`);
+    mapaAudio = '[aout]';
+  }
 
   return [
     '-nostdin',
@@ -158,7 +248,7 @@ export function buildFfmpegArgs(timeline: ReelTimeline, paths: ReelPaths, spec: 
     '-map',
     '[vout]',
     '-map',
-    `${audio}:a`,
+    mapaAudio,
     '-c:v',
     'libx264',
     '-profile:v',

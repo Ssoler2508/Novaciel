@@ -13,6 +13,8 @@
     "create-admin": "tsx src/scripts/createAdmin.ts",
     "set-price": "tsx src/scripts/setPrice.ts",
     "llm:smoke": "tsx src/scripts/llmSmoke.ts",
+    "voice:smoke": "tsx src/scripts/voiceSmoke.ts",
+    "voice:configure": "tsx src/scripts/voiceConfigure.ts",
     "media:upload": "tsx src/scripts/mediaUpload.ts",
     "plan:generate": "tsx src/scripts/planGenerate.ts",
     "brief:generate": "tsx src/scripts/briefGenerate.ts",

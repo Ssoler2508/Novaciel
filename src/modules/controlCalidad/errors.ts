@@ -35,6 +35,14 @@ export class QcDatosInconsistentesError extends Error {
   }
 }
 
+/** A production with a voice-over is checked and no FFmpeg configuration was given: a setup problem, not a failed piece. */
+export class QcSinFfmpegError extends Error {
+  constructor() {
+    super('Quality control needs the FFmpeg configuration to measure the loudness of a voice-over');
+    this.name = 'QcSinFfmpegError';
+  }
+}
+
 /** A video is in the production and no ffprobe configuration was given: a setup problem, not a failed piece. */
 export class QcSinFfprobeError extends Error {
   constructor() {

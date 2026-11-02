@@ -21,7 +21,7 @@ import {
   hasNovaCielRole,
   listClientUsers,
 } from '../modules/roles/usuarioRolesRepository.js';
-import { hasAnyPrice, setModelPrice } from '../modules/precios/preciosRepository.js';
+import { hasAnyPrice, hasAnyUnitPrice, setModelPrice, setUnitPrice } from '../modules/precios/preciosRepository.js';
 import type { MediaProbe } from '../lib/media/probe/types.js';
 import type { Storage } from '../lib/media/storage/types.js';
 import { DuplicateMediaError } from '../modules/media/errors.js';
@@ -29,7 +29,7 @@ import { uploadMedia } from '../modules/media/uploadMedia.js';
 import { createSpendConfig, getSpendConfig } from '../modules/presupuesto/gastoConfigRepository.js';
 import { usdToMicro } from '../modules/presupuesto/money.js';
 import { createUsuario, getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
-import { fillMissingProfileBlocks, SEED_IDIOMA } from './seedProfile.js';
+import { fillMissingProfileBlocks, SEED_IDIOMA, SEED_LOCUCION } from './seedProfile.js';
 
 // Every value below is fictional.
 export const SEED_ADMIN_EMAIL = 'admin.novaciel@example.test';
@@ -42,6 +42,9 @@ export const SEED_PRICE_PROVIDER = 'fake';
 export const SEED_PRICE_MODEL = 'fake-model';
 export const SEED_PRICE_MODEL_LIGHT = 'fake-model-light';
 export const SEED_PRICE_NOTE = 'FAKE — replace with real prices';
+// The fake voice provider's price (Step 7d): USD 0.08 per 1000 characters, obviously fake.
+export const SEED_VOICE_PRICE_PROVIDER = 'fake_voice';
+export const SEED_VOICE_PRICE_MODEL = 'fake-tts-model';
 export const SEED_CLIENT_NAME = 'Cafetería Aurora (ficticia)';
 const SEED_AUTHORIZATION_KEY = 'autorizaciones/seed-persona-ficticia.pdf';
 
@@ -114,6 +117,17 @@ export async function seedDevelopment(db: Db, now: Date = new Date(), options: S
     }
   }
 
+  // The fake voice provider's price, per 1000 characters, so the fake voice-over can be paid in development.
+  const hasVoicePrice = await hasAnyUnitPrice(db, SEED_VOICE_PRICE_PROVIDER, SEED_VOICE_PRICE_MODEL, 'caracteres');
+  note(!hasVoicePrice, `precio ficticio ${SEED_VOICE_PRICE_PROVIDER}/${SEED_VOICE_PRICE_MODEL} (caracteres)`);
+  if (!hasVoicePrice) {
+    await setUnitPrice(
+      db,
+      { provider: SEED_VOICE_PRICE_PROVIDER, model: SEED_VOICE_PRICE_MODEL, unit: 'caracteres', pricePerBlock: usdToMicro('0.08'), blockSize: 1000, nota: SEED_PRICE_NOTE },
+      { tipo: 'usuario', usuarioId: admin.id },
+    );
+  }
+
   // Fictional client. Left in en_onboarding: it is activated once it can be planned.
   let cliente = await findClienteByNombreComercial(db, SEED_CLIENT_NAME);
   note(!cliente, 'cliente ficticio');
@@ -175,6 +189,9 @@ export async function seedDevelopment(db: Db, now: Date = new Date(), options: S
       creadoPor: ownerId,
       ...(needsIdioma ? { idiomaContenido: SEED_IDIOMA } : {}),
       ...missingBlocks,
+      // The fictional voice only on the FIRST version: a database that already has a profile never gets a new
+      // version for it (voice:configure sets it).
+      ...(!perfil ? { voz: { ...(missingBlocks.voz ?? {}), locucion: { ...SEED_LOCUCION } } } : {}),
     });
   }
 

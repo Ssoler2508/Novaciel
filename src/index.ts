@@ -15,6 +15,8 @@ import { createPgBossBriefQueue, registerDirectorJobs, registerDirectorRoutes } 
 import { LogNotifier } from './lib/notificaciones/index.js';
 import { createPgBossRecordatorios, registerAprobacionesRoutes, registerRecordatoriosJobs } from './modules/aprobaciones/index.js';
 import { createPgBossProduccionQueue, createReelRuntime, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
+import { createVozRuntime } from './modules/produccion/vozRuntime.js';
+import { reelQcConfig } from './modules/controlCalidad/reelQcConfig.js';
 import {
   createPgBossControlCalidad,
   createPgBossControlCalidadQueue,
@@ -99,8 +101,8 @@ async function main(): Promise<void> {
   });
   // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
   // Every stored production queues its quality-control job inside the same transaction (Step 8).
-  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), controlCalidad: createPgBossControlCalidad(boss) });
-  await registerControlCalidadJobs(boss, { db: pool, storage, reel: { ffprobePath: config.media.ffprobePath, ffprobeTimeoutMs: config.media.ffprobeTimeoutMs } });
+  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad: createPgBossControlCalidad(boss) });
+  await registerControlCalidadJobs(boss, { db: pool, storage, reel: reelQcConfig(config.media) });
   // Approval reminders and the escalation notice (spec 11.3). LogNotifier only logs ids and template names
   // until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
   await registerRecordatoriosJobs(boss, { db: pool, notifier: new LogNotifier() });
