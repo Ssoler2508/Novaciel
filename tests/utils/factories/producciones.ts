@@ -27,6 +27,8 @@ export interface ProduccionRow {
   plantilla_version: number | null;
   /** The brand profile version the files were rendered with (Step 8); null only for old rows. */
   perfil_marca_id: string | null;
+  /** Why the reel has no voice-over (closed code), or null. */
+  voz_omitida_motivo: string | null;
   creado_por: string | null;
   creado_en: Date;
 }
@@ -122,6 +124,8 @@ export interface ProduccionOverrides {
   /** The animated text template and its version (both or neither). */
   plantilla?: string | null;
   plantillaVersion?: number | null;
+  /** Why the reel was produced without its voice-over (a closed code), or null. */
+  vozOmitidaMotivo?: string | null;
   /** The final files, in order (orden 1, 2, ...). Defaults to one file; [] inserts none. */
   archivos?: ArchivoInput[];
 }
@@ -213,8 +217,8 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
   const archivos = overrides.archivos ?? [{}];
   const { rows } = await db.query<ProduccionRow>(
     `INSERT INTO producciones
-       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id)
-     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+       (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id, voz_omitida_motivo)
+     VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
     [
       clienteId,
       piezaId,
@@ -231,6 +235,7 @@ export async function createProduccion(db: Db, overrides: ProduccionOverrides = 
       overrides.plantilla ?? null,
       overrides.plantillaVersion ?? null,
       perfilMarcaId,
+      overrides.vozOmitidaMotivo ?? null,
     ],
   );
   const produccion = rows[0]!;

@@ -1,5 +1,5 @@
 import { FfmpegRunError } from '../lib/media/ffmpeg/runFfmpeg.js';
-import { listEscenasConVoz, vozOmitidaDeProduccion } from '../modules/locuciones/locucionesRepository.js';
+import { listEscenasConVoz, resolverVozOmitida } from '../modules/locuciones/locucionesRepository.js';
 import type { ClienteId } from '../modules/shared/clienteId.js';
 import { VoiceProviderError } from '../lib/ai/voice/types.js';
 import { ConfiguracionVozInvalidaError } from '../modules/locuciones/configuracionVoz.js';
@@ -71,7 +71,7 @@ async function describe(deps: PieceProduceDeps, clienteId: ClienteId, done: Piez
   if (pieza.formato === 'reel') {
     // The voice-over (Step 7d): the voiced scenes, or why there is none. Scene numbers and a closed reason only.
     const escenas = await listEscenasConVoz(deps.db, clienteId, produccion.id);
-    const omitida = escenas.length === 0 ? await vozOmitidaDeProduccion(deps.db, clienteId, produccion.id) : null;
+    const omitida = escenas.length === 0 ? (await resolverVozOmitida(deps.db, clienteId, produccion)).motivo : null;
     lines.push(escenas.length > 0 ? `  voice-over: scenes ${escenas.join(', ')}` : `  voice-over: none${omitida ? ` (${omitida})` : ''}`);
   }
   lines.push(`  piece hash (${produccion.hash_version}): ${produccion.hash_pieza}`);

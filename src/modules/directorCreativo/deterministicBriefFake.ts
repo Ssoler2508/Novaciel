@@ -92,11 +92,13 @@ export function buildDeterministicBrief(context: BriefContext): BriefContent {
   const escenas = Array.from({ length: n }, (_v, i) => {
     const media = aptos[i];
     const token = usables[i] ? ` ${factToken(usables[i]!.id)}` : '';
+    // A reel with a voice-over: the fact goes in the spoken text and the on-screen text is a short fallback title.
+    const tokenEnPantalla = context.conVoz ? '' : token;
     return {
       orden: i + 1,
-      texto_en_pantalla: `${pick(context, lang.escena, i)}${token}`,
+      texto_en_pantalla: `${pick(context, lang.escena, i)}${tokenEnPantalla}`,
       ...(limites.requiereTextoAlternativo ? { texto_alternativo: pick(context, [lang.alt]) } : {}),
-      ...(duracion !== undefined ? { duracion_s: duracion, voz_en_off: pick(context, [lang.vozEnOff]) } : {}),
+      ...(duracion !== undefined ? { duracion_s: duracion, voz_en_off: `${pick(context, [lang.vozEnOff])}${context.conVoz ? token : ''}` } : {}),
       toma: media
         ? {
             media_id: media.id,

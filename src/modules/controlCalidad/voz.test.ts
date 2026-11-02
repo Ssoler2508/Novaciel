@@ -37,6 +37,12 @@ describe('checksVoz', () => {
     }
   });
 
+  it('records where the reason came from only when it is the audit fallback (an older production)', () => {
+    expect(por(checksVoz({ ...base, vozOmitida: 'sin_plantilla', vozOmitidaOrigen: 'columna' }), 'voz_omitida_sin_plantilla').parametros).toEqual({});
+    const viejo = por(checksVoz({ ...base, vozOmitida: 'sin_plantilla', vozOmitidaOrigen: 'auditoria' }), 'voz_omitida_sin_plantilla');
+    expect(viejo).toMatchObject({ resultado: 'advertencia', parametros: { origen: 'auditoria' } });
+  });
+
   it('puts only scene numbers in the parameters (never text)', () => {
     const json = JSON.stringify(checksVoz({ ...base, escenasConVoz: [1], vozOmitida: 'sin_plantilla' }));
     expect(json).not.toMatch(/[A-Za-z]{12,}/);

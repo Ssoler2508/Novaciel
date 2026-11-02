@@ -52,6 +52,9 @@ export const BRIEF_ISSUES = {
   aiGenerationRequest: 'ai_generation_request',
   aiMentionInProduction: 'ai_mention_in_production',
   unsupportedGlyphs: 'unsupported_glyphs',
+  // Only for a reel with a voice-over (BriefContext.conVoz).
+  missingVoiceOver: 'missing_voice_over',
+  fallbackTitleTooLong: 'fallback_title_too_long',
 } as const;
 
 const text = z.string().trim().min(1);
@@ -148,6 +151,11 @@ export function buildBriefSchema(context: BriefContext): z.ZodType<BriefContent>
     if (n < limitesFormato.escenasMin || n > limitesFormato.escenasMax) issue(['escenas'], BRIEF_ISSUES.sceneCount);
     brief.escenas.forEach((escena, i) => {
       if (escena.orden !== i + 1) issue(['escenas', i, 'orden'], BRIEF_ISSUES.sceneOrder);
+      // A reel with a voice-over: the spoken text is the main text of every scene and the on-screen text a short title.
+      if (context.conVoz) {
+        if (escena.voz_en_off === undefined || escena.voz_en_off.trim() === '') issue(['escenas', i, 'voz_en_off'], BRIEF_ISSUES.missingVoiceOver);
+        if (escena.texto_en_pantalla.length > context.limites.tituloRespaldoMax) issue(['escenas', i, 'texto_en_pantalla'], BRIEF_ISSUES.fallbackTitleTooLong);
+      }
     });
     if (limitesFormato.duracionTotalS) {
       let total = 0;

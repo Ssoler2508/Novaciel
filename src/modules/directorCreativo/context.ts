@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidLocalDate, isValidZone, localDateTimeOf } from '../planificador/fechas.js';
+import { ConfiguracionVozInvalidaError, vozDelCliente } from '../locuciones/configuracionVoz.js';
 import { limitesDe } from './limits.js';
 import { BriefContextError } from './errors.js';
 import type { BriefContext, BriefSnapshot, BriefVisual, BriefVoz } from './types.js';
@@ -48,6 +49,20 @@ function parseVisual(raw: Record<string, unknown>): BriefVisual {
 }
 
 /**
+ * The reel of a client with a voice-over enabled. A `locucion` block that is not valid counts as "no voice" here:
+ * production refuses it loudly (ConfiguracionVozInvalidaError), so the brief does not have to.
+ */
+function tieneVoz(formato: string, voz: Record<string, unknown>): boolean {
+  if (formato !== 'reel') return false;
+  try {
+    return vozDelCliente(voz) !== null;
+  } catch (error) {
+    if (error instanceof ConfiguracionVozInvalidaError) return false;
+    throw error;
+  }
+}
+
+/**
  * `snapshot.media` is already preselected (selectCandidateMedia); the context keeps it as the only
  * media the model may choose from.
  */
@@ -86,6 +101,7 @@ export function buildBriefContext(snapshot: BriefSnapshot): BriefContext {
       descripcion: typeof descripcion === 'string' ? descripcion.trim() : '',
     },
     idioma: perfil.idioma_contenido,
+    conVoz: tieneVoz(pieza.formato, perfil.voz),
     voz,
     visual,
     hechos: snapshot.hechos.map((h) => ({ ...h, citado: citados.has(h.id.toLowerCase()) })),

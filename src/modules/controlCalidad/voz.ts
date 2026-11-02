@@ -18,8 +18,10 @@ export interface EntradaChecksVoz {
   escenasConVoz: readonly number[];
   /** The production records a text template. */
   plantillaRegistrada: boolean;
-  /** Why the voice was left out of this production (audit), or null. */
+  /** Why the voice was left out of this production (column, or the audit row for older productions), or null. */
   vozOmitida: string | null;
+  /** Where `vozOmitida` came from. Only the audit fallback is recorded in the parameters. Default: the column. */
+  vozOmitidaOrigen?: 'columna' | 'auditoria' | null;
 }
 
 export function checksVoz(e: EntradaChecksVoz): CheckQC[] {
@@ -28,6 +30,6 @@ export function checksVoz(e: EntradaChecksVoz): CheckQC[] {
   return [
     crearCheck('voz_subtitulos_ausentes', !conVoz || e.plantillaRegistrada, { escenas: [...e.escenasConVoz] }),
     crearCheck('voz_etiqueta_ia_pendiente', !conVoz, { escenas: [...e.escenasConVoz] }),
-    crearCheck('voz_omitida_sin_plantilla', e.vozOmitida !== 'sin_plantilla'),
+    crearCheck('voz_omitida_sin_plantilla', e.vozOmitida !== 'sin_plantilla', e.vozOmitidaOrigen === 'auditoria' ? { origen: 'auditoria' } : {}),
   ];
 }

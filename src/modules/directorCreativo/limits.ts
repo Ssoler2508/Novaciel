@@ -55,6 +55,12 @@ export const LIMITES_TEXTO = {
   motivo: 200,
 } as const;
 
+/**
+ * House cap in characters (VERIFICAR) of the on-screen text of a scene of a reel WITH a voice-over: a short fallback title,
+ * drawn only if the voice is omitted at production. The spoken text (`voz_en_off`) is the main text of such a scene.
+ */
+export const TITULO_RESPALDO_MAX = 40;
+
 /** House cap (VERIFICAR): hashtags per piece. */
 export const MAX_HASHTAGS = 10;
 /** Facts the planner may attach to a piece, so also the most omissions a brief can explain. */
@@ -64,8 +70,10 @@ export interface BriefLimits {
   formato: FormatLimits;
   texto: typeof LIMITES_TEXTO;
   hashtagsMax: number;
+  /** Only applies to a reel with a voice-over (`BriefContext.conVoz`). */
+  tituloRespaldoMax: number;
 }
 
 export function limitesDe(formato: Formato): BriefLimits {
-  return { formato: LIMITES_FORMATO[formato], texto: LIMITES_TEXTO, hashtagsMax: MAX_HASHTAGS };
+  return { formato: LIMITES_FORMATO[formato], texto: LIMITES_TEXTO, hashtagsMax: MAX_HASHTAGS, tituloRespaldoMax: TITULO_RESPALDO_MAX };
 }

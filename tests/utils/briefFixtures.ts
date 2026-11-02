@@ -101,7 +101,9 @@ export function validBrief(context: BriefContext): BriefContent {
     const media = aptos[i];
     return {
       orden: i + 1,
-      texto_en_pantalla: i === 0 && tokens ? `Mira esto ${tokens}` : `Escena ${i === 0 ? 'inicial' : 'siguiente'} del origen`,
+      // With a voice-over the facts go in the spoken text and the on-screen text is a short title.
+      texto_en_pantalla: i === 0 && tokens && !context.conVoz ? `Mira esto ${tokens}` : `Escena ${i === 0 ? 'inicial' : 'siguiente'} del origen`,
+      ...(context.conVoz ? { voz_en_off: i === 0 && tokens ? `Mira esto ${tokens}` : 'Cuéntanos qué te gustó' } : {}),
       ...(limites.requiereTextoAlternativo ? { texto_alternativo: 'Granos de café sobre una mesa de madera' } : {}),
       ...(duracion ? { duracion_s: duracion / n } : {}),
       toma: media

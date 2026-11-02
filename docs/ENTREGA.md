@@ -90,10 +90,10 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 23. Los valores de la casa del catálogo marcados VERIFY (tamaños máximos, topes de texto, parámetros de codificación, opacidad del velo) siguen sin comprobarse contra la documentación de las redes (pregunta 6).
 
 **Voz en off (ADR-08, Paso 7d)**
-24. El prompt del director creativo sigue escribiendo `texto_en_pantalla` y `voz_en_off` como dos campos separados. En una escena con voz solo se dibuja el texto hablado (como subtítulos); conviene ajustar el prompt para que `voz_en_off` funcione como subtítulo (corto, cabe en la duración de la escena) y tratar `texto_en_pantalla` como no usado en esas escenas.
+24. ~~El prompt del director creativo sigue escribiendo `texto_en_pantalla` y `voz_en_off` como dos campos separados~~ **Resuelto en chore/deuda-01:** para un reel de un cliente con voz habilitada (`BriefContext.conVoz`), `voz_en_off` es el texto principal de cada escena (hablado y subtitulado) y es obligatorio; `texto_en_pantalla` sigue siendo obligatorio pero es un título corto de respaldo (tope de la casa `TITULO_RESPALDO_MAX` = 40 caracteres, VERIFY) que solo se dibuja si la voz se omite en producción. Sin voz y en los demás formatos el prompt y el esquema no cambian.
 25. La cota mínima de duración antes de pagar usa 24 caracteres por segundo (VERIFY): una voz demasiado larga, pero no por tanto, se descubre después de pagarla (queda en caché).
 26. Los valores de sonoridad (−16 LUFS ± 2 LU, pico −0,5 dBTP, techo del limitador −1 dBFS, silencio −50 LUFS) son valores de la casa por verificar con las redes.
-27. **"Voz omitida" vive en la auditoría de la producción** (`voz_omitida` en el `despues` de la fila `crear`) y el control de calidad la lee de ahí (`voz_omitida_sin_plantilla`). Hay que pasarla a una columna de `producciones` en una migración posterior.
+27. ~~"Voz omitida" vive en la auditoría de la producción~~ **Resuelto en chore/deuda-01:** columna `producciones.voz_omitida_motivo` (inmutable, lista cerrada de motivos); el control de calidad la lee y, para las producciones anteriores (NULL), usa la fila de auditoría como respaldo y lo registra como `origen: auditoria`.
 28. `voice:smoke` y la primera llamada real de ElevenLabs siguen sin hacerse: hasta entonces están por verificar la cabecera `xi-api-key`, la cabecera `request-id` y que la cantidad facturada coincida con los caracteres enviados (ADR-08).
 29. La voz solo existe en reels. Voces clonadas, varias voces por reel, emoción por escena, música y efectos son deuda (spec 9.5 y 16).
 
