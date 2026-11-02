@@ -478,8 +478,8 @@ export async function producirPieza(
       }
       const { rows: produccionRows } = await tx.query<{ id: string }>(
         `INSERT INTO producciones
-           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id)
-         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+           (cliente_id, pieza_id, guion_id, version, es_actual, red, texto_publicacion, hashtags, textos_alternativos, ubicacion, hash_version, hash_pieza, creado_por, plantilla, plantilla_version, perfil_marca_id, voz_omitida_motivo)
+         VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
         [
           clienteId,
           piezaId,
@@ -496,6 +496,7 @@ export async function producirPieza(
           guardados[0]?.plantilla?.id ?? null,
           guardados[0]?.plantilla?.version ?? null,
           perfilMarcaId,
+          vozProducida?.omitida ?? null,
         ],
       );
       const produccionId = produccionRows[0]!.id;

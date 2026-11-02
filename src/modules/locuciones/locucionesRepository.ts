@@ -149,7 +149,7 @@ export async function listEscenasConVoz(db: Db, clienteId: ClienteId, produccion
 }
 
 /**
- * Why the production was made without its voice (`sin_plantilla`, `sin_texto`...), read from the audit row that
+ * LEGACY source. Why the production was made without its voice (`sin_plantilla`, `sin_texto`...), read from the audit row that
  * created it, or null when the voice was used or never configured. A closed identifier, never text.
  */
 export async function vozOmitidaDeProduccion(db: Db, clienteId: ClienteId, produccionId: string): Promise<string | null> {
@@ -161,4 +161,19 @@ export async function vozOmitidaDeProduccion(db: Db, clienteId: ClienteId, produ
   );
   const motivo = rows[0]?.motivo ?? null;
   return motivo !== null && /^[a-z_]{1,40}$/.test(motivo) ? motivo : null;
+}
+
+/**
+ * Why the reel was produced without its voice, for a production: the column `voz_omitida_motivo` when it is set; for a
+ * production made before the column existed (NULL), the audit row that created it. `origen` says which one answered
+ * (null when nothing was omitted). A closed identifier, never text.
+ */
+export async function resolverVozOmitida(
+  db: Db,
+  clienteId: ClienteId,
+  produccion: { id: string; voz_omitida_motivo: string | null },
+): Promise<{ motivo: string | null; origen: 'columna' | 'auditoria' | null }> {
+  if (produccion.voz_omitida_motivo !== null) return { motivo: produccion.voz_omitida_motivo, origen: 'columna' };
+  const motivo = await vozOmitidaDeProduccion(db, clienteId, produccion.id);
+  return { motivo, origen: motivo === null ? null : 'auditoria' };
 }

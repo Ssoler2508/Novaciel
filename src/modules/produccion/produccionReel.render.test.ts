@@ -18,6 +18,8 @@ import {
 } from '../../../tests/utils/factories/index.js';
 import { producibleWorld, type WorldClip } from '../../../tests/utils/produccionWorld.js';
 import { withTestTransaction } from '../../../tests/utils/transaction.js';
+import { FakeVoiceProvider } from '../../lib/ai/voice/fakeVoiceProvider.js';
+import { createAudioMeter } from '../../lib/media/ffmpeg/measureAudio.js';
 import { runInTransaction } from '../../db/transaction.js';
 import type { Db } from '../../db/types.js';
 import { FfmpegRunError } from '../../lib/media/ffmpeg/runFfmpeg.js';
@@ -147,11 +149,17 @@ interface ReelWorldOptions {
   hdrToneMap?: boolean;
   sinRuntime?: boolean;
   runFfmpeg?: ReelRuntime['runFfmpeg'];
+  /** The "voz" block of the profile (default: none). */
+  perfilVoz?: Record<string, unknown>;
+  /** The spoken text of each scene. */
+  vocesEnOff?: readonly (string | undefined)[];
+  /** The process has a voice provider (the fake one). Default: none. */
+  conProveedorDeVoz?: boolean;
 }
 
 async function reelWorld(db: Db, o: ReelWorldOptions = {}): Promise<ReelWorld> {
   const clienteId = asClienteId((await createCliente(db)).id);
-  const perfilId = (await createPerfilMarca(db, { clienteId, kit_visual: structuredClone(SEED_PROFILE.kit_visual) })).id;
+  const perfilId = (await createPerfilMarca(db, { clienteId, kit_visual: structuredClone(SEED_PROFILE.kit_visual), ...(o.perfilVoz ? { voz: o.perfilVoz } : {}) })).id;
   const planId = (await createPlanSemanal(db, { clienteId, estado: 'aprobado', perfilMarcaId: perfilId })).id;
   const storage = new ReelStorage();
   const world = await producibleWorld(db, {
@@ -160,6 +168,7 @@ async function reelWorld(db: Db, o: ReelWorldOptions = {}): Promise<ReelWorld> {
     ...(o.faltantes ? { faltantes: o.faltantes } : {}),
     ...(o.sceneSeconds ? { sceneSeconds: o.sceneSeconds } : {}),
     ...(o.texts ? { texts: o.texts } : {}),
+    ...(o.vocesEnOff ? { vocesEnOff: o.vocesEnOff } : {}),
     base: { clienteId, planId, perfilId, storage },
   });
   const logs: string[] = [];
@@ -180,7 +189,7 @@ async function reelWorld(db: Db, o: ReelWorldOptions = {}): Promise<ReelWorld> {
         return cache.run(args, options);
       }),
   };
-  return { db, clienteId, planId, perfilId, piezaId: world.piezaId, storage, media: world.media, logs, runs, deps: { db, storage, logger, ...(o.sinRuntime ? {} : { reel }) } };
+  return { db, clienteId, planId, perfilId, piezaId: world.piezaId, storage, media: world.media, logs, runs, deps: { db, storage, logger, ...(o.sinRuntime ? {} : { reel }), ...(o.conProveedorDeVoz ? { voz: { provider: new FakeVoiceProvider(), measureAudio: createAudioMeter({ ffprobePath: 'ffprobe', timeoutMs: 15_000 }) } } : {}) } };
 }
 
 const count = async (db: Db, table: string, clienteId: string) => Number((await db.query(`SELECT count(*) AS n FROM ${table} WHERE cliente_id = $1`, [clienteId])).rows[0].n);
@@ -270,6 +279,27 @@ describeFfmpeg('producirPieza: a reel is produced (scenario A, rendered once in 
     expect(logs).toContain(A.produccion.id);
     for (const forbidden of [SECRET, 'Hecho con calma', 'Escena', 'Nuestro barrio', 'El origen', 'novaciel-reel', 'ñá', tempRoot, 'libx264', 'Lavf']) expect(logs.includes(forbidden), forbidden).toBe(false);
   });
+});
+
+describeFfmpeg('producirPieza: why a reel has no voice-over is a column of the production', () => {
+  const LOCUCION = { habilitada: true, voice_id: 'VozFicticia1', idioma: 'es' };
+  const VOCES = ['Tostamos granos frescos cada manana', undefined, 'Pasa por tu cafe de la casa'];
+  const casos: [string, string, ReelWorldOptions][] = [
+    ['sin_configuracion', 'the client has no voice configured', { conProveedorDeVoz: true }],
+    ['sin_proveedor', 'the process has no voice provider', { perfilVoz: { locucion: LOCUCION }, vocesEnOff: VOCES }],
+    ['sin_plantilla', 'no subtitle template can be used (Remotion off)', { perfilVoz: { locucion: LOCUCION }, vocesEnOff: VOCES, conProveedorDeVoz: true }],
+    ['sin_texto', 'no scene has a spoken text', { perfilVoz: { locucion: LOCUCION }, conProveedorDeVoz: true }],
+  ];
+  it.each(casos)('%s (%s): the column is written, the audit keeps the same reason, nothing else changes', async (motivo, _por, opciones) => {
+    await withTestTransaction(async (db) => {
+      const w = await reelWorld(db, opciones);
+      const { produccion } = await producirPieza(w.deps, w.clienteId, w.piezaId, SISTEMA);
+      expect(produccion.voz_omitida_motivo).toBe(motivo);
+      expect((await db.query('SELECT voz_omitida_motivo FROM producciones WHERE id = $1', [produccion.id])).rows[0].voz_omitida_motivo).toBe(motivo);
+      expect((await auditRowsFor(db, 'producciones', produccion.id))[0]!.datos_despues).toMatchObject({ voz_omitida: motivo });
+      expect(await count(db, 'producciones_locuciones', w.clienteId)).toBe(0);
+    });
+  }, 120_000);
 });
 
 describeFfmpeg('producirPieza: a reel that cannot be produced leaves nothing behind', () => {

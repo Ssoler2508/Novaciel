@@ -130,7 +130,11 @@ Only reels get these checks, and they pass when the production has no voice-over
 | `voz_volumen_fuera_de_rango` | blocking | The integrated loudness is within -16 LUFS +- 2 LU and the true peak is not above -0.5 dBTP (EBU R128, measured with FFmpeg `ebur128` on the stored file). | Spec 10 (technical: audio with normalized volume) | all three values |
 | `voz_subtitulos_ausentes` | blocking | The production has voice-overs but records no text template, so the voice has no word-by-word subtitles. | Spec 9.4 (subtitles always on) | no |
 | `voz_etiqueta_ia_pendiente` | **warning** | The audio is synthetic: the piece must carry the AI-content label when published. The reviewer sees it; the label itself is built with publishing (Step 10). | Spec 10 (AI shots: label) | the rule of each network |
-| `voz_omitida_sin_plantilla` | **warning** | The client has a voice configured and the reel came out silent because no subtitle template could be used (Remotion off). Read from the audit row of the production. | House rule (ADR-08) | no |
+| `voz_omitida_sin_plantilla` | **warning** | The client has a voice configured and the reel came out silent because no subtitle template could be used (Remotion off). Read from the column `producciones.voz_omitida_motivo`; for productions made before it existed (NULL), from the audit row, recorded as `origen: auditoria` in the parameters (section 4.11). | House rule (ADR-08) | no |
+
+### 4.11 Where the omitted-voice reason is read from
+
+Since debt cleanup 01 (migration `1700000002400`) the reason lives in `producciones.voz_omitida_motivo`: nullable, immutable, with a CHECK on the closed list (`sin_configuracion`, `sin_proveedor`, `sin_plantilla`, `sin_texto`). NULL means no voice was left out, or the production predates the column. QC reads the column; when it is NULL it falls back to the `voz_omitida` of the audit row that created the production and records `origen: auditoria` in the parameters of `voz_omitida_sin_plantilla`. The fallback is safe for any NULL row: a production with no omission has none in its audit either. Old rows are not backfilled (a production is never edited). The public production view does not expose the column; the reviewer sees the reason through the warning.
 
 The loudness check needs FFmpeg (`ReelQcConfig.ffmpegPath`), required only when the production has a voice-over.
 

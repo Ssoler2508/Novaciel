@@ -26,7 +26,7 @@ import { codigosDeFallo, decidirResultadoQC } from './decision.js';
 import { QcDatosInconsistentesError, QcEstadoInvalidoError, QcProduccionCambioError, QcSinProduccionError } from './errors.js';
 import { checksFuentes } from './fuentes.js';
 import { checksVoz } from './voz.js';
-import { listEscenasConVoz, vozOmitidaDeProduccion } from '../locuciones/locucionesRepository.js';
+import { listEscenasConVoz, resolverVozOmitida } from '../locuciones/locucionesRepository.js';
 import { checksMarca } from './marca.js';
 import { checksProgramacion } from './programacion.js';
 import { checksReglas } from './reglas.js';
@@ -127,7 +127,7 @@ export async function ejecutarQC(deps: QcDeps, clienteId: ClienteId, piezaId: st
   const modelo = brief.contenido_modelo ?? contenido;
   const esReel = pieza.formato === 'reel';
   const escenasConVoz = esReel ? await listEscenasConVoz(db, clienteId, produccion.id) : [];
-  const vozOmitida = esReel ? await vozOmitidaDeProduccion(db, clienteId, produccion.id) : null;
+  const vozOmitida = esReel ? await resolverVozOmitida(db, clienteId, produccion) : { motivo: null, origen: null };
   const campos = armarCampos(produccion, contenido, modelo, esReel, escenasConVoz);
   const hechos = await getHechosByIds(db, clienteId, extractFactTokenIds(modelo));
   const reglas = await listReglas(db, clienteId);
@@ -148,7 +148,7 @@ export async function ejecutarQC(deps: QcDeps, clienteId: ClienteId, piezaId: st
       ...(deps.reel ? { reel: deps.reel } : {}),
       conVoz: escenasConVoz.length > 0,
     })),
-    ...checksVoz({ esReel, escenasConVoz, plantillaRegistrada: produccion.plantilla !== null && produccion.plantilla_version !== null, vozOmitida }),
+    ...checksVoz({ esReel, escenasConVoz, plantillaRegistrada: produccion.plantilla !== null && produccion.plantilla_version !== null, vozOmitida: vozOmitida.motivo, vozOmitidaOrigen: vozOmitida.origen }),
     ...checksTextos({
       formato: pieza.formato,
       textoPublicacion: produccion.texto_publicacion,

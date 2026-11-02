@@ -193,6 +193,7 @@ describeFfmpeg('scenario A: a reel with a voice-over', () => {
     const audit = (await pool.query(`SELECT datos_despues FROM auditoria WHERE tabla = 'producciones' AND accion = 'crear' AND fila_id = $1`, [A.produccion.id])).rows[0].datos_despues;
     expect(audit).toMatchObject({ voces: 2, escenas: 3 });
     expect(audit.voz_omitida).toBeUndefined();
+    expect((await getProduccionActual(pool, A.clienteId, A.piezaId))!.voz_omitida_motivo).toBeNull();
     expect(JSON.stringify(audit)).not.toMatch(/granos|Tostamos|Primera/);
     expect(await listEscenasConVoz(pool, A.clienteId, A.produccion.id)).toEqual([1, 3]);
   });
@@ -346,6 +347,8 @@ describeFfmpeg('scenario B: a client with no voice configured', () => {
     expect(() => verifyReelOutput({ facts, layout, timeline: { totalFrames: 450, totalMs: 15_000 }, tamanoBytes: B.bytes.length })).not.toThrow();
     const audit = (await getTestPool().query(`SELECT datos_despues FROM auditoria WHERE tabla = 'producciones' AND accion = 'crear' AND fila_id = $1`, [B.produccion.id])).rows[0].datos_despues;
     expect(audit).toMatchObject({ voz_omitida: 'sin_configuracion' });
+    expect(B.produccion.voz_omitida_motivo).toBe('sin_configuracion');
+    expect((await getProduccionActual(getTestPool(), B.clienteId, B.piezaId))!.voz_omitida_motivo).toBe('sin_configuracion');
     expect(audit.voces).toBeUndefined();
   });
 
@@ -368,15 +371,33 @@ describeFfmpeg('scenario E: a voice is configured but no template can be used', 
     expect(juzgarSonoridad(await medirSonoridad(E.archivo, meter))).toBe('silencio');
     const audit = (await getTestPool().query(`SELECT datos_despues FROM auditoria WHERE tabla = 'producciones' AND accion = 'crear' AND fila_id = $1`, [E.produccion.id])).rows[0].datos_despues;
     expect(audit).toMatchObject({ voz_omitida: 'sin_plantilla' });
+    expect(E.produccion.voz_omitida_motivo).toBe('sin_plantilla');
+    expect((await getProduccionActual(getTestPool(), E.clienteId, E.piezaId))!.voz_omitida_motivo).toBe('sin_plantilla');
   });
 
   it('quality control passes and shows the reviewer the WARNING voz_omitida_sin_plantilla', async () => {
     const { revision } = await controlar(E);
     expect(revision.resultado).toBe('aprobado');
-    expect(por(revision.checks, 'voz_omitida_sin_plantilla')).toMatchObject({ resultado: 'advertencia', severidad: 'advertencia' });
+    expect(por(revision.checks, 'voz_omitida_sin_plantilla')).toMatchObject({ resultado: 'advertencia', severidad: 'advertencia', parametros: {} }); // from the column: no fallback marker
     for (const codigo of ['voz_audio_ausente', 'voz_volumen_fuera_de_rango', 'voz_subtitulos_ausentes', 'voz_etiqueta_ia_pendiente']) {
       expect(por(revision.checks, codigo), codigo).toMatchObject({ resultado: 'pasa' });
     }
+  });
+});
+
+describeFfmpeg('scenario E, as a production made before the column existed', () => {
+  it('quality control falls back to the audit row: the same warning, with the origin recorded', async () => {
+    const { revision } = await withTestTransaction(async (db) => {
+      const storage = new FakeStorage();
+      await storage.put(E.produccion.archivos[0]!.clave_almacenamiento, E.bytes);
+      await db.query('SET CONSTRAINTS ALL IMMEDIATE');
+      await db.query('ALTER TABLE producciones DISABLE TRIGGER producciones_before_update_delete');
+      await db.query('SET CONSTRAINTS ALL DEFERRED');
+      await db.query('UPDATE producciones SET voz_omitida_motivo = NULL WHERE id = $1', [E.produccion.id]);
+      return ejecutarQC({ db, storage, tempRoot, reel: { ffprobePath: 'ffprobe', ffprobeTimeoutMs: 15_000, ffmpegPath: 'ffmpeg', ffmpegTimeoutMs: 120_000 } }, E.clienteId, E.piezaId, SISTEMA);
+    });
+    expect(revision.resultado).toBe('aprobado');
+    expect(por(revision.checks, 'voz_omitida_sin_plantilla')).toMatchObject({ resultado: 'advertencia', severidad: 'advertencia', parametros: { origen: 'auditoria' } });
   });
 });
 
