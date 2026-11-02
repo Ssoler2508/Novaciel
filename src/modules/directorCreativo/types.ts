@@ -89,6 +89,11 @@ export interface BriefContext {
    * written in Spanish and then in English, the on-screen text in Spanish.
    */
   idioma: 'es' | 'en' | 'ambos';
+  /**
+   * The piece is a reel of a client with a voice-over enabled: `voz_en_off` is the main text of every scene and
+   * `texto_en_pantalla` a short fallback title. False for any other format or a client without voice.
+   */
+  conVoz: boolean;
   voz: BriefVoz;
   visual: BriefVisual;
   /** Every valid fact; `citado` marks the ones the planner attached to this piece. */
