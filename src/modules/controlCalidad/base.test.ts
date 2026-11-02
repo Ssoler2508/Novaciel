@@ -10,7 +10,7 @@ describe('the catalogue', () => {
     for (const codigo of CODIGOS_QC) expect(codigo, codigo).toMatch(/^[a-z0-9_]{1,60}$/);
   });
 
-  it('gives every code a short reason in Spanish and a severity, and only two codes are warnings', () => {
+  it('gives every code a short reason in Spanish and a severity, and only four codes are warnings', () => {
     for (const codigo of CODIGOS_QC) {
       const { severidad, motivo } = CATALOGO[codigo];
       expect(['bloqueante', 'advertencia'], codigo).toContain(severidad);
@@ -18,7 +18,23 @@ describe('the catalogue', () => {
       expect(motivo.length, codigo).toBeLessThanOrEqual(120);
       expect(motivo.endsWith('.'), codigo).toBe(true);
     }
-    expect(CODIGOS_QC.filter((c) => CATALOGO[c].severidad === 'advertencia').sort()).toEqual(['marca_colores_respaldo', 'programacion_proxima']);
+    expect(CODIGOS_QC.filter((c) => CATALOGO[c].severidad === 'advertencia').sort()).toEqual([
+      'marca_colores_respaldo',
+      'programacion_proxima',
+      'voz_etiqueta_ia_pendiente',
+      'voz_omitida_sin_plantilla',
+    ]);
+  });
+
+  it('has 43 codes: the 38 of Step 8 and the 5 of the voice-over (Step 7d)', () => {
+    expect(CODIGOS_QC).toHaveLength(43);
+    expect(CODIGOS_QC.filter((c) => c.startsWith('voz_'))).toEqual([
+      'voz_audio_ausente',
+      'voz_volumen_fuera_de_rango',
+      'voz_subtitulos_ausentes',
+      'voz_etiqueta_ia_pendiente',
+      'voz_omitida_sin_plantilla',
+    ]);
   });
 
   it('has the agreed reason for a scene without real media', () => {

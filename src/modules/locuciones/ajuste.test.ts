@@ -132,3 +132,42 @@ describe('the voice check uses the same scene lengths as the 7b timeline', () =>
     }
   });
 });
+
+import { CARACTERES_POR_SEGUNDO_MAXIMOS, comprobarCotaMinimaReel, duracionMinimaVozMs } from './ajuste.js';
+
+describe('the free lower bound before paying', () => {
+  it('is the characters over the fastest speech, shorter at a faster voice speed', () => {
+    expect(CARACTERES_POR_SEGUNDO_MAXIMOS).toBe(24);
+    expect(duracionMinimaVozMs(24, 1)).toBe(1000);
+    expect(duracionMinimaVozMs(120, 1)).toBe(5000);
+    expect(duracionMinimaVozMs(120, 1.2)).toBe(4167);
+    expect(duracionMinimaVozMs(0, 1)).toBe(0);
+    expect(() => duracionMinimaVozMs(-1, 1)).toThrow(LocucionEntradaInvalidaError);
+    expect(() => duracionMinimaVozMs(10, 0)).toThrow(LocucionEntradaInvalidaError);
+  });
+
+  const escena = (n: number, caracteres: number | null, duracionS = 5) => ({ escena: n, duracionS, caracteres });
+  // A 5 s scene minus 150 ms of lead-in and 300 ms of tail leaves 4550 ms: 109.2 characters at 24 per second.
+  it('lets a text through when the fastest reading fits and refuses when even that does not, listing ALL scenes', () => {
+    expect(() => comprobarCotaMinimaReel([escena(1, 109), escena(2, null), escena(3, 0)], 1)).not.toThrow();
+    const e = falla(() => comprobarCotaMinimaReel([escena(1, 110), escena(2, 50), escena(3, 400)], 1), LocucionMasLargaQueEscenaError);
+    expect(e.escenas.map((x) => x.escena)).toEqual([1, 3]);
+    expect(e.escenas[0]!.excesoMs).toBeGreaterThan(0);
+  });
+
+  it('a faster voice setting lowers the bound', () => {
+    expect(() => comprobarCotaMinimaReel([escena(1, 120)], 1)).toThrow(LocucionMasLargaQueEscenaError);
+    expect(() => comprobarCotaMinimaReel([escena(1, 120)], 1.2)).not.toThrow();
+  });
+
+  it('measures the RENDERED scene (whole frames)', () => {
+    // 3.01 s renders as 3000 ms: 2550 ms of room, 61.2 characters.
+    expect(() => comprobarCotaMinimaReel([escena(1, 61, 3.01)], 1)).not.toThrow();
+    expect(() => comprobarCotaMinimaReel([escena(1, 62, 3.01)], 1)).toThrow(LocucionMasLargaQueEscenaError);
+  });
+
+  it('refuses invalid durations', () => {
+    expect(() => comprobarCotaMinimaReel([escena(1, 10, 0)], 1)).toThrow(LocucionEntradaInvalidaError);
+    expect(() => comprobarCotaMinimaReel([escena(1, 10, Number.NaN)], 1)).toThrow(LocucionEntradaInvalidaError);
+  });
+});

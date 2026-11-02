@@ -141,3 +141,24 @@ export async function insertLocucion(db: Db, n: NuevaLocucion): Promise<{ locuci
   if (!existing) throw new Error('The voice-over insert was skipped but no row exists');
   return { locucion: existing, creada: false };
 }
+
+/** The scenes of a production that have a voice-over record, in order. */
+export async function listEscenasConVoz(db: Db, clienteId: ClienteId, produccionId: string): Promise<number[]> {
+  const { rows } = await db.query<{ escena: number }>('SELECT escena FROM producciones_locuciones WHERE cliente_id = $1 AND produccion_id = $2 ORDER BY escena', [clienteId, produccionId]);
+  return rows.map((r) => r.escena);
+}
+
+/**
+ * Why the production was made without its voice (`sin_plantilla`, `sin_texto`...), read from the audit row that
+ * created it, or null when the voice was used or never configured. A closed identifier, never text.
+ */
+export async function vozOmitidaDeProduccion(db: Db, clienteId: ClienteId, produccionId: string): Promise<string | null> {
+  const { rows } = await db.query<{ motivo: string | null }>(
+    `SELECT datos_despues->>'voz_omitida' AS motivo FROM auditoria
+     WHERE cliente_id = $1 AND tabla = 'producciones' AND accion = 'crear' AND fila_id::text = $2
+     ORDER BY id DESC LIMIT 1`,
+    [clienteId, produccionId],
+  );
+  const motivo = rows[0]?.motivo ?? null;
+  return motivo !== null && /^[a-z_]{1,40}$/.test(motivo) ? motivo : null;
+}

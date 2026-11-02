@@ -52,6 +52,12 @@ export const CODIGOS_QC = [
   'marca_fuente_no_permitida',
   'marca_glifos_no_soportados',
   'marca_colores_respaldo',
+  // Voice-over (Step 7d)
+  'voz_audio_ausente',
+  'voz_volumen_fuera_de_rango',
+  'voz_subtitulos_ausentes',
+  'voz_etiqueta_ia_pendiente',
+  'voz_omitida_sin_plantilla',
 ] as const;
 
 export type CodigoQC = (typeof CODIGOS_QC)[number];
@@ -96,4 +102,9 @@ export const CATALOGO: Record<CodigoQC, { severidad: Severidad; motivo: string }
   marca_fuente_no_permitida: { severidad: 'bloqueante', motivo: 'La fuente de los textos no está entre las permitidas.' },
   marca_glifos_no_soportados: { severidad: 'bloqueante', motivo: 'Un texto en pantalla usa caracteres que la fuente no puede dibujar.' },
   marca_colores_respaldo: { severidad: 'advertencia', motivo: 'El perfil de marca no tiene colores útiles; se usaron los de respaldo.' },
+  voz_audio_ausente: { severidad: 'bloqueante', motivo: 'La pieza tiene locución, pero el audio del video está en silencio.' },
+  voz_volumen_fuera_de_rango: { severidad: 'bloqueante', motivo: 'El volumen de la locución está fuera del rango permitido (sonoridad o pico).' },
+  voz_subtitulos_ausentes: { severidad: 'bloqueante', motivo: 'La pieza tiene locución, pero no tiene subtítulos palabra por palabra.' },
+  voz_etiqueta_ia_pendiente: { severidad: 'advertencia', motivo: 'La pieza lleva audio sintético: debe publicarse con la etiqueta de contenido con IA (por confirmar con cada red).' },
+  voz_omitida_sin_plantilla: { severidad: 'advertencia', motivo: 'El cliente tiene voz configurada, pero el reel salió sin locución porque no se pudo usar una plantilla de subtítulos.' },
 };

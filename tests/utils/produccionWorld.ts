@@ -45,6 +45,10 @@ export interface ProducibleWorldOptions {
    * figure and passes the rule-2 check of quality control.
    */
   sinCifras?: boolean;
+  /** Reels: the `voz_en_off` of each scene (undefined or missing: the scene has no voice-over). */
+  vocesEnOff?: readonly (string | undefined)[];
+  /** The `voz` block of the profile this world creates (ignored with `base`). */
+  perfilVoz?: Record<string, unknown>;
 }
 
 export interface ProducibleWorld {
@@ -73,7 +77,7 @@ export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): P
     ({ clienteId, planId, perfilId, storage } = o.base);
   } else {
     clienteId = asClienteId((await createCliente(db)).id);
-    perfilId = (await createPerfilMarca(db, { clienteId, kit_visual: structuredClone(SEED_PROFILE.kit_visual) })).id;
+    perfilId = (await createPerfilMarca(db, { clienteId, kit_visual: structuredClone(SEED_PROFILE.kit_visual), ...(o.perfilVoz ? { voz: o.perfilVoz } : {}) })).id;
     planId = (await createPlanSemanal(db, { clienteId, estado: 'aprobado', perfilMarcaId: perfilId, ...(o.semanaInicio ? { semanaInicio: o.semanaInicio } : {}) })).id;
     storage = new FakeStorage();
   }
@@ -93,7 +97,8 @@ export async function producibleWorld(db: Db, o: ProducibleWorldOptions = {}): P
       await storage.put(row.clave_almacenamiento, clip.bytes);
       media.push(row);
       const marks = clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entrada_ms: clip.entradaMs, salida_ms: clip.salidaMs } : {};
-      escenas.push({ orden, texto_en_pantalla: o.texts?.[i] ?? `Escena ${numero} del origen del café`, ...duracion, toma: { media_id: row.id, ...marks } });
+      const voz = o.vocesEnOff?.[i];
+      escenas.push({ orden, texto_en_pantalla: o.texts?.[i] ?? `Escena ${numero} del origen del café`, ...(voz !== undefined ? { voz_en_off: voz } : {}), ...duracion, toma: { media_id: row.id, ...marks } });
       tomas.push({ mediaId: row.id, ...(clip.entradaMs !== undefined && clip.salidaMs !== undefined ? { entradaMs: clip.entradaMs, salidaMs: clip.salidaMs } : {}) });
       continue;
     }

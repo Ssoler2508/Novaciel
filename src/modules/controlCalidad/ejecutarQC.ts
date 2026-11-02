@@ -25,6 +25,8 @@ import { crearCheck } from './crearCheck.js';
 import { codigosDeFallo, decidirResultadoQC } from './decision.js';
 import { QcDatosInconsistentesError, QcEstadoInvalidoError, QcProduccionCambioError, QcSinProduccionError } from './errors.js';
 import { checksFuentes } from './fuentes.js';
+import { checksVoz } from './voz.js';
+import { listEscenasConVoz, vozOmitidaDeProduccion } from '../locuciones/locucionesRepository.js';
 import { checksMarca } from './marca.js';
 import { checksProgramacion } from './programacion.js';
 import { checksReglas } from './reglas.js';
@@ -66,7 +68,13 @@ export const MOTIVO_QC_APROBADO = 'control_calidad_aprobado';
 export const MOTIVO_QC_NO_APROBADO = 'control_calidad_no_aprobado';
 
 /** Pairs every stored text with the model's text of the same field (the one that holds the fact tokens). */
-function armarCampos(produccion: ProduccionView, contenido: NonNullable<Awaited<ReturnType<typeof getBriefDeProduccion>>>['contenido'], modelo: typeof contenido, esReel: boolean): CampoPublicado[] {
+function armarCampos(
+  produccion: ProduccionView,
+  contenido: NonNullable<Awaited<ReturnType<typeof getBriefDeProduccion>>>['contenido'],
+  modelo: typeof contenido,
+  esReel: boolean,
+  escenasConVoz: readonly number[],
+): CampoPublicado[] {
   const campo = (kind: CampoPublicado['campo'], indice: number, texto: string, delModelo: string | undefined): CampoPublicado => ({
     campo: kind,
     indice,
@@ -79,6 +87,10 @@ function armarCampos(produccion: ProduccionView, contenido: NonNullable<Awaited<
   produccion.textos_alternativos.forEach((a, i) => campos.push(campo('texto_alternativo', i, a, esReel ? undefined : modelo.escenas[i]?.texto_alternativo)));
   if (produccion.ubicacion !== null) campos.push(campo('ubicacion', 0, produccion.ubicacion, modelo.texto_publicacion.ubicacion));
   contenido.escenas.forEach((escena, i) => campos.push(campo('texto_en_pantalla', i, escena.texto_en_pantalla, modelo.escenas[i]?.texto_en_pantalla)));
+  // What is SPOKEN is published too: rule 2 and the banned rules apply to it exactly as to the on-screen text.
+  contenido.escenas.forEach((escena, i) => {
+    if (escenasConVoz.includes(escena.orden) && escena.voz_en_off !== undefined) campos.push(campo('voz_en_off', i, escena.voz_en_off, modelo.escenas[i]?.voz_en_off));
+  });
   return campos;
 }
 
@@ -114,7 +126,9 @@ export async function ejecutarQC(deps: QcDeps, clienteId: ClienteId, piezaId: st
   const contenido = brief.contenido;
   const modelo = brief.contenido_modelo ?? contenido;
   const esReel = pieza.formato === 'reel';
-  const campos = armarCampos(produccion, contenido, modelo, esReel);
+  const escenasConVoz = esReel ? await listEscenasConVoz(db, clienteId, produccion.id) : [];
+  const vozOmitida = esReel ? await vozOmitidaDeProduccion(db, clienteId, produccion.id) : null;
+  const campos = armarCampos(produccion, contenido, modelo, esReel, escenasConVoz);
   const hechos = await getHechosByIds(db, clienteId, extractFactTokenIds(modelo));
   const reglas = await listReglas(db, clienteId);
   const biblioteca = new Set(await listMediaIds(db, clienteId));
@@ -132,7 +146,9 @@ export async function ejecutarQC(deps: QcDeps, clienteId: ClienteId, piezaId: st
       ...(deps.tempRoot !== undefined ? { tempRoot: deps.tempRoot } : {}),
       ...(deps.maxImagenBytes !== undefined ? { maxImagenBytes: deps.maxImagenBytes } : {}),
       ...(deps.reel ? { reel: deps.reel } : {}),
+      conVoz: escenasConVoz.length > 0,
     })),
+    ...checksVoz({ esReel, escenasConVoz, plantillaRegistrada: produccion.plantilla !== null && produccion.plantilla_version !== null, vozOmitida }),
     ...checksTextos({
       formato: pieza.formato,
       textoPublicacion: produccion.texto_publicacion,

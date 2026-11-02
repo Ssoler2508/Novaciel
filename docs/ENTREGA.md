@@ -89,6 +89,11 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 22. `programacion_proxima` y `marca_fuente_no_permitida` solo tienen pruebas unitarias; ninguna prueba del servicio los produce (ADR-07, sección 7).
 23. Los valores de la casa del catálogo marcados VERIFY (tamaños máximos, topes de texto, parámetros de codificación, opacidad del velo) siguen sin comprobarse contra la documentación de las redes (pregunta 6).
 
+**Voz en off (ADR-08, Paso 7d)**
+24. El prompt del director creativo sigue escribiendo `texto_en_pantalla` y `voz_en_off` como dos campos separados. En una escena con voz solo se dibuja el texto hablado (como subtítulos); conviene ajustar el prompt para que `voz_en_off` funcione como subtítulo (corto, cabe en la duración de la escena) y tratar `texto_en_pantalla` como no usado en esas escenas.
+25. La cota mínima de duración antes de pagar usa 24 caracteres por segundo (VERIFY): una voz demasiado larga, pero no por tanto, se descubre después de pagarla (queda en caché).
+26. Los valores de sonoridad (−16 LUFS ± 2 LU, pico −0,5 dBTP, techo del limitador −1 dBFS, silencio −50 LUFS) son valores de la casa por verificar con las redes.
+
 ## 5. Preguntas abiertas para NovaCiel
 
 1. **Tres transiciones nuevas a `con_cambios`:** la espec. 15 no las prevé desde `aprobada`, `programada` ni `revision_novaciel` (ADR-05, secciones 1, 5 y checkpoint C; la tercera es del Paso 8: la decisión interna "cambios" ya no puede darse desde `en_control_calidad`, así que necesita salida desde `revision_novaciel`). ¿Se confirman?

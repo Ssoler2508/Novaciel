@@ -86,3 +86,46 @@ export function comprobarAjusteReel(escenas: readonly EscenaDeReel[], margenes: 
   if (totalFrames < min * REEL_FPS || totalFrames > max * REEL_FPS) throw new DuracionReelFueraDeRangoError(totalMs, min * 1000, max * 1000);
   return { escenas: lista, totalMs };
 }
+
+// ---- Free lower bound, before paying -----------------------------------------------------------------
+
+/**
+ * The fastest speech the code assumes, in characters per second (HOUSE VALUE, VERIFY with real voices: normal
+ * Spanish is about 14 to 16; 24 is deliberately faster than any real voice, so the bound never refuses a
+ * voice that would have fitted).
+ */
+export const CARACTERES_POR_SEGUNDO_MAXIMOS = 24;
+
+/** The least time a text of `caracteres` can take at the given voice speed. */
+export function duracionMinimaVozMs(caracteres: number, velocidad: number): number {
+  if (!Number.isInteger(caracteres) || caracteres < 0 || typeof velocidad !== 'number' || !Number.isFinite(velocidad) || velocidad <= 0) {
+    throw new LocucionEntradaInvalidaError('duracion_de_voz_invalida');
+  }
+  return Math.ceil((caracteres * 1000) / (CARACTERES_POR_SEGUNDO_MAXIMOS * velocidad));
+}
+
+export interface EscenaParaCota {
+  escena: number;
+  duracionS: number;
+  /** Characters of the prepared text, or null when the scene has no voice. */
+  caracteres: number | null;
+}
+
+/**
+ * Before any voice is paid for: if even the fastest possible reading of a text does not fit its rendered scene
+ * (with the margins), no real voice will, so the production is refused with LocucionMasLargaQueEscenaError
+ * listing ALL such scenes, and nothing is spent. A text that passes may still be too long once the real voice
+ * is measured; that is checked with comprobarAjusteReel after generating.
+ */
+export function comprobarCotaMinimaReel(escenas: readonly EscenaParaCota[], velocidad: number, margenes: MargenesVoz = MARGENES_VOZ): void {
+  const excedidas: EscenaExcedida[] = [];
+  for (const e of escenas) {
+    if (typeof e.duracionS !== 'number' || !Number.isFinite(e.duracionS) || e.duracionS <= 0 || Math.round(e.duracionS * REEL_FPS) < 1) {
+      throw new LocucionEntradaInvalidaError('duracion_de_escena_invalida');
+    }
+    if (e.caracteres === null) continue;
+    const sobra = exceso(duracionMinimaVozMs(e.caracteres, velocidad), reelSceneMs(e.duracionS), margenes);
+    if (sobra > 0) excedidas.push({ escena: e.escena, excesoMs: sobra });
+  }
+  if (excedidas.length > 0) throw new LocucionMasLargaQueEscenaError(excedidas);
+}

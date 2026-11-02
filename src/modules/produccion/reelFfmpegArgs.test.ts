@@ -269,3 +269,91 @@ describe('buildFfmpegArgs: a PNG sequence overlay (Step 7c)', () => {
     expect(args.join('\n')).not.toContain('SECRET');
   });
 });
+
+import { buildAudioMezclaArgs, GANANCIA_MAXIMA_DB, TECHO_VOZ_LINEAL } from './reelFfmpegArgs.js';
+
+describe('buildFfmpegArgs: the voice-over track (Step 7d)', () => {
+  const timeline = buildReelTimeline(guion(['Hola', '', '']), LIBRARY);
+  const voz = (n: number) => ({ ruta: abs('work', `voz-${n}.mp3`), entradaMs: 150 });
+  const filtrosDe = (args: string[]) => args[args.indexOf('-filter_complex') + 1]!;
+  const AF = 'aformat=sample_fmts=fltp:channel_layouts=stereo';
+
+  it('without voices the arguments are exactly the silent ones', () => {
+    expect(buildFfmpegArgs(timeline, { ...PATHS, voces: {} })).toEqual(buildFfmpegArgs(timeline, PATHS));
+    expect(buildFfmpegArgs(timeline, PATHS)).toContain('anullsrc=r=48000:cl=stereo');
+  });
+
+  it('delays, pads and cuts each voice to its scene, joins the scenes, applies the gain and the ceiling', () => {
+    const args = buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: voz(1), 3: voz(3) }, gananciaDb: -3.456 });
+    const filtros = filtrosDe(args).split(';');
+    // 150 frames of 1600 samples: 240000 samples per 5 s scene.
+    expect(filtros).toContain(`[4:a]aresample=48000,${AF},adelay=150|150,apad,atrim=end_sample=240000,asetpts=PTS-STARTPTS[as1]`);
+    expect(filtros).toContain(`anullsrc=r=48000:cl=stereo,${AF},atrim=end_sample=240000,asetpts=PTS-STARTPTS[as2]`);
+    expect(filtros).toContain(`[5:a]aresample=48000,${AF},adelay=150|150,apad,atrim=end_sample=240000,asetpts=PTS-STARTPTS[as3]`);
+    expect(filtros).toContain('[as1][as2][as3]concat=n=3:v=0:a=1[amezcla]');
+    expect(filtros.at(-1)).toBe(`[amezcla]volume=-3.46dB,alimiter=limit=${TECHO_VOZ_LINEAL}:level=disabled[aout]`);
+    // The voice files come after the video and overlay inputs; no silent source input is added.
+    expect(args).toContain(`file:${voz(1).ruta}`);
+    expect(args).toContain(`file:${voz(3).ruta}`);
+    expect(args).not.toContain('anullsrc=r=48000:cl=stereo');
+    expect(args.slice(args.indexOf('-map') + 2, args.indexOf('-map') + 4)).toEqual(['-map', '[aout]']);
+    // The rest of the output is unchanged.
+    expect(args).toContain('-frames:v');
+    expect(args.slice(args.indexOf('-c:a'), args.indexOf('-c:a') + 6)).toEqual(['-c:a', 'aac', '-b:a', '128k', '-ar', '48000']);
+  });
+
+  it('every audio sample count is the scene frames at the audio rate, whatever the scene length', () => {
+    const tl = buildReelTimeline(guion(['a', 'b', 'c'], 5.1, ['a', 'a', 'a'], [null, null, null]), LIBRARY);
+    const filtros = filtrosDe(buildFfmpegArgs(tl, { ...PATHS, overlays: { 1: PATHS.overlays[1]!, 2: abs('work', 'ov2.png'), 3: abs('work', 'ov3.png') }, voces: { 2: voz(2) } }));
+    for (const s of tl.segmentos) expect(filtros).toContain(`atrim=end_sample=${s.frames * 1600}`);
+    expect(tl.segmentos[0]!.frames * 1600).toBe(Math.round((tl.segmentos[0]!.frames * 48000) / 30));
+  });
+
+  it('puts only paths, fixed words and numbers in the arguments: no client text', () => {
+    const args = buildFfmpegArgs(buildReelTimeline(guion(['Texto secreto del cliente', 'Otro secreto', 'Tercero']), LIBRARY), {
+      ...PATHS,
+      overlays: { 1: PATHS.overlays[1]!, 2: abs('work', 'ov2.png'), 3: abs('work', 'ov3.png') },
+      voces: { 1: voz(1) },
+      gananciaDb: 2,
+    });
+    expect(args.join(' ')).not.toMatch(/secreto|cliente|Tercero/);
+  });
+
+  it('refuses voices that cannot be used: extra scene, relative or control-character path, bad lead-in, bad gain', () => {
+    const razon = (run: () => unknown): string => {
+      try {
+        run();
+      } catch (error) {
+        expect(error).toBeInstanceOf(RutaInvalidaError);
+        return (error as RutaInvalidaError).reason;
+      }
+      throw new Error('expected a refusal');
+    };
+    expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 4: voz(4) } }))).toBe('voz_sobrante');
+    expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: { ruta: 'relativa/voz.mp3', entradaMs: 0 } } }))).toBe('ruta_no_absoluta');
+    expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: { ruta: `${abs('work')}${path.sep}v\u0001.mp3`, entradaMs: 0 } } }))).toBe('ruta_con_caracter_de_control');
+    expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: { ...voz(1), entradaMs: -1 } } }))).toBe('voz_faltante');
+    expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: { ...voz(1), entradaMs: 1.5 } } }))).toBe('voz_faltante');
+    for (const gananciaDb of [Number.NaN, Infinity, GANANCIA_MAXIMA_DB + 1, -GANANCIA_MAXIMA_DB - 1]) {
+      expect(razon(() => buildFfmpegArgs(timeline, { ...PATHS, voces: { 1: voz(1) }, gananciaDb }))).toBe('ganancia_invalida');
+    }
+  });
+
+  it('the measurement graph is the same graph without gain and limiter, written to a WAV', () => {
+    const args = buildAudioMezclaArgs(timeline, { voces: { 1: voz(1), 3: voz(3) }, salida: abs('work', 'mezcla.wav') });
+    expect(args).toEqual([
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', `file:${voz(1).ruta}`, '-i', `file:${voz(3).ruta}`,
+      '-filter_complex',
+      [
+        `[0:a]aresample=48000,${AF},adelay=150|150,apad,atrim=end_sample=240000,asetpts=PTS-STARTPTS[as1]`,
+        `anullsrc=r=48000:cl=stereo,${AF},atrim=end_sample=240000,asetpts=PTS-STARTPTS[as2]`,
+        `[1:a]aresample=48000,${AF},adelay=150|150,apad,atrim=end_sample=240000,asetpts=PTS-STARTPTS[as3]`,
+        '[as1][as2][as3]concat=n=3:v=0:a=1[amezcla]',
+      ].join(';'),
+      '-map', '[amezcla]', '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', '-fflags', '+bitexact', '-flags:a', '+bitexact',
+      `file:${abs('work', 'mezcla.wav')}`,
+    ]);
+    expect(() => buildAudioMezclaArgs(timeline, { voces: {}, salida: abs('work', 'mezcla.wav') })).toThrow(RutaInvalidaError);
+  });
+});

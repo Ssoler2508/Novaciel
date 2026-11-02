@@ -13,13 +13,16 @@ import { MediaProbeError } from '../../lib/media/probe/types.js';
 import type { Storage } from '../../lib/media/storage/types.js';
 import { type CapaTextoAnimado, renderizarCapaEscena } from './capaTexto.js';
 import { elegirColores } from './colors.js';
-import { CapaTextoError, FuenteDeVideoIlegibleError, RemotionNoDisponibleError, SalidaInvalidaError } from './errors.js';
+import { CapaTextoError, FuenteDeVideoIlegibleError, RemotionNoDisponibleError, SalidaInvalidaError, SonoridadFueraDeRangoError, VocesSinPlantillaError, VozSilenciosaError } from './errors.js';
 import { crearMedidor } from './medidor.js';
 import { construirPropsPlantilla, type PropsPlantilla } from './propsPlantilla.js';
-import { buildFfmpegArgs, DEFAULT_REEL_OUTPUT, type ReelOutputSpec, type ReelOverlayInput } from './reelFfmpegArgs.js';
+import { buildAudioMezclaArgs, buildFfmpegArgs, DEFAULT_REEL_OUTPUT, type ReelOutputSpec, type ReelOverlayInput } from './reelFfmpegArgs.js';
 import { renderReelOverlay } from './reelOverlay.js';
 import { buildReelTimeline, REEL_ALTO, REEL_ANCHO, REEL_FPS, type ReelGuionInput, type ReelSourceMeta, type ReelTimeline } from './reelTimeline.js';
 import { verifyReelOutput } from './reelVerify.js';
+import { calcularGanancia, juzgarSonoridad } from './sonoridadVoz.js';
+import type { TiempoPalabra } from './tiemposPalabras.js';
+import { medirSonoridad as medirSonoridadReal, type Sonoridad } from '../../lib/media/ffmpeg/medirSonoridad.js';
 
 // The reel renderer (Step 7b): real video clips in, one verified MP4 out.
 //
@@ -53,6 +56,22 @@ export interface ReelRenderDeps {
   capaTexto?: CapaTextoAnimado;
   /** Time limit of each scene's layer, in ms. */
   capaTimeoutMs?: number;
+  /** For tests. */
+  medirSonoridad?: (filePath: string, options: { ffmpegPath: string; timeoutMs: number }) => Promise<Sonoridad>;
+}
+
+/** The voice-over of one scene, ready to mix and to subtitle (Step 7d). */
+export interface VozDeReel {
+  /** Scene number, from 1. */
+  escena: number;
+  /** Storage key of the audio file. */
+  clave: string;
+  /** Where the voice starts inside the scene, ms. */
+  entradaMs: number;
+  /** The SPOKEN text: it is the subtitle of the scene, and replaces the on-screen text there. */
+  texto: string;
+  /** The real time of each spoken word, ms from the start of the scene. */
+  tiempos: readonly TiempoPalabra[];
 }
 
 const CAPA_TIMEOUT_POR_DEFECTO_MS = 120_000;
@@ -66,6 +85,12 @@ export interface ReelRenderInput {
   fuente?: string;
   /** The animated template to draw the text with (id and version from the registry). Absent: the 7b PNG overlays. */
   plantilla?: { id: string; version: number };
+  /**
+   * The voice-overs by scene (Step 7d). Needs a template: the spoken text is drawn as subtitles with the voice's
+   * real times, and the on-screen text of a voiced scene is not drawn. The track is mixed, measured and brought
+   * to the target loudness with one static gain.
+   */
+  voces?: readonly VozDeReel[];
   /** Overrides of the encoding values (tests). The tone-mapping capability always comes from the tooling check. */
   outputSpec?: Partial<Omit<ReelOutputSpec, 'hdrToneMap'>>;
 }
@@ -80,6 +105,8 @@ export interface ReelRenderResult {
   timeline: ReelTimeline;
   /** The template the text was drawn with, or null for the PNG overlays. */
   plantilla: { id: string; version: number } | null;
+  /** The voice-over mix (numbers only), or null for a silent reel. */
+  voz: { escenas: readonly number[]; mezclaLufs: number; gananciaDb: number; finalLufs: number; picoVerdaderoDbtp: number | null } | null;
 }
 
 async function hashFile(filePath: string): Promise<Buffer> {
@@ -106,10 +133,18 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
   // 1. Cheap refusals first, before a byte is downloaded: FFmpeg capabilities, then the text of every scene.
   const tooling = await deps.tooling();
   const plantilla = input.plantilla ?? null;
+  const voces = input.voces ?? [];
+  if (voces.length > 0 && plantilla === null) throw new VocesSinPlantillaError();
+  const vozPorEscena = new Map(voces.map((v) => [v.escena, v]));
+  // A voiced scene shows its SPOKEN text (the subtitles); its on-screen text is not drawn.
+  const guion: ReelGuionInput =
+    voces.length === 0
+      ? input.guion
+      : { ...input.guion, contenido: { ...input.guion.contenido, escenas: input.guion.contenido.escenas.map((e) => (vozPorEscena.has(e.orden) ? { ...e, texto_en_pantalla: vozPorEscena.get(e.orden)!.texto } : e)) } };
   const overlays = new Map<number, Buffer>();
   const propsDe = new Map<number, PropsPlantilla>();
   if (plantilla === null) {
-    for (const escena of input.guion.contenido.escenas) {
+    for (const escena of guion.contenido.escenas) {
       const overlay = renderReelOverlay(escena.texto_en_pantalla, input.kitVisual, input.fuente);
       if (overlay) overlays.set(escena.orden, overlay.png);
     }
@@ -119,10 +154,20 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
     // frames of a scene are the same number the timeline will compute from its duration.
     const colores = elegirColores(input.kitVisual);
     const medir = crearMedidor(input.fuente);
-    for (const escena of input.guion.contenido.escenas) {
+    for (const escena of guion.contenido.escenas) {
       const fotogramas = typeof escena.duracion_s === 'number' && Number.isFinite(escena.duracion_s) ? Math.round(escena.duracion_s * REEL_FPS) : 0;
       if (fotogramas < 1) continue; // the timeline refuses this scene with its own typed error
-      const props = construirPropsPlantilla({ plantilla, escena: { orden: escena.orden, texto: escena.texto_en_pantalla, fotogramas }, fps: REEL_FPS, colores, ancho: REEL_ANCHO, alto: REEL_ALTO, medir });
+      const voz = vozPorEscena.get(escena.orden);
+      const props = construirPropsPlantilla({
+        plantilla,
+        escena: { orden: escena.orden, texto: escena.texto_en_pantalla, fotogramas },
+        ...(voz ? { tiempos: voz.tiempos } : {}),
+        fps: REEL_FPS,
+        colores,
+        ancho: REEL_ANCHO,
+        alto: REEL_ALTO,
+        medir,
+      });
       if (props) propsDe.set(escena.orden, props);
     }
   }
@@ -130,7 +175,7 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
   const carpeta = await mkdtemp(path.join(deps.tempRoot ?? os.tmpdir(), 'novaciel-reel-'));
   try {
     // 2. Sources: download by streaming, then probe what is really there.
-    const mediaIds = [...new Set(input.guion.tomas.flatMap((t) => (t.fuente === 'media_real' && t.media_id !== null && input.fuentes[t.media_id] !== undefined ? [t.media_id] : [])))];
+    const mediaIds = [...new Set(guion.tomas.flatMap((t) => (t.fuente === 'media_real' && t.media_id !== null && input.fuentes[t.media_id] !== undefined ? [t.media_id] : [])))];
     const rutasFuente: Record<string, string> = {};
     const meta: Record<string, ReelSourceMeta> = {};
     for (const [i, mediaId] of mediaIds.entries()) {
@@ -150,8 +195,17 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
       meta[mediaId] = { ancho: facts.video.ancho, alto: facts.video.alto, duracionMs, fps: facts.video.fps, hdr: facts.video.hdr };
     }
 
+    // The voice-over files, streamed like the sources.
+    const rutasVoz: Record<number, { ruta: string; entradaMs: number }> = {};
+    for (const voz of voces) {
+      const extension = /\.([A-Za-z0-9]{1,5})$/.exec(voz.clave)?.[1] ?? 'audio';
+      const ruta = path.join(carpeta, `voz-${voz.escena}.${extension}`);
+      await deps.storage.getFile(voz.clave, ruta);
+      rutasVoz[voz.escena] = { ruta, entradaMs: voz.entradaMs };
+    }
+
     // 3. Timeline, overlays on disk, arguments.
-    const timeline = buildReelTimeline(input.guion, meta);
+    const timeline = buildReelTimeline(guion, meta);
     const rutasOverlay: Record<number, ReelOverlayInput> = {};
     let msRemotion = 0;
     for (const segmento of timeline.segmentos) {
@@ -176,7 +230,30 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
       rutasOverlay[segmento.escena] = { carpeta: capa.carpeta, patron: capa.patron };
     }
     const salida = path.join(carpeta, 'salida.mp4');
-    const args = buildFfmpegArgs(timeline, { fuentes: rutasFuente, overlays: rutasOverlay, salida }, { ...DEFAULT_REEL_OUTPUT, ...input.outputSpec, hdrToneMap: tooling.hdr });
+
+    // The voice track: mix it alone, measure it, and bring it to the target with ONE static gain.
+    const medir = deps.medirSonoridad ?? medirSonoridadReal;
+    let gananciaDb = 0;
+    let mezclaLufs = 0;
+    if (voces.length > 0) {
+      const mezcla = path.join(carpeta, 'mezcla.wav');
+      try {
+        await run(buildAudioMezclaArgs(timeline, { voces: rutasVoz, salida: mezcla }), { ffmpegPath: deps.ffmpegPath, timeoutMs: deps.ffmpegTimeoutMs });
+      } catch (error) {
+        if (error instanceof FfmpegRunError) log?.warn({ categoria: error.categoria, exitCode: error.exitCode ?? null }, 'voice mix failed');
+        throw error;
+      }
+      const medida = await medir(mezcla, { ffmpegPath: deps.ffmpegPath, timeoutMs: deps.ffmpegTimeoutMs });
+      const ganancia = calcularGanancia(medida.integradaLufs);
+      if (ganancia === null) throw new VozSilenciosaError(medida.integradaLufs);
+      gananciaDb = ganancia;
+      mezclaLufs = medida.integradaLufs;
+    }
+    const args = buildFfmpegArgs(
+      timeline,
+      { fuentes: rutasFuente, overlays: rutasOverlay, salida, ...(voces.length > 0 ? { voces: rutasVoz, gananciaDb } : {}) },
+      { ...DEFAULT_REEL_OUTPUT, ...input.outputSpec, hdrToneMap: tooling.hdr },
+    );
 
     // 4. Render.
     try {
@@ -207,10 +284,22 @@ export async function renderReel<T>(deps: ReelRenderDeps, input: ReelRenderInput
       if (error instanceof SalidaInvalidaError) log?.warn({ razon: error.razon, detalle: error.detalle ?? null }, 'reel output rejected');
       throw error;
     }
+    // With a voice, the reel as it is must be audible and inside the loudness range (measured on the file).
+    let voz: ReelRenderResult['voz'] = null;
+    if (voces.length > 0) {
+      const final = await medir(salida, { ffmpegPath: deps.ffmpegPath, timeoutMs: deps.ffmpegTimeoutMs });
+      const juicio = juzgarSonoridad(final);
+      if (juicio === 'silencio') throw new VozSilenciosaError(final.integradaLufs);
+      if (juicio !== 'en_rango') throw new SonoridadFueraDeRangoError(final.integradaLufs, final.picoVerdaderoDbtp);
+      voz = { escenas: voces.map((v) => v.escena), mezclaLufs, gananciaDb, finalLufs: final.integradaLufs, picoVerdaderoDbtp: final.picoVerdaderoDbtp };
+    }
     const sha256 = await hashFile(salida);
-    log?.info({ escenas: timeline.segmentos.length, fotogramas: timeline.totalFrames, tamanoBytes: tamano, overlays: plantilla === null ? overlays.size : propsDe.size, plantilla: plantilla?.id ?? null, plantillaVersion: plantilla?.version ?? null, remotionMs: msRemotion }, 'reel rendered');
+    log?.info(
+      { escenas: timeline.segmentos.length, fotogramas: timeline.totalFrames, tamanoBytes: tamano, overlays: plantilla === null ? overlays.size : propsDe.size, plantilla: plantilla?.id ?? null, plantillaVersion: plantilla?.version ?? null, remotionMs: msRemotion, ...(voz ? { voces: voz.escenas.length, mezclaLufs: voz.mezclaLufs, gananciaDb: voz.gananciaDb, finalLufs: voz.finalLufs } : {}) },
+      'reel rendered',
+    );
 
-    return await alRenderizar({ ruta: salida, sha256, tamano, facts, timeline, plantilla });
+    return await alRenderizar({ ruta: salida, sha256, tamano, facts, timeline, plantilla, voz });
   } finally {
     await rm(carpeta, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }

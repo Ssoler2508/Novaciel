@@ -31,7 +31,7 @@ Step 8 builds the technical, brand (colour, font), truthfulness and rights check
 
 ## 4. The catalogue
 
-38 codes: 36 blocking and 2 warnings. A blocking check that does not pass makes the result `rechazado`; warnings never reject. "House" means a value chosen by the project, not given by the spec; every house value marked VERIFY must be checked against the networks' own documentation before production.
+43 codes: 38 of Step 8 (36 blocking and 2 warnings) and 5 of the voice-over added in Step 7d (3 blocking and 2 warnings), so 39 blocking and 4 warnings. A blocking check that does not pass makes the result `rechazado`; warnings never reject. "House" means a value chosen by the project, not given by the spec; every house value marked VERIFY must be checked against the networks' own documentation before production.
 
 ### 4.1 Files (read back from storage)
 
@@ -120,6 +120,20 @@ Case- and accent-insensitive, over the caption, hashtags, alt texts, location an
 | `marca_glifos_no_soportados` | blocking | An on-screen text uses characters the font cannot draw. | House rule | no |
 | `marca_colores_respaldo` | **warning** | The profile has no usable colours and the fallback ones were used. | House rule | no |
 
+### 4.10 Voice-over (Step 7d, ADR-08)
+
+Only reels get these checks, and they pass when the production has no voice-over. A production "has a voice-over" when `producciones_locuciones` links at least one scene to it. The spoken text (`voz_en_off`) is also checked by `cifra_libre` and `regla_prohibida_*` (4.5, 4.6), reported at the field `voz_en_off:N`, exactly like the on-screen text.
+
+| Code | Severity | What it checks | Source | VERIFY |
+| --- | --- | --- | --- | --- |
+| `voz_audio_ausente` | blocking | The stored reel has voice-over records and its audio measures silence (at or below -50 LUFS) or cannot be measured. | Spec 10 (technical: audio present) | the -50 LUFS threshold |
+| `voz_volumen_fuera_de_rango` | blocking | The integrated loudness is within -16 LUFS +- 2 LU and the true peak is not above -0.5 dBTP (EBU R128, measured with FFmpeg `ebur128` on the stored file). | Spec 10 (technical: audio with normalized volume) | all three values |
+| `voz_subtitulos_ausentes` | blocking | The production has voice-overs but records no text template, so the voice has no word-by-word subtitles. | Spec 9.4 (subtitles always on) | no |
+| `voz_etiqueta_ia_pendiente` | **warning** | The audio is synthetic: the piece must carry the AI-content label when published. The reviewer sees it; the label itself is built with publishing (Step 10). | Spec 10 (AI shots: label) | the rule of each network |
+| `voz_omitida_sin_plantilla` | **warning** | The client has a voice configured and the reel came out silent because no subtitle template could be used (Remotion off). Read from the audit row of the production. | House rule (ADR-08) | no |
+
+The loudness check needs FFmpeg (`ReelQcConfig.ffmpegPath`), required only when the production has a voice-over.
+
 ## 5. The production's brand-profile column
 
 `producciones.perfil_marca_id` (migration `1700000002200`) records the brand-profile version a production was RENDERED with, as a composite foreign key `(perfil_marca_id, cliente_id)`.
@@ -145,6 +159,6 @@ Reel QC through the service is covered by `ejecutarQCReel.render.test.ts`, which
 ## 8. What the spec asks and this step does not do (known debt)
 
 - Checks that need a model with vision or language, behind an adapter and the budget control (rule 5): visual brand consistency, logo, tone of voice, spelling, visible defects of AI shots, the AI-content label.
-- Technical checks of spec 10 that are not decided here: audio loudness normalization (only presence and format of the audio are checked), black or frozen frames, text inside safe zones (the renderer places it; QC does not measure the output), music license (no music provider exists yet), sector restrictions.
+- Technical checks of spec 10 that are not decided here: audio loudness normalization is built only for a reel WITH a voice-over (4.10); source audio is not kept, so there is nothing else to measure, black or frozen frames, text inside safe zones (the renderer places it; QC does not measure the output), music license (no music provider exists yet), sector restrictions.
 - Showing warnings to the client in the dashboard (Step 11) and per-client custom checks.
 - The VERIFY values above.

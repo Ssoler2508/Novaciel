@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp, { type Metadata } from 'sharp';
 import { inspectMp4, probeVideo as probeVideoReal } from '../../lib/media/ffmpeg/index.js';
+import { MedicionSonoridadError, medirSonoridad as medirSonoridadReal } from '../../lib/media/ffmpeg/medirSonoridad.js';
 import { MediaProbeError } from '../../lib/media/probe/index.js';
 import type { Storage } from '../../lib/media/storage/types.js';
 import { detectTypeFromHeader, type DetectedType } from '../../lib/media/validateMedia.js';
@@ -17,10 +18,11 @@ import type { ProduccionView } from '../produccion/produccionRepository.js';
 import { hashFile } from '../produccion/produccionService.js';
 import { REEL_FPS } from '../produccion/reelTimeline.js';
 import { TOLERANCIA_DURACION_MS, verifyReelOutput } from '../produccion/reelVerify.js';
+import { juzgarSonoridad, OBJETIVO_LUFS, PICO_MAXIMO_DBTP, TOLERANCIA_LU } from '../produccion/sonoridadVoz.js';
 import { MAX_PIXELES_ORIGEN } from '../produccion/renderer.js';
 import type { CodigoQC } from './catalogo.js';
 import { crearCheck } from './crearCheck.js';
-import { QcSinFfprobeError } from './errors.js';
+import { QcSinFfmpegError, QcSinFfprobeError } from './errors.js';
 import type { CheckQC } from './tipos.js';
 
 // What will be published is the STORED files, so they are read back from storage and judged again: size and
@@ -39,6 +41,11 @@ export interface ReelQcConfig {
   probeVideo?: typeof probeVideoReal;
   /** For tests: a lower size cap for a reel. The default is MAX_REEL_BYTES. */
   maxReelBytes?: number;
+  /** Needed when the production has a voice-over: FFmpeg measures the loudness of the stored reel. */
+  ffmpegPath?: string;
+  ffmpegTimeoutMs?: number;
+  /** For tests: a fake loudness measurement. */
+  medirSonoridad?: typeof medirSonoridadReal;
 }
 
 export interface EntradaArchivos {
@@ -49,6 +56,8 @@ export interface EntradaArchivos {
   maxImagenBytes?: number;
   /** Needed when the production holds a video. */
   reel?: ReelQcConfig;
+  /** The production has voice-over records: the audio must be audible and inside the loudness range. */
+  conVoz?: boolean;
 }
 
 const TIPO_DE_MIME: Record<string, DetectedType> = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -228,6 +237,10 @@ async function checksReels(
   const limites = LIMITES_FORMATO.reel.duracionTotalS!;
   const fallos = new Map<CodigoQC, { ordenes: number[]; razones: Set<string>; detalles: Set<string> }>();
   const fueraDeRango: number[] = [];
+  const vozAusente: number[] = [];
+  const vozVolumen: { orden: number; integradaLufs: number; picoDbtp: number | null }[] = [];
+  if (e.conVoz && (e.reel.ffmpegPath === undefined || e.reel.ffmpegTimeoutMs === undefined)) throw new QcSinFfmpegError();
+  const medir = e.reel.medirSonoridad ?? medirSonoridadReal;
 
   const registrar = (codigo: CodigoQC, orden: number, razon: string, detalle?: string) => {
     const f = fallos.get(codigo) ?? { ordenes: [], razones: new Set<string>(), detalles: new Set<string>() };
@@ -263,6 +276,18 @@ async function checksReels(
       if (!(error instanceof SalidaInvalidaError)) throw error;
       registrar(CODIGO_DE_RAZON[error.razon], video.orden, error.razon, error.detalle);
     }
+    if (e.conVoz) {
+      try {
+        const medida = await medir(archivo, { ffmpegPath: e.reel.ffmpegPath!, timeoutMs: e.reel.ffmpegTimeoutMs! });
+        const juicio = juzgarSonoridad(medida);
+        if (juicio === 'silencio') vozAusente.push(video.orden);
+        else if (juicio === 'volumen_fuera_de_rango') vozVolumen.push({ orden: video.orden, integradaLufs: medida.integradaLufs, picoDbtp: medida.picoVerdaderoDbtp });
+      } catch (error) {
+        // No audio stream to measure: the voice is not there. A missing FFmpeg or a timeout is a setup problem.
+        if (error instanceof MedicionSonoridadError && (error.categoria === 'fallo' || error.categoria === 'sin_resumen')) vozAusente.push(video.orden);
+        else throw error;
+      }
+    }
     const duracion = facts.duracionMs;
     if (duracion === null || duracion < limites.min * 1000 - TOLERANCIA_DURACION_MS || duracion > limites.max * 1000 + TOLERANCIA_DURACION_MS) {
       fueraDeRango.push(video.orden);
@@ -287,6 +312,18 @@ async function checksReels(
       razon: [...(duracionVerificador?.razones ?? [])].sort(),
       minimo_s: limites.min,
       maximo_s: limites.max,
+    }),
+  );
+  // The voice-over: audible and inside the loudness range. They pass when the production has no voice.
+  checks.push(crearCheck('voz_audio_ausente', vozAusente.length === 0, { ordenes: vozAusente }));
+  checks.push(
+    crearCheck('voz_volumen_fuera_de_rango', vozVolumen.length === 0, {
+      ordenes: vozVolumen.map((v) => v.orden),
+      // Numbers only: what was measured and the limits (all house values, VERIFY).
+      ...(vozVolumen[0] ? { integrada_lufs: vozVolumen[0].integradaLufs, pico_dbtp: vozVolumen[0].picoDbtp ?? 0 } : {}),
+      objetivo_lufs: OBJETIVO_LUFS,
+      tolerancia_lu: TOLERANCIA_LU,
+      pico_maximo_dbtp: PICO_MAXIMO_DBTP,
     }),
   );
   return checks;

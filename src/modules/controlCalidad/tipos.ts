@@ -23,7 +23,7 @@ export interface CheckQC {
 
 /** A text that will be published (or drawn on screen), with where it comes from. */
 export interface CampoPublicado {
-  campo: 'texto_publicacion' | 'hashtag' | 'texto_alternativo' | 'texto_en_pantalla' | 'ubicacion';
+  campo: 'texto_publicacion' | 'hashtag' | 'texto_alternativo' | 'texto_en_pantalla' | 'voz_en_off' | 'ubicacion';
   /** Position inside its kind (hashtag 0, alt text 2, scene 1...). */
   indice: number;
   /** What is published: the stored copy of the production, or the on-screen text of the rendered brief. */

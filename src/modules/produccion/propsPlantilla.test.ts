@@ -274,3 +274,57 @@ describe('property: random client text only appears in lineas[].palabras[].texto
     }
   });
 });
+
+describe('construirPropsPlantilla: the real times of a voice-over (Step 7d)', () => {
+  const texto = 'Cada mañana tostamos el café';
+  // The voice: starts 150 ms in, a word every 400 ms, the last one holds to the end of the scene.
+  const tiempos = palabrasDe(texto).map((palabra, i, todas) => ({ palabra, inicioMs: 150 + i * 400, finMs: i === todas.length - 1 ? 5000 : 150 + (i + 1) * 400 }));
+
+  it('palabra_a_palabra shows each word at its REAL time, in milliseconds and frames', () => {
+    const w = palabras(construirPropsPlantilla({ ...entrada({ texto }), tiempos })!);
+    expect(w.map((x) => x.inicioMs)).toEqual([150, 550, 950, 1350, 1750]);
+    expect(w.map((x) => x.inicioFotograma)).toEqual([5, 17, 29, 41, 53]);
+    expect(w.at(-1)!.finMs).toBe(5000);
+    expect(w.at(-1)!.finFotograma).toBe(150);
+    // Without times the words get the computed ones: not the same.
+    expect(palabras(props({ texto })).map((x) => x.inicioMs)).not.toEqual([150, 550, 950, 1350, 1750]);
+  });
+
+  it('the block and the title card appear when the FIRST word is spoken', () => {
+    const tarde = tiempos.map((t) => ({ ...t, inicioMs: t.inicioMs + 1000, finMs: Math.min(5000, t.finMs + 1000) }));
+    for (const [plantilla, orden] of [[{ id: 'barra_inferior', version: 1 }, 2], [{ id: 'titulo_y_palabras', version: 1 }, 1]] as const) {
+      const w = palabras(construirPropsPlantilla({ ...entrada({ texto, plantilla, orden }), tiempos: tarde })!);
+      expect(new Set(w.map((x) => x.inicioMs))).toEqual(new Set([1150]));
+      expect(w.every((x) => x.finMs === 5000)).toBe(true);
+    }
+  });
+
+  it('refuses times that are not those of the words of the text, out of the scene or out of order', () => {
+    const malos: [string, typeof tiempos][] = [
+      ['one word fewer', tiempos.slice(1)],
+      ['another word', tiempos.map((t, i) => (i === 2 ? { ...t, palabra: 'otra' } : t))],
+      ['ends before it starts', tiempos.map((t, i) => (i === 1 ? { ...t, finMs: 100 } : t))],
+      ['starts at the end of the scene', tiempos.map((t, i) => (i === 4 ? { ...t, inicioMs: 5000 } : t))],
+      ['ends after the scene', tiempos.map((t, i) => (i === 4 ? { ...t, finMs: 5001 } : t))],
+      ['fractional ms', tiempos.map((t, i) => (i === 0 ? { ...t, inicioMs: 150.5 } : t))],
+      ['negative', tiempos.map((t, i) => (i === 0 ? { ...t, inicioMs: -1 } : t))],
+    ];
+    for (const [nombre, t] of malos) {
+      let error: unknown;
+      try {
+        construirPropsPlantilla({ ...entrada({ texto }), tiempos: t });
+      } catch (e) {
+        error = e;
+      }
+      expect(error, nombre).toBeInstanceOf(PlantillaInvalidaError);
+      expect((error as PlantillaInvalidaError).message, nombre).not.toContain('mañana');
+    }
+  });
+
+  it('times that start together are still valid props (frames never go back)', () => {
+    const juntas = tiempos.map((t) => ({ ...t, inicioMs: 150, finMs: 5000 }));
+    const w = palabras(construirPropsPlantilla({ ...entrada({ texto }), tiempos: juntas })!);
+    expect(esquemaPropsPlantilla.safeParse(construirPropsPlantilla({ ...entrada({ texto }), tiempos: juntas })).success).toBe(true);
+    expect(w).toHaveLength(5);
+  });
+});

@@ -208,7 +208,7 @@ export class HdrNoSoportadoError extends Error {
   }
 }
 
-export type RutaInvalidaReason = 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control' | 'ruta_con_patron';
+export type RutaInvalidaReason = 'voz_faltante' | 'voz_sobrante' | 'ganancia_invalida' | 'fuente_faltante' | 'overlay_faltante' | 'overlay_sobrante' | 'salida_faltante' | 'ruta_no_absoluta' | 'ruta_con_caracter_de_control' | 'ruta_con_patron';
 
 /** A path given to the argument builder is missing, extra, relative, or has control characters. Paths are never echoed. */
 export class RutaInvalidaError extends Error {
@@ -322,5 +322,32 @@ export class ReelNoConfiguradoError extends Error {
   constructor() {
     super('Reel production is not configured in this process (no FFmpeg runtime)');
     this.name = 'ReelNoConfiguradoError';
+  }
+}
+
+/** A reel with voices was asked for without a text template: the subtitles of a voice need one. Nothing is rendered. */
+export class VocesSinPlantillaError extends Error {
+  constructor() {
+    super('A reel with a voice-over needs a text template for its subtitles');
+    this.name = 'VocesSinPlantillaError';
+  }
+}
+
+/** The mixed voice-over track is silent (or below -50 LUFS): there is nothing to hear. Numbers only. */
+export class VozSilenciosaError extends Error {
+  constructor(readonly medidaLufs: number) {
+    super(`The voice-over track is silent (${medidaLufs} LUFS)`);
+    this.name = 'VozSilenciosaError';
+  }
+}
+
+/** The rendered reel's loudness is outside the house range after the gain was applied. Numbers only. */
+export class SonoridadFueraDeRangoError extends Error {
+  constructor(
+    readonly integradaLufs: number,
+    readonly picoVerdaderoDbtp: number | null,
+  ) {
+    super(`The reel loudness is out of range (${integradaLufs} LUFS, true peak ${picoVerdaderoDbtp ?? 'none'} dBTP)`);
+    this.name = 'SonoridadFueraDeRangoError';
   }
 }
