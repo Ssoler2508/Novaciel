@@ -1,0 +1,41 @@
+# ADR-08: ElevenLabs for the voice-over (Step 7d)
+
+Status: **Accepted in design (checkpoint A); built across checkpoints B to E.** Several terms are marked **TO CONFIRM** and must be settled by NovaCiel before the first real client reel.
+
+## 1. Decision
+
+Reels gain a synthetic voice-over generated from the brief's `voz_en_off` text. The provider is **ElevenLabs**, behind a `VoiceProvider` port with a `FakeVoiceProvider` for tests (rule 4). Tests never call the network and never need a key. The audio is mixed into the Step 7b pipeline; the word timings the provider returns feed the Step 7c subtitle component (replacing the computed timings of ADR-06 §6 for scenes that have a voice).
+
+## 2. What was read (2026-11-01)
+
+- `elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps`: `POST /v1/text-to-speech/{voice_id}/with-timestamps`; body `text`, `model_id`, `voice_settings`, optional `language_code` (not supported by `eleven_multilingual_v2`); response `audio_base64`, `alignment` and `normalized_alignment` with one entry per character (`characters`, `character_start_times_seconds`, `character_end_times_seconds`). `enable_logging=false` (zero retention) is enterprise-only.
+- `elevenlabs.io/docs/overview/models`: models with Spanish listed include v4, v4 turbo, v3, multilingual v2 and flash v2.5; characters per request differ by model.
+- `elevenlabs.io/pricing/api`: TTS rates per 1,000 characters between USD 0.04 (Flash/Turbo, v4 Turbo) and USD 0.08 (v4, v3, Multilingual v2); included characters per plan. Spec 9.3 says USD 0.05 to 0.10: the page wins; the price is data, loaded with `set-price`.
+- **Not found in those pages (VERIFY in checkpoint C):** the error codes beyond 422/404/400, the request-id response header, how usage is reported (characters vs credits), and the commercial-use terms of TTS per plan.
+
+## 3. Design decisions
+
+- **Price unit.** `precios_modelos.unidad` (`tokens` | `caracteres` | `segundos` | `imagenes`). Token rows are unchanged (two "per million" columns). Every other unit uses `precio_por_bloque` + `tamano_bloque` (for voice: USD per 1,000 characters). A `CHECK` makes each row use only its own pair. `libro_gastos.unidad` records the unit; for voice, `unidades_entrada` holds the characters. A model without a price in the unit is refused before the call leaves (rule 5).
+- **One place for the voice model.** `TTS_MODEL` in `.env`, no default; voice ids live in data (per client), never in code. `ELEVENLABS_API_KEY` is required only when `VOICE_PROVIDER=elevenlabs`.
+- **Per-client voice.** Inside the `voz` profile block under `locucion` (validated with zod): `habilitada`, `voice_id`, `idioma`, `estabilidad`, `similitud`, `velocidad`. The `voice_id` is not validated against the provider's library (`voice:smoke --voz <id>` checks one by hand). Without it: no voice-over, silent AAC track as in 7b, recorded.
+- **Records.** `locuciones` (append-only; unique `(cliente_id, clave_cache)`): cache key = SHA-256 of a canonical, versioned serialization of text, voice, model, settings and format; the same key is never paid twice for a client, and the cache is not shared across clients. `producciones_locuciones` links a production to the voice-overs it used. The spoken text is not stored in these tables.
+- **Fit.** A voice longer than its scene is refused with a typed error so the brief is regenerated shorter. No speed adjustment; no word is ever cut.
+- **Subtitles.** Deterministic: the text is the script itself and the timings come from the provider's character alignment. No language-model call is added.
+- **Audio.** Loudness target −16 LUFS integrated, true peak −1 dBTP (**VERIFY**); still AAC 48 kHz stereo. The np1 piece hash already covers the audio inside the MP4; no hash change.
+
+## 4. Terms and open points
+
+| Topic | State |
+| --- | --- |
+| Commercial use of TTS output under the plan NovaCiel will use | **TO CONFIRM** (the pricing page does not state it for TTS; the terms of service must be read for the chosen plan). |
+| Stock voices only | Yes. No voice cloning in this step. Cloning a real person (for example a client's owner) needs written consent stored with the voice (spec 16), like image authorizations. Known debt. |
+| AI-disclosure labels for synthetic audio on Meta and TikTok | **TO CONFIRM** per network. Checkpoint D adds a warning-level QC code so the reviewer sees that the piece carries synthetic audio. |
+| Data sent to ElevenLabs | Only the rendered `voz_en_off` text and the voice settings. No client id, name or other data. The text is client content: it is never written to logs or errors. With non-enterprise plans the provider keeps history of requests. |
+| Prepaid balance | Provider credits are prepaid: the spec 13 alert for less than two weeks of consumption applies when Step 11 builds alerts. |
+| What must change if a term changes | Provider: replace the adapter (the port and the fake do not change). Licence: stop enabling `locucion` for clients until fixed. Network labels: add the required label at publication (Step 10). |
+
+## 5. Consequences
+
+- New migration `1700000002300_voz.sql` (units, `locuciones`, `producciones_locuciones`).
+- The Step 8 QC gap "audio loudness normalization" (ADR-07 §8) gets its check in checkpoint D.
+- Open questions are listed in `docs/PLAN.md` and `docs/ENTREGA.md`.

@@ -164,7 +164,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Confirm the `clientes` and `usuarios` columns, the JSON keys of the profile blocks and the required fields per block (proposed in Step 2, see ADR-04).
 - Should the fictional test client use USD prices and US data?
 - Image consent in the US: is "end date required + revocation" enough legally?
-- Voice provider (before Step 7d).
+- Voice provider: ElevenLabs chosen for Step 7d (ADR-08, in progress on branch `step-07d`). **Open:** which ElevenLabs plan NovaCiel buys and whether its terms allow commercial use of TTS output (the pricing page does not say); which AI-disclosure label Meta and TikTok require for synthetic audio; whether cloning the voice of a client's owner will ever be offered (needs written consent, known debt).
 - Publishing intermediary (after Phase 0).
 - Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
 - Third NovaCiel-only edge `revision_novaciel → con_cambios` (Step 8, docs/ADR-05_APROBACION_DOS_NIVELES.md): section 15 has no exit from `revision_novaciel` other than `esperando_aprobacion`, and the internal "cambios" decision needs one now that the Step 8 bridge is gone. Confirm with the Senior (together with `aprobada` and `programada` → `con_cambios`).

@@ -1,5 +1,5 @@
 import type { Db } from '../db/types.js';
-import { setModelPrice, type ModelPrice } from '../modules/precios/preciosRepository.js';
+import { setModelPrice, setUnitPrice, type ModelPrice, type UnitPrice } from '../modules/precios/preciosRepository.js';
 import { getUsuarioByEmail } from '../modules/usuarios/usuariosRepository.js';
 import type { SetPriceArgs } from './setPriceArgs.js';
 
@@ -8,9 +8,24 @@ import type { SetPriceArgs } from './setPriceArgs.js';
  * manage_budget permission check and the audit row are the real ones: an email that is not an
  * active administrator is refused and nothing is written.
  */
-export async function setPriceAsAdmin(db: Db, args: SetPriceArgs): Promise<ModelPrice> {
+export async function setPriceAsAdmin(db: Db, args: SetPriceArgs): Promise<ModelPrice | UnitPrice> {
   const user = await getUsuarioByEmail(db, args.adminEmail);
   if (!user || !user.activo) throw new Error('No active user with that email');
+  const actor = { tipo: 'usuario', usuarioId: user.id } as const;
+  if (args.unit !== 'tokens') {
+    return setUnitPrice(
+      db,
+      {
+        provider: args.provider,
+        model: args.model,
+        unit: args.unit,
+        pricePerBlock: args.pricePerBlock,
+        blockSize: args.blockSize,
+        ...(args.nota !== undefined ? { nota: args.nota } : {}),
+      },
+      actor,
+    );
+  }
   return setModelPrice(
     db,
     {
@@ -20,6 +35,6 @@ export async function setPriceAsAdmin(db: Db, args: SetPriceArgs): Promise<Model
       outputPerMillion: args.outputPerMillion,
       ...(args.nota !== undefined ? { nota: args.nota } : {}),
     },
-    { tipo: 'usuario', usuarioId: user.id },
+    actor,
   );
 }

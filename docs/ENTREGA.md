@@ -98,7 +98,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 5. **Idioma `ambos`:** ¿qué debe hacer el sistema para un cliente que necesite español e inglés? ¿Algún cliente necesitará inglés?
 6. **Valores de la casa marcados VERIFY:** calidad y velocidad de x264, tasa de bits máxima y buffer, y fotogramas por segundo constantes (`reelFfmpegArgs.ts`, `reelTimeline.ts`), y los tamaños que la especificación no da (`dimensiones.ts`).
 7. **Clave de Anthropic del sistema y presupuesto de prueba:** ¿quién crea la clave y cuál es el presupuesto? ¿Se permite la cuenta Pro compartida o se usa un plan de equipo?
-8. **Proveedor de voz** (antes del Paso 7d) y **intermediario de publicación** (después de la Fase 0).
+8. **Proveedor de voz:** el Paso 7d usa ElevenLabs (ADR-08). **Pendiente de NovaCiel:** qué plan se contrata y si sus términos permiten el uso comercial de la voz sintética (la página de precios no lo dice para TTS); qué etiqueta de contenido con IA exigen Meta y TikTok para audio sintético; si algún día se ofrecerá clonar la voz del dueño de un cliente (exige consentimiento escrito, deuda conocida). **Intermediario de publicación** (después de la Fase 0).
 9. **Producción:** versión de PostgreSQL y sistema operativo (hoy 18 en local y 16 en el compose), y servicio de almacenamiento compatible con S3.
 10. **Columnas de `clientes` y `usuarios`, claves JSON del perfil y campos obligatorios por bloque** (ADR-04, propuestas pendientes del Senior).
 11. ¿Cuándo se retira la revisión interna (ver deuda 8)?

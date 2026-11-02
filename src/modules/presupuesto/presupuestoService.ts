@@ -1,4 +1,5 @@
 import type { Db } from '../../db/types.js';
+import type { PriceUnit } from '../precios/preciosRepository.js';
 import { runInTransaction } from '../../db/transaction.js';
 import { logger } from '../../lib/logger/index.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
@@ -60,6 +61,8 @@ export interface SettleInput {
   actualCost: MicroUsd;
   inputUnits: number;
   outputUnits: number;
+  /** What the units are (default tokens). For voice: caracteres, with the characters in inputUnits. */
+  unit?: PriceUnit;
   outcome: 'ok' | 'schema_invalido' | 'error';
 }
 
@@ -268,8 +271,8 @@ export async function settle(db: Db, authorization: SpendAuthorization, input: S
 
     await tx.query(
       `INSERT INTO libro_gastos
-         (cliente_id, autorizacion_id, periodo, proveedor, modelo, unidades_entrada, unidades_salida, costo_real, proposito, resultado)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         (cliente_id, autorizacion_id, periodo, proveedor, modelo, unidades_entrada, unidades_salida, costo_real, proposito, resultado, unidad)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         row.cliente_id,
         row.id,
@@ -281,6 +284,7 @@ export async function settle(db: Db, authorization: SpendAuthorization, input: S
         microToUsd(input.actualCost),
         row.proposito,
         input.outcome,
+        input.unit ?? 'tokens',
       ],
     );
     await recordAudit(tx, {
@@ -296,6 +300,7 @@ export async function settle(db: Db, authorization: SpendAuthorization, input: S
         costo_real: microToUsd(input.actualCost),
         unidades_entrada: input.inputUnits,
         unidades_salida: input.outputUnits,
+        unidad: input.unit ?? 'tokens',
         resultado: input.outcome,
       },
     });

@@ -3,7 +3,7 @@ import { withTestTransaction } from '../../tests/utils/transaction.js';
 import { assignRole, createUsuario, uniqueSuffix } from '../../tests/utils/factories/index.js';
 import { PermissionDeniedError, PriceExistsError } from '../modules/precios/preciosRepository.js';
 import { assertAdminDatabaseAllowed } from './adminGuard.js';
-import { parseSetPriceArgs } from './setPriceArgs.js';
+import { parseSetPriceArgs, type SetTokenPriceArgs } from './setPriceArgs.js';
 import { setPriceAsAdmin } from './setPriceCore.js';
 
 const base = ['--provider', 'fake_p', '--model', 'fake-m', '--input', '3', '--output', '15.5', '--admin-email', 'a@example.test'];
@@ -46,6 +46,25 @@ describe('parseSetPriceArgs', () => {
   });
 });
 
+describe('parseSetPriceArgs: units other than tokens', () => {
+  const unitBase = ['--provider', 'fake_p', '--model', 'fake-m', '--unit', 'caracteres', '--price', '0.08', '--block-size', '1000', '--admin-email', 'a@example.test'];
+
+  it('parses a price per block as exact micro-USD', () => {
+    expect(parseSetPriceArgs(unitBase)).toMatchObject({ unit: 'caracteres', pricePerBlock: 80_000n, blockSize: 1000 });
+    expect(parseSetPriceArgs(base)).toMatchObject({ unit: 'tokens' });
+  });
+
+  it('each unit uses only its own options', () => {
+    expect(() => parseSetPriceArgs([...unitBase, '--input', '1'])).toThrow(/--input does not apply/);
+    expect(() => parseSetPriceArgs([...base, '--price', '1'])).toThrow(/--price does not apply/);
+    expect(() => parseSetPriceArgs(unitBase.filter((v) => v !== '--price' && v !== '0.08'))).toThrow(/--price is required/);
+    expect(() => parseSetPriceArgs(unitBase.map((v) => (v === 'caracteres' ? 'palabras' : v)))).toThrow(/--unit must be one of/);
+    for (const bad of ['0', '-5', '1.5', 'abc', '1e3']) {
+      expect(() => parseSetPriceArgs(unitBase.map((v) => (v === '1000' ? bad : v))), bad).toThrow(/--block-size must be a positive integer/);
+    }
+  });
+});
+
 describe('set-price database guard', () => {
   it('uses the create-admin guard: refuses *_test databases', () => {
     const url = (name: string) => `postgresql://fakeuser:fakepassword@localhost:5432/${name}`;
@@ -57,7 +76,7 @@ describe('set-price database guard', () => {
 describe('setPriceAsAdmin', () => {
   const args = () => {
     const suffix = uniqueSuffix();
-    return parseSetPriceArgs(['--provider', `fake_p_${suffix}`, '--model', 'fake-m', '--input', '3', '--output', '15', '--admin-email', 'x@example.test', '--nota', 'FAKE test price']);
+    return parseSetPriceArgs(['--provider', `fake_p_${suffix}`, '--model', 'fake-m', '--input', '3', '--output', '15', '--admin-email', 'x@example.test', '--nota', 'FAKE test price']) as SetTokenPriceArgs;
   };
 
   it('writes the price once, as the administrator, with the real audit row', async () => {

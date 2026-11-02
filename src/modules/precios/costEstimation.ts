@@ -1,6 +1,6 @@
 import type { Db } from '../../db/types.js';
 import type { MicroUsd } from '../presupuesto/money.js';
-import { getPriceAt } from './preciosRepository.js';
+import { getPriceAt, getUnitPriceAt, type NonTokenUnit } from './preciosRepository.js';
 
 // Cost in micro-USD = ceil((inputTokens * priceIn + outputTokens * priceOut) / 1_000_000), with the
 // prices in micro-USD per million tokens. All bigint, one rounding step, always upwards.
@@ -59,4 +59,24 @@ export async function computeCost(db: Db, request: ComputeCostRequest): Promise<
     assertTokens(request.outputTokens, 'outputTokens'),
     request.at,
   );
+}
+
+export interface UnitCostRequest {
+  provider: string;
+  model: string;
+  unit: NonTokenUnit;
+  /** Units (characters, seconds, images): a worst case for an estimate, the real usage for a cost. */
+  units: number;
+  at?: Date;
+}
+
+/**
+ * Cost in micro-USD of `units` of a non-token unit: ceil(units * pricePerBlock / blockSize), bigint, one
+ * rounding step, always upwards. Used for estimates and for real costs alike. Throws PriceNotFoundError
+ * when that unit has no price (the call must be refused before it leaves).
+ */
+export async function unitCost(db: Db, request: UnitCostRequest): Promise<MicroUsd> {
+  const units = assertTokens(request.units, 'units');
+  const price = await getUnitPriceAt(db, request.provider, request.model, request.unit, request.at);
+  return ceilDiv(units * price.pricePerBlock, price.blockSize);
 }

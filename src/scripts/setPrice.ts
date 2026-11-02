@@ -7,7 +7,8 @@ import { setPriceAsAdmin } from './setPriceCore.js';
 
 /**
  * `npm run set-price -- --provider <p> --model <m> --input <usd-per-million> --output <usd-per-million>
- * --admin-email <email> [--nota <text>]`: writes a new model price as that administrator, through
+ * --admin-email <email> [--nota <text>]` for tokens, or `--unit <caracteres|segundos|imagenes> --price <usd-per-block>
+ * --block-size <units>` instead of --input and --output: writes a new model price as that administrator, through
  * setModelPrice (real permission check and audit row). Prices are not secret, so flags are fine.
  * Take the numbers from the provider's official pricing page. Refuses *_test databases (same
  * guard as create-admin).
@@ -19,8 +20,12 @@ async function main(): Promise<void> {
   console.log(`Database "${database}" (url name "${urlName}")`);
   const price = await setPriceAsAdmin(pool, args);
   console.log(`Price written for ${price.provider}/${price.model}`);
-  console.log(`  input  USD ${microToUsd(price.inputPerMillion)} per million tokens`);
-  console.log(`  output USD ${microToUsd(price.outputPerMillion)} per million tokens`);
+  if ('unit' in price) {
+    console.log(`  USD ${microToUsd(price.pricePerBlock)} per ${price.blockSize} ${price.unit}`);
+  } else {
+    console.log(`  input  USD ${microToUsd(price.inputPerMillion)} per million tokens`);
+    console.log(`  output USD ${microToUsd(price.outputPerMillion)} per million tokens`);
+  }
   console.log(`  valid from ${price.vigenteDesde.toISOString()}`);
 }
 
