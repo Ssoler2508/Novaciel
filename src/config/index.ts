@@ -112,6 +112,13 @@ const schema = z
     // Default 200 MiB; bounds 1 MiB to 2 GiB.
     MEDIA_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(2_147_483_648).default(209_715_200),
     LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
+    // Voice-over (Step 7d, ADR-08). "none" (no voice-over) must be set explicitly in production.
+    VOICE_PROVIDER: z.enum(['none', 'fake', 'elevenlabs']).optional(),
+    // The only source of the text-to-speech model id; no default with "elevenlabs".
+    TTS_MODEL: z.string().min(1).optional(),
+    TTS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+    // Only with VOICE_PROVIDER=elevenlabs. Entered by hand in .env, never in code or commits.
+    ELEVENLABS_API_KEY: z.string().min(1).optional(),
     // Our own key. Never ANTHROPIC_API_KEY: Claude Code reads that one for its own login.
     NOVACIEL_ANTHROPIC_API_KEY: z.string().min(1).optional(),
     SECRETS_KEYS: z.string().min(1),
@@ -127,6 +134,13 @@ const schema = z
     };
     if (env.LLM_PROVIDER === undefined && env.NODE_ENV === 'production') {
       require('LLM_PROVIDER', 'must be set explicitly in production');
+    }
+    if (env.VOICE_PROVIDER === undefined && env.NODE_ENV === 'production') {
+      require('VOICE_PROVIDER', 'must be set explicitly in production (use "none" for no voice-over)');
+    }
+    if (resolveVoiceProvider(env) === 'elevenlabs') {
+      require('TTS_MODEL', 'required when VOICE_PROVIDER is "elevenlabs"');
+      require('ELEVENLABS_API_KEY', 'required when VOICE_PROVIDER is "elevenlabs"');
     }
     if (resolveLlmProvider(env) === 'claude') {
       require('LLM_MODEL', 'required when LLM_PROVIDER is "claude" (heavy tier)');
@@ -183,6 +197,15 @@ export interface LlmConfig {
 }
 
 // The raw key is not part of the plain config object; it lives in config.llm.apiKey.
+export interface VoiceConfig {
+  provider: 'none' | 'fake' | 'elevenlabs';
+  /** The text-to-speech model id; the only source. Undefined only with "none". */
+  model: string | undefined;
+  timeoutMs: number;
+  /** Only with provider "elevenlabs". Printing it shows a placeholder; use reveal() at the point of use. */
+  apiKey?: SecretValue;
+}
+
 export interface MediaConfig {
   ffprobePath: string;
   ffprobeTimeoutMs: number;
@@ -202,10 +225,11 @@ export interface RemotionConfig {
   timeoutMs: number;
 }
 
-export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
+export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY' | 'ELEVENLABS_API_KEY'> & {
   storage: StorageConfig;
   secrets: SecretsConfig;
   llm: LlmConfig;
+  voice: VoiceConfig;
   media: MediaConfig;
   remotion: RemotionConfig;
 };
@@ -214,6 +238,25 @@ export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY'> & {
 function resolveLlmProvider(env: Pick<Env, 'NODE_ENV' | 'LLM_PROVIDER'>): 'fake' | 'claude' | undefined {
   if (env.LLM_PROVIDER) return env.LLM_PROVIDER;
   return env.NODE_ENV === 'production' ? undefined : 'fake';
+}
+
+/** "fake" by default outside production; in production there is no default (a startup error). */
+function resolveVoiceProvider(env: Pick<Env, 'NODE_ENV' | 'VOICE_PROVIDER'>): 'none' | 'fake' | 'elevenlabs' | undefined {
+  if (env.VOICE_PROVIDER) return env.VOICE_PROVIDER;
+  return env.NODE_ENV === 'production' ? undefined : 'fake';
+}
+
+// The only text-to-speech model name that may live in code: the fake voice provider's.
+const FAKE_TTS_MODEL = 'fake-tts-model';
+
+function buildVoiceConfig(env: Env): VoiceConfig {
+  const provider = resolveVoiceProvider(env);
+  if (!provider) throw new Error('Invalid voice configuration');
+  const timeoutMs = env.TTS_TIMEOUT_MS;
+  if (provider === 'none') return { provider, model: undefined, timeoutMs };
+  if (provider === 'fake') return { provider, model: env.TTS_MODEL ?? FAKE_TTS_MODEL, timeoutMs };
+  if (!env.TTS_MODEL || !env.ELEVENLABS_API_KEY) throw new Error('Invalid voice configuration');
+  return { provider, model: env.TTS_MODEL, timeoutMs, apiKey: new SecretValue(env.ELEVENLABS_API_KEY) };
 }
 
 // The only model name that may live in code: the fake provider's, which has a fake price in the seed.
@@ -272,12 +315,13 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const { keys, active } = parseSecrets(result.data.SECRETS_KEYS, result.data.SECRETS_ACTIVE_KEY_VERSION);
   if (active === undefined) throw new Error('Invalid secrets configuration');
-  const { NOVACIEL_ANTHROPIC_API_KEY: _apiKey, ...publicEnv } = result.data;
+  const { NOVACIEL_ANTHROPIC_API_KEY: _apiKey, ELEVENLABS_API_KEY: _voiceKey, ...publicEnv } = result.data;
   return {
     ...publicEnv,
     storage: buildStorageConfig(result.data),
     secrets: new SecretsConfig(keys, active),
     llm: buildLlmConfig(result.data),
+    voice: buildVoiceConfig(result.data),
     media: {
       ffprobePath: result.data.FFPROBE_PATH,
       ffprobeTimeoutMs: result.data.FFPROBE_TIMEOUT_MS,

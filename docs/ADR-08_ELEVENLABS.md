@@ -39,3 +39,14 @@ Reels gain a synthetic voice-over generated from the brief's `voz_en_off` text. 
 - New migration `1700000002300_voz.sql` (units, `locuciones`, `producciones_locuciones`).
 - The Step 8 QC gap "audio loudness normalization" (ADR-07 §8) gets its check in checkpoint D.
 - Open questions are listed in `docs/PLAN.md` and `docs/ENTREGA.md`.
+
+## 6. Implementation notes (checkpoint C)
+
+- **Configuration.** `VOICE_PROVIDER` is `none`, `fake` or `elevenlabs`. `fake` is the default in development and test. In production there is no default: leaving it unset is a startup error, so "no voice-over" must be written as `none`. `TTS_MODEL` has no default with `elevenlabs`; `ELEVENLABS_API_KEY` is required only with `elevenlabs`. The API host is a constant in code (the key is only ever sent there); tests inject a mocked `fetch`.
+- **Request.** `POST /v1/text-to-speech/{voice_id}/with-timestamps?output_format=mp3_44100_128`, header `xi-api-key`. `language_code` is not sent (it varies by model; `multilingual_v2` does not take it). **VERIFY with the real `voice:smoke`:** the header name, the `request-id` response header and the usage the account reports.
+- **Errors.** Six fixed categories (`auth`, `quota`, `rate_limit`, `bad_request`, `server`, `timeout`) chosen from the error `type`/`code` of the reply first, then the HTTP status (docs: `eleven-api/resources/errors`, 2026-11-01). The request id comes from `detail.request_id` of the body or a header, and only if it is a closed identifier. The provider's message is never forwarded (it can repeat the text). The adapter does not retry: each retry would be a paid call.
+- **Budget.** The unit is `caracteres`; the quantity billed is the characters WE sent (code points of the prepared text). **VERIFY** against the ElevenLabs account usage after the first real `voice:smoke`. Failure releases the reservation; a **timeout settles the estimate as `error`** (the audio may have been generated and billed). An alignment that does not match the text, or audio that cannot be measured, is paid and settled (`schema_invalido` / `error`) and nothing is cached.
+- **Duration** is measured with ffprobe on the stored file, not taken from the alignment.
+- **Storage key:** `<cliente_id>/locuciones/<clave_cache>.<ext>`, validated like the media keys.
+- **Concurrency.** A Postgres advisory lock per (client, cache key) makes simultaneous identical requests share one provider call; waiters poll without holding a pooled connection.
+- **Known limit.** If the process dies between storing the audio and the transaction that records it (milliseconds), the retry calls the provider again and pays a second time.

@@ -8,3 +8,5 @@ export {
 } from './alineacion.js';
 export { comprobarAjusteEscena, comprobarAjusteReel, MARGENES_VOZ, type AjusteReel, type EscenaDeReel, type MargenesVoz } from './ajuste.js';
 export { claveCache, CLAVE_CACHE_VERSION, VELOCIDAD_MAX, VELOCIDAD_MIN, type AjustesVoz, type EntradaClaveCache } from './claveCache.js';
+export { generarLocucion, type GenerarLocucionRequest, type LocucionDeps, type LocucionGenerada, type MeasureAudio } from './locucionService.js';
+export { findLocucionByClave, getLocucion, type Locucion } from './locucionesRepository.js';

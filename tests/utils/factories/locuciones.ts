@@ -61,7 +61,7 @@ export async function createLocucion(db: Db, overrides: LocucionOverrides = {}):
       guionId,
       overrides.escena ?? 1,
       clave,
-      `clientes/${clienteId}/locuciones/${clave}.mp3`,
+      `${clienteId}/locuciones/${clave}.mp3`,
       overrides.duracionMs ?? 2000,
       overrides.caracteres ?? 12,
       JSON.stringify({ caracteres: ['H', 'o', 'l', 'a'], inicio_ms: [0, 100, 200, 300], fin_ms: [100, 200, 300, 400] }),
