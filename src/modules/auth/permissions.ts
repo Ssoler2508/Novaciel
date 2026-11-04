@@ -38,6 +38,8 @@ export type Action =
   | 'manage_plans'
   | 'view_spend'
   | 'manage_budget'
+  | 'view_prices'
+  | 'manage_prices'
   | 'manage_novaciel_staff';
 
 export interface ActionRule {
@@ -73,8 +75,12 @@ export const PERMISSIONS: Record<Action, ActionRule> = {
   // staff only: the client's approver receives the plan and approves it (spec 7, 14).
   manage_plans: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   view_spend: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
-  // Prices, caps and switches.
+  // Monthly ceilings and spend switches (the client's and the global one). Prices are NOT covered: see manage_prices.
   manage_budget: { scope: 'global', roles: ['administrador_novaciel'] },
+  // Read the model price list (Step 11).
+  view_prices: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // Write model prices (Step 11): a price change moves every client's cost, so administrator only.
+  manage_prices: { scope: 'global', roles: ['administrador_novaciel'] },
   // Assign NovaCiel roles.
   manage_novaciel_staff: { scope: 'global', roles: ['administrador_novaciel'] },
 };

@@ -144,6 +144,21 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Views: plan, pieces by state, pending approvals, spend vs budget, results. Protected by Step 2b sessions and permissions.
 - Alerts: budget thresholds, failed jobs, schema failures, pending approvals.
 - **Done when:** the fictional client's week is visible and alerts fire in tests.
+- **Permissions approved in checkpoint A** (`src/modules/auth/permissions.ts`). B writes the first two global rows; C and D add the rest in their own commits. Roles: A = administrador_novaciel, O = operador_novaciel, D = dueno_cliente.
+
+  | Action | Scope | Roles | Checkpoint | Notes |
+  |---|---|---|---|---|
+  | `view_spend` (existing, reused; no `view_budget`) | client | A, O | B | Budget summary and ledger of a client. |
+  | `manage_budget` (existing) | global | A | B | Monthly ceilings, client switch and global switch. No longer covers prices. |
+  | `view_prices` (new) | global | A, O | B | Price list. |
+  | `manage_prices` (new) | global | A | B | Writes prices (also `set-price`); explicit start date may not be in the past. |
+  | `view_alerts` (new) | client | A, O, D | C | D only sees the code `aprobacion_vencida`. |
+  | `ack_alerts` (new) | client | A, O | C | Acknowledge a client alert. |
+  | `view_alerts_global` (new) | global | A, O | C | Alerts without a client. |
+  | `ack_alerts_global` (new) | global | A, O | C | Acknowledge a global alert. |
+  | `view_overview` (new) | global | A, O | D | NovaCiel overview across clients. |
+
+  The client owner sees neither spend nor ceiling (open question below). Money rules decided in B: a ceiling below what is already spent is allowed and audited (`por_debajo_del_gasto`), new authorizations are then refused; the ceiling of a past month is refused (400 `periodo_pasado`); a retroactive price is refused (400 `precio_retroactivo`, enforced in the price repository so `set-price` and the route share it).
 
 ### Step 12 — End-to-end test
 - Full week for the fictional client: plan → brief → production → QC → approval → publish (fake) → metrics.

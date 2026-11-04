@@ -93,6 +93,8 @@ describe('requirePermission: every role on every action', () => {
     manage_plans: ['administrador_novaciel', 'operador_novaciel'],
     view_spend: ['administrador_novaciel', 'operador_novaciel'],
     manage_budget: ['administrador_novaciel'],
+    view_prices: ['administrador_novaciel', 'operador_novaciel'],
+    manage_prices: ['administrador_novaciel'],
     manage_novaciel_staff: ['administrador_novaciel'],
   };
 

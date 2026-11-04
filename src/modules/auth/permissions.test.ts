@@ -20,6 +20,8 @@ const EXPECTED: Record<Action, { scope: 'client' | 'global'; allowed: RoleCode[]
   manage_plans: { scope: 'client', allowed: [A, O] },
   view_spend: { scope: 'client', allowed: [A, O] },
   manage_budget: { scope: 'global', allowed: [A] },
+  view_prices: { scope: 'global', allowed: [A, O] },
+  manage_prices: { scope: 'global', allowed: [A] },
   manage_novaciel_staff: { scope: 'global', allowed: [A] },
 };
 
