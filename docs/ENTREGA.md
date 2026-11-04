@@ -115,6 +115,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 
 14. **Qué ve el cliente del control de calidad:** hoy solo el resultado, la versión y la fecha; los códigos y las advertencias son de NovaCiel. ¿Se confirma, o el cliente debe ver los motivos de un rechazo?
 15. **Piezas anteriores al Paso 8:** las que estaban en `en_control_calidad` se controlan con `npm run qc:run`; las rechazadas por `media_no_usable` (media de prueba ya borrada) hay que producirlas de nuevo. ¿Basta así, o se limpian los datos de desarrollo?
+16. **Gasto y techo para el dueño del cliente (Paso 11):** hoy el dueño no ve ni el gasto ni el techo (solo el administrador y el operador de NovaCiel tienen `view_spend`). Al llegar al 100 % del techo recibe un aviso con plantilla y sin cifras (espec. 13.1). ¿Debe ver su propio gasto y techo, en solo lectura? Pendiente del Senior.
 
 La Fase 0 (verificaciones previas: precios de modelos de imagen y video, intermediarios de publicación, límites de estadísticas, términos de música libre, requisitos legales de EE. UU., etc.) sigue abierta salvo la licencia de Remotion.
 
