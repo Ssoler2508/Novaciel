@@ -44,6 +44,7 @@ export type Action =
   | 'ack_alerts'
   | 'view_alerts_global'
   | 'ack_alerts_global'
+  | 'view_overview'
   | 'manage_novaciel_staff';
 
 export interface ActionRule {
@@ -92,6 +93,9 @@ export const PERMISSIONS: Record<Action, ActionRule> = {
   // Alerts that belong to no client (a failed job, the global switch) and the list across all clients.
   view_alerts_global: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
   ack_alerts_global: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // The NovaCiel overview across clients (Step 11, dashboard): counts, pending approvals, open alerts and budget
+  // percentage per client. Never client content. It is the only read that spans clients, so staff only.
+  view_overview: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
   // Assign NovaCiel roles.
   manage_novaciel_staff: { scope: 'global', roles: ['administrador_novaciel'] },
 };

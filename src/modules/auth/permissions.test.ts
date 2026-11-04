@@ -26,6 +26,7 @@ const EXPECTED: Record<Action, { scope: 'client' | 'global'; allowed: RoleCode[]
   ack_alerts: { scope: 'client', allowed: [A, O] },
   view_alerts_global: { scope: 'global', allowed: [A, O] },
   ack_alerts_global: { scope: 'global', allowed: [A, O] },
+  view_overview: { scope: 'global', allowed: [A, O] },
   manage_novaciel_staff: { scope: 'global', allowed: [A] },
 };
 

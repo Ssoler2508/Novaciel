@@ -10,6 +10,7 @@ import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
 import { registerPresupuestoRoutes } from './modules/presupuesto/presupuestoRoutes.js';
 import { LogAlertSink } from './lib/ai/alerts.js';
 import { registerAlertasRoutes } from './modules/alertas/alertasRoutes.js';
+import { registerPanelRoutes } from './modules/panel/panelRoutes.js';
 import { PersistentAlertSink } from './modules/alertas/persistentAlertSink.js';
 import { registerPlanificadorRoutes } from './modules/planificador/planificadorRoutes.js';
 import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
@@ -88,6 +89,7 @@ async function main(): Promise<void> {
   const alertSink = new PersistentAlertSink(alertas, new LogAlertSink());
   await registerPresupuestoRoutes(app, { db: pool, alertas });
   await registerAlertasRoutes(app, { db: pool });
+  await registerPanelRoutes(app, { db: pool });
   // The approval routes queue the reminders through pg-boss, inside the decision's transaction. The workers
   // that deliver them (with the notifier) are registered below, after the queue starts.
   await registerAprobacionesRoutes(app, { db: pool, storage, recordatorios: createPgBossRecordatorios(boss) });

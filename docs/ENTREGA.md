@@ -96,6 +96,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 27. ~~"Voz omitida" vive en la auditoría de la producción~~ **Resuelto en chore/deuda-01:** columna `producciones.voz_omitida_motivo` (inmutable, lista cerrada de motivos); el control de calidad la lee y, para las producciones anteriores (NULL), usa la fila de auditoría como respaldo y lo registra como `origen: auditoria`.
 28. `voice:smoke` y la primera llamada real de ElevenLabs siguen sin hacerse: hasta entonces están por verificar la cabecera `xi-api-key`, la cabecera `request-id` y que la cantidad facturada coincida con los caracteres enviados (ADR-08).
 29. La voz solo existe en reels. Voces clonadas, varias voces por reel, emoción por escena, música y efectos son deuda (spec 9.5 y 16).
+30. **Vista de costos del panel (spec 13.4) y exportación:** el Paso 11 solo da, por cliente, el gasto frente al tope y el historial por mes (`/panel/gasto`). Quedan como deuda: costo total, directo y compartido (el reparto de costos compartidos y `costos_compartidos`); costo por tipo de pieza y costo promedio por pieza publicada; costo por proveedor y por modelo; gasto en intentos fallidos y en piezas rechazadas; uso frente a las cuotas del plan; la exportación a hoja de cálculo por cliente y por mes; y el cierre mensual (`cierres_mensuales`, el día 1 se congela el mes anterior). El libro de gastos ya guarda proveedor, modelo, propósito y resultado, así que el desglose se puede añadir con rutas nuevas de solo lectura sin cambiar las existentes.
 
 ## 5. Preguntas abiertas para NovaCiel
 

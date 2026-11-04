@@ -99,6 +99,7 @@ describe('requirePermission: every role on every action', () => {
     ack_alerts: ['administrador_novaciel', 'operador_novaciel'],
     view_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
     ack_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
+    view_overview: ['administrador_novaciel', 'operador_novaciel'],
     manage_novaciel_staff: ['administrador_novaciel'],
   };
 
