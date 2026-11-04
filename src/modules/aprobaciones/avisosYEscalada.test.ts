@@ -38,24 +38,26 @@ const input = (plazo: Date, zona = 'America/New_York'): ProgramarAvisosInput => 
 });
 
 describe('planificarAvisos: what is queued for a deadline', () => {
-  it('queues the three notices for a deadline far enough away, in order, each with its own key', () => {
+  it('queues the three reminders and the deadline notice for a deadline far enough away, in order, each with its own key', () => {
     const plazo = new Date('2026-12-10T15:00:00Z');
     const avisos = planificarAvisos(input(plazo), new Date(plazo.getTime() - 48 * H));
     expect(avisos.map((a) => [a.aviso, plazo.getTime() - a.cuando.getTime()])).toEqual([
       ['recordatorio_24h', 24 * H],
       ['recordatorio_4h', 4 * H],
       ['turno_suplente', 2 * H],
+      ['vencimiento', 0],
     ]);
-    expect(new Set(avisos.map((a) => a.singletonKey)).size).toBe(3);
+    expect(new Set(avisos.map((a) => a.singletonKey)).size).toBe(4);
     expect(avisos.every((a) => a.singletonKey === singletonKeyAviso(a.payload))).toBe(true);
   });
 
   it('a deadline too close drops the notices already due: only what is still ahead is queued', () => {
     const plazo = new Date('2026-12-10T15:00:00Z');
     const at = (horas: number) => planificarAvisos(input(plazo), new Date(plazo.getTime() - horas * H)).map((a) => a.aviso);
-    expect(at(10)).toEqual(['recordatorio_4h', 'turno_suplente']);
-    expect(at(3)).toEqual(['turno_suplente']);
-    expect(at(1)).toEqual([]);
+    expect(at(10)).toEqual(['recordatorio_4h', 'turno_suplente', 'vencimiento']);
+    expect(at(3)).toEqual(['turno_suplente', 'vencimiento']);
+    expect(at(1)).toEqual(['vencimiento']);
+    expect(at(0)).toEqual([]);
     expect(at(-1)).toEqual([]);
   });
 
@@ -63,7 +65,7 @@ describe('planificarAvisos: what is queued for a deadline', () => {
     for (const [plazoIso, zona] of [['2027-03-14T14:00:00Z', 'America/New_York'], ['2026-11-01T15:00:00Z', 'America/New_York'], ['2027-03-14T17:00:00Z', 'America/Los_Angeles']] as const) {
       const plazo = new Date(plazoIso);
       const avisos = planificarAvisos(input(plazo, zona), new Date(plazo.getTime() - 48 * H));
-      expect(avisos.map((a) => plazo.getTime() - a.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H]);
+      expect(avisos.map((a) => plazo.getTime() - a.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H, 0]);
     }
   });
 
@@ -156,6 +158,29 @@ describe('escalation on the 3rd client change request', () => {
     });
   });
 
+  it('the escalation job stores ONE aprobacion_escalada alert however many times it runs, and the only notice is still escalada_cambios', async () => {
+    await withTestTransaction(async (db) => {
+      const x = await mundoEscalable(db);
+      const recordatorios = new FakeRecordatorios();
+      // Not past the allowed rounds yet: no alert.
+      await ronda(db, x, recordatorios, 'cliente');
+      const notifier = new FakeNotifier();
+      await ejecutarJobEscalada({ db, notifier, alertas: { db, notifier } }, { clienteId: x.w.clienteId, piezaId: x.w.piezaId }, 'job');
+      expect((await db.query('SELECT 1 FROM alertas WHERE cliente_id = $1', [x.w.clienteId])).rows).toHaveLength(0);
+
+      for (let i = 0; i < 2; i++) await ronda(db, x, recordatorios, 'cliente');
+      await ejecutarJobEscalada({ db, notifier, alertas: { db, notifier } }, recordatorios.escaladas[0], 'job');
+      await ejecutarJobEscalada({ db, notifier, alertas: { db, notifier } }, recordatorios.escaladas[0], 'job');
+      const { rows } = await db.query<{ codigo: string; severidad: string; parametros: unknown; clave_dedupe: string }>(
+        'SELECT codigo, severidad, parametros, clave_dedupe FROM alertas WHERE cliente_id = $1',
+        [x.w.clienteId],
+      );
+      expect(rows).toEqual([{ codigo: 'aprobacion_escalada', severidad: 'critica', parametros: { pieza_id: x.w.piezaId }, clave_dedupe: `escalada:${x.w.piezaId}` }]);
+      // The alert does not notify by itself: Step 9's notice already tells NovaCiel.
+      expect(notifier.enviados.every((e) => e.plantilla === 'escalada_cambios')).toBe(true);
+    });
+  });
+
   it('a client approver who is also given a NovaCiel role is told as staff (the role decides), a plain client user never', async () => {
     await withTestTransaction(async (db) => {
       const x = await mundoEscalable(db);
@@ -209,7 +234,7 @@ describe('the real pg-boss port', () => {
     const esperados = planificarAvisos(entrada, new Date());
 
     const primera = await enTransaccion((tx) => puerto.programar(tx, entrada), true);
-    expect(primera).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']);
+    expect(primera).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']);
     const segunda = await enTransaccion((tx) => puerto.programar(tx, entrada), true);
     expect(segunda).toEqual(primera); // asked again: the same notices, no new jobs
 
@@ -241,7 +266,7 @@ describe('the real pg-boss port', () => {
   it('a deadline too close queues only what is still ahead (nothing for a deadline in the past)', async () => {
     const puerto = createPgBossRecordatorios(boss);
     const cerca = { ...nuevoInput(), plazo: new Date(Date.now() + 3 * H) };
-    expect(await enTransaccion((tx) => puerto.programar(tx, cerca), true)).toEqual(['turno_suplente']);
+    expect(await enTransaccion((tx) => puerto.programar(tx, cerca), true)).toEqual(['turno_suplente', 'vencimiento']);
     const pasado = { ...nuevoInput(), plazo: new Date(Date.now() - H) };
     expect(await enTransaccion((tx) => puerto.programar(tx, pasado), true)).toEqual([]);
   });

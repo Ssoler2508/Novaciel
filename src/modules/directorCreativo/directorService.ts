@@ -6,6 +6,7 @@ import type { Purpose } from '../../lib/ai/modelTiers.js';
 import type { LLMProvider } from '../../lib/ai/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { generateStructured } from '../ai/generateStructured.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { getValidHechos } from '../hechos/hechosRepository.js';
 import { usableCondition } from '../media/usable.js';
@@ -61,6 +62,8 @@ export interface DirectorDeps {
   provider: LLMProvider;
   alerts: AlertSink;
   logger?: Logger;
+  /** Persistent alerts (Step 11): budget thresholds and failed-job alerts. Absent: none. */
+  alertas?: AlertasRuntime;
   /**
    * Development side channel, used ONLY by the deterministic development provider: it runs the model
    * call with the structured context available to the provider, so the fake never has to read the
@@ -163,7 +166,7 @@ export async function generarBrief(
   // 3. The model call: budget, estimate, authorization, single retry and alert live here.
   const callModel = () =>
     generateStructured<BriefContent>(
-      { db, provider: deps.provider, alerts: deps.alerts, logger: log },
+      { db, provider: deps.provider, alerts: deps.alerts, logger: log, ...(deps.alertas ? { alertas: deps.alertas } : {}) },
       {
         clienteId,
         purpose: BRIEF_PURPOSE,

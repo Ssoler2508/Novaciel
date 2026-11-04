@@ -41,8 +41,8 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vo
 ## 3. Qué NO está construido
 
 - **Controles de calidad con modelo** (consistencia visual de marca, tono de voz, ortografía, defectos de tomas con IA) y los técnicos que la espec. 10 pide y no se decidieron en código (volumen de audio normalizado solo existe para los reels con locución; cuadros negros o congelados, medición de zonas seguras, licencia de música). Ver ADR-07, sección 8.
-- **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios**. Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
-- **Paso 11, tablero y alertas reales.** Las alertas de hoy van al log; no hay vistas ni rutas de gestión de aprobadores.
+- **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios y también el aviso de vencimiento** (`vencimiento`, que se programa justo a la hora límite y levanta la alerta `aprobacion_vencida`). Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
+- **Paso 11, tablero y alertas reales.** Las alertas ya se guardan (tabla `alertas`, rutas de lista y reconocimiento, catálogo en PLAN.md) y los avisos pasan por el Notificador simulado (solo ids y nombres de plantilla). Faltan las vistas del tablero (punto D) y las rutas de gestión de aprobadores.
 - **Paso 12, prueba de punta a punta** de la semana completa.
 - **Interfaz web** (`web/`): la mantiene otra herramienta y está fuera de estas notas; las rutas de plan, pieza y aprobación mantienen su forma porque la interfaz depende de ellas.
 
@@ -59,7 +59,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 
 **Aprobaciones (ADR-05)**
 4. `assertPublicable` comprueba pero **no bloquea**: entre la comprobación y el envío algo puede cambiar. El Paso 10 debe llamarlo con la pieza bloqueada.
-5. El Paso 10 debe reprogramar los recordatorios al cambiar `fecha_hora`; los trabajos ya en cola llevan el plazo viejo y no hacen nada.
+5. El Paso 10 debe reprogramar los recordatorios **y el aviso de vencimiento** al cambiar `fecha_hora`; los trabajos ya en cola llevan el plazo viejo y no hacen nada. Sin reprogramar el vencimiento, una pieza movida que nadie aprueba no genera la alerta `aprobacion_vencida`.
 6. La regla "sin aprobación a la hora programada: reprogramar y avisar a NovaCiel" (espec. 11.3) pertenece a la publicación.
 7. No hay rutas para `reabrirPieza` ni para cambiar aprobadores del cliente (hoy solo scripts de desarrollo).
 8. La revisión interna no se retira nunca (espec. 11.1 prevé retirarla tras 4 semanas por cliente o 20 piezas del mismo tipo sin cambios).

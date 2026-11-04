@@ -1,6 +1,7 @@
 import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
+import { raiseAlertBestEffort, type AlertasDeps } from '../alertas/raiseAlert.js';
 import { can } from '../auth/permissions.js';
 import { PermissionDeniedError, PriceActorError } from '../precios/preciosRepository.js';
 import { getUserRoles } from '../roles/usuarioRolesRepository.js';
@@ -118,19 +119,21 @@ export async function setClientSpendSwitch(
   clienteId: ClienteId,
   habilitado: boolean,
   actor: AuditActor,
+  alertas?: AlertasDeps,
 ): Promise<{ antes: boolean; despues: boolean }> {
   const userId = await assertManageBudget(db, actor);
-  return runInTransaction(db, async (tx) => {
+  const cambio = await runInTransaction(db, async (tx) => {
     await assertClientExists(tx, clienteId);
     const prev = await tx.query<{ gasto_habilitado: boolean }>(
       'SELECT gasto_habilitado FROM configuracion_gasto_cliente WHERE cliente_id = $1 FOR UPDATE',
       [clienteId],
     );
-    await tx.query(
+    const { rows: guardada } = await tx.query<{ actualizado_en: Date }>(
       `INSERT INTO configuracion_gasto_cliente (cliente_id, gasto_habilitado, actualizado_por)
        VALUES ($1, $2, $3)
        ON CONFLICT (cliente_id)
-       DO UPDATE SET gasto_habilitado = EXCLUDED.gasto_habilitado, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = now()`,
+       DO UPDATE SET gasto_habilitado = EXCLUDED.gasto_habilitado, actualizado_por = EXCLUDED.actualizado_por, actualizado_en = now()
+       RETURNING actualizado_en`,
       [clienteId, habilitado, userId],
     );
     const antes = prev.rows[0]?.gasto_habilitado ?? true;
@@ -143,17 +146,30 @@ export async function setClientSpendSwitch(
       antes: { gasto_habilitado: antes },
       despues: { gasto_habilitado: habilitado },
     });
-    return { antes, despues: habilitado };
+    return { antes, despues: habilitado, actualizadoEn: guardada[0]!.actualizado_en };
   });
+  // After the commit: an alert must never announce a change that was rolled back. Only an actual ON -> OFF change counts.
+  if (cambio.antes && !cambio.despues) {
+    await raiseAlertBestEffort(alertas, 'interruptor_cliente_apagado', { clienteId, parametros: { actualizado_en: cambio.actualizadoEn.toISOString() } });
+  }
+  return { antes: cambio.antes, despues: cambio.despues };
 }
 
 /** Turns all paid spending on or off. Audited with no client (global event). */
-export async function setGlobalSpendSwitch(db: Db, habilitado: boolean, actor: AuditActor): Promise<{ antes: boolean; despues: boolean }> {
+export async function setGlobalSpendSwitch(
+  db: Db,
+  habilitado: boolean,
+  actor: AuditActor,
+  alertas?: AlertasDeps,
+): Promise<{ antes: boolean; despues: boolean }> {
   const userId = await assertManageBudget(db, actor);
-  return runInTransaction(db, async (tx) => {
+  const cambio = await runInTransaction(db, async (tx) => {
     const prev = await tx.query<{ gasto_habilitado: boolean }>('SELECT gasto_habilitado FROM interruptor_global FOR UPDATE');
     if (!prev.rows[0]) throw new Error('interruptor_global row is missing');
-    await tx.query('UPDATE interruptor_global SET gasto_habilitado = $1, actualizado_por = $2, actualizado_en = now()', [habilitado, userId]);
+    const { rows: guardada } = await tx.query<{ actualizado_en: Date }>(
+      'UPDATE interruptor_global SET gasto_habilitado = $1, actualizado_por = $2, actualizado_en = now() RETURNING actualizado_en',
+      [habilitado, userId],
+    );
     await recordAudit(tx, {
       actor,
       accion: 'actualizar',
@@ -162,8 +178,12 @@ export async function setGlobalSpendSwitch(db: Db, habilitado: boolean, actor: A
       antes: { gasto_habilitado: prev.rows[0].gasto_habilitado },
       despues: { gasto_habilitado: habilitado },
     });
-    return { antes: prev.rows[0].gasto_habilitado, despues: habilitado };
+    return { antes: prev.rows[0].gasto_habilitado, despues: habilitado, actualizadoEn: guardada[0]!.actualizado_en };
   });
+  if (cambio.antes && !cambio.despues) {
+    await raiseAlertBestEffort(alertas, 'interruptor_global_apagado', { clienteId: null, parametros: { actualizado_en: cambio.actualizadoEn.toISOString() } });
+  }
+  return { antes: cambio.antes, despues: cambio.despues };
 }
 
 /** Both switches and the client's default ceiling, read-only. A missing client row means enabled. */

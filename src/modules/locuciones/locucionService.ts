@@ -11,6 +11,8 @@ import { VoiceProviderError, type VoiceProvider, type VoiceSettings } from '../.
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { validateKey } from '../../lib/media/storage/keys.js';
 import type { Storage } from '../../lib/media/storage/types.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
+import { evaluarUmbrales } from '../alertas/umbrales.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { unitCost } from '../precios/costEstimation.js';
 import { microToUsd, type MicroUsd } from '../presupuesto/money.js';
@@ -47,6 +49,8 @@ export interface LocucionDeps {
   voice: VoiceProvider;
   measureAudio: MeasureAudio;
   logger?: Logger;
+  /** Persistent alerts (Step 11): budget thresholds after each settled voice call. Absent: none. */
+  alertas?: AlertasRuntime;
   /** Where the audio is written before it is measured and stored. Default: the system temp folder. */
   tmpDir?: string;
 }
@@ -241,6 +245,7 @@ export async function generarLocucion(deps: LocucionDeps, req: GenerarLocucionRe
         return locucion;
       });
       liquidada = true;
+      await evaluarUmbrales(deps.alertas, req.clienteId);
       log.info(
         { ...meta, locucionId: resultado.id, durationMs: Date.now() - started, audioMs: duracionMs, cost: microToUsd(estimado), requestId: respuesta.requestId, outcome: 'ok' },
         'voice-over generated',
@@ -270,6 +275,7 @@ async function cerrar(
   try {
     if (liquidar) {
       await settle(deps.db, autorizacion, { actualCost: liquidar.estimado, inputUnits: liquidar.caracteres, outputUnits: 0, unit: UNIT, outcome: liquidar.outcome }, req.actor);
+      await evaluarUmbrales(deps.alertas, req.clienteId);
     } else {
       await release(deps.db, autorizacion, req.actor);
     }

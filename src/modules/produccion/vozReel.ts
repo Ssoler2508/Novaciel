@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import type { Db } from '../../db/types.js';
 import type { VoiceProvider } from '../../lib/ai/voice/types.js';
 import type { Storage } from '../../lib/media/storage/types.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
 import type { AuditActor } from '../auditoria/recordAudit.js';
 import { getBriefDeProduccion, type GuionView } from '../directorCreativo/guionesRepository.js';
 import { extractFactTokenIds } from '../directorCreativo/tokens.js';
@@ -68,6 +69,8 @@ export interface PrepararVozArgs {
   db: Db;
   storage: Storage;
   voz: VozRuntime | undefined;
+  /** Persistent alerts (Step 11): budget thresholds after each voice call. Absent: none. */
+  alertas?: AlertasRuntime;
   logger: Pick<Logger, 'info' | 'warn' | 'error'>;
   clienteId: ClienteId;
   brief: GuionView;
@@ -126,7 +129,7 @@ export async function prepararVozDelReel(a: PrepararVozArgs): Promise<VozPrepara
   comprobarAjusteReel(escenas.map((e) => ({ escena: e.orden, duracionS: e.duracion_s ?? 0, duracionVozMs: null })));
 
   // 4. Generate or reuse (paid once per distinct text).
-  const deps = { db: a.db, storage: a.storage, voice: a.voz.provider, measureAudio: a.voz.measureAudio, logger: a.logger as Logger };
+  const deps = { db: a.db, storage: a.storage, voice: a.voz.provider, measureAudio: a.voz.measureAudio, logger: a.logger as Logger, ...(a.alertas ? { alertas: a.alertas } : {}) };
   const generadas = new Map<number, Awaited<ReturnType<typeof generarLocucion>>>();
   let llamadas = 0;
   let costo = 0n;

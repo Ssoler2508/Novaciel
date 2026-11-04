@@ -95,6 +95,10 @@ describe('requirePermission: every role on every action', () => {
     manage_budget: ['administrador_novaciel'],
     view_prices: ['administrador_novaciel', 'operador_novaciel'],
     manage_prices: ['administrador_novaciel'],
+    view_alerts: ['administrador_novaciel', 'operador_novaciel', 'dueno_cliente'],
+    ack_alerts: ['administrador_novaciel', 'operador_novaciel'],
+    view_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
+    ack_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
     manage_novaciel_staff: ['administrador_novaciel'],
   };
 

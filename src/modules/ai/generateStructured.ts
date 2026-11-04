@@ -6,6 +6,8 @@ import { modelForPurpose, tierForPurpose, type Purpose } from '../../lib/ai/mode
 import { LLMProviderError, type LLMProvider, type LLMResponse } from '../../lib/ai/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import type { AuditActor } from '../auditoria/recordAudit.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
+import { evaluarUmbrales } from '../alertas/umbrales.js';
 import { computeCost, estimateCost } from '../precios/costEstimation.js';
 import { microToUsd, type MicroUsd } from '../presupuesto/money.js';
 import { authorize, release, settle, type SpendAuthorization } from '../presupuesto/presupuestoService.js';
@@ -21,6 +23,8 @@ export interface GenerateStructuredDeps {
   provider: LLMProvider;
   alerts: AlertSink;
   logger?: Logger;
+  /** Persistent alerts (Step 11): budget thresholds are checked after each settled call. Absent: none. */
+  alertas?: AlertasRuntime;
 }
 
 export interface GenerateStructuredRequest<T> {
@@ -73,6 +77,7 @@ function parseAndValidate<T>(text: string, schema: ZodType<T>): { ok: true; data
 }
 
 interface Attempt<T> {
+  authorizationId: string;
   usage: { inputTokens: number; outputTokens: number; cost: MicroUsd };
   data: { ok: true; data: T } | { ok: false };
 }
@@ -151,7 +156,8 @@ export async function generateStructured<T>(
       },
       'llm call settled',
     );
-    return { usage: { inputTokens: response.inputTokens, outputTokens: response.outputTokens, cost }, data: parsed };
+    await evaluarUmbrales(deps.alertas, request.clienteId);
+    return { authorizationId: authorization.id, usage: { inputTokens: response.inputTokens, outputTokens: response.outputTokens, cost }, data: parsed };
   };
 
   const first = await attemptOnce(request.prompt.user, 1);
@@ -161,7 +167,7 @@ export async function generateStructured<T>(
   const second = await attemptOnce(`${request.prompt.user}\n\n${RETRY_NOTE}`, 2);
   if (second.data.ok) return result(second.data.data, 2, [first.usage, second.usage]);
 
-  await deps.alerts.alert({ code: 'llm_schema_invalid', ...meta, attempts: 2 });
+  await deps.alerts.alert({ code: 'llm_schema_invalid', ...meta, attempts: 2, referenceId: second.authorizationId });
   throw new SchemaValidationError(request.purpose, 2);
 }
 
@@ -206,6 +212,7 @@ async function closeAfterProviderError<T>(
         { actualCost: cost, inputUnits: error.usage.inputTokens, outputUnits: error.usage.outputTokens, outcome: 'error' },
         request.actor,
       );
+      await evaluarUmbrales(deps.alertas, request.clienteId);
     } else {
       await release(db, authorization, request.actor);
     }

@@ -8,6 +8,7 @@ import type { Db } from '../../db/types.js';
 import { runInTransaction } from '../../db/transaction.js';
 import type { Storage } from '../../lib/media/storage/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { getBriefActual, type GuionView } from '../directorCreativo/guionesRepository.js';
 import { usableCondition } from '../media/usable.js';
@@ -37,6 +38,7 @@ import { getProduccionActual, type ProduccionView } from './produccionRepository
 import { elegirPlantilla } from './plantillas.js';
 import type { CapaTextoAnimado } from './capaTexto.js';
 import type { LicenciaRemotion } from './remotionLicencia.js';
+import { alertarFalloDeProduccion } from './alertasProduccion.js';
 import { renderReel, type ReelRenderDeps, type ReelRenderInput, type VozDeReel } from './reelRenderer.js';
 import { prepararVozDelReel, type VozPreparada, type VozRuntime } from './vozReel.js';
 import { renderSlide } from './renderer.js';
@@ -88,6 +90,8 @@ export interface ProduccionDeps {
   reel?: ReelRuntime;
   /** The voice-over provider (Step 7d). Absent: reels are made with the silent track, whatever the client's profile says. */
   voz?: VozRuntime;
+  /** Persistent alerts (Step 11): budget thresholds after each paid voice call. Absent: none. */
+  alertas?: AlertasRuntime;
 }
 
 export interface ProducirOptions {
@@ -315,6 +319,8 @@ export async function producirPieza(
   const { db, storage } = deps;
   const log = deps.logger ?? defaultLogger;
   const reproducir = options.reproducir ?? false;
+  // When this attempt started: with the piece it identifies the attempt in the alerts of a failed production.
+  const intentoEn = new Date();
 
   // 1 and 2. Free checks, then the resources again, before any work is done.
   const { pieza, brief, versionActual } = await assertProducible(db, clienteId, piezaId, reproducir);
@@ -361,6 +367,7 @@ export async function producirPieza(
         db,
         storage,
         voz: deps.voz,
+        ...(deps.alertas ? { alertas: deps.alertas } : {}),
         logger: log,
         clienteId,
         brief,
@@ -576,6 +583,8 @@ export async function producirPieza(
       log.warn({ clienteId, piezaId, archivos: claves_guardadas.length, errorName: error instanceof Error ? error.name : 'UnknownError' }, 'production failed; deleting the stored files');
       await borrar();
     }
+    // A voice provider or text engine failure is an alert (Step 11); anything else is just the error.
+    await alertarFalloDeProduccion(deps.alertas, clienteId, piezaId, intentoEn, error);
     throw error;
   }
 }

@@ -159,6 +159,24 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
   | `view_overview` (new) | global | A, O | D | NovaCiel overview across clients. |
 
   The client owner sees neither spend nor ceiling (open question below). Money rules decided in B: a ceiling below what is already spent is allowed and audited (`por_debajo_del_gasto`), new authorizations are then refused; the ceiling of a past month is refused (400 `periodo_pasado`); a retroactive price is refused (400 `precio_retroactivo`, enforced in the price repository so `set-price` and the route share it).
+- **Alert catalogue approved in checkpoint A, built in C** (`src/modules/alertas/catalogo.ts`). Parameters are ids, codes and numbers only (zod per code, strict). Alerts clear only by acknowledgement. The Notifier is called once, only when the row was really inserted; a Notifier failure keeps the alert and logs only the error name. "NovaCiel" = active administrators and operators. Thresholds (percent of the monthly ceiling, config `ALERT_BUDGET_THRESHOLDS`, a subset of 50, 80, 100) are **VERIFY**.
+
+  | Code | Severity | Who is told | Dedupe key | Raised when |
+  |---|---|---|---|---|
+  | `presupuesto_umbral_50` | info | NovaCiel | `presupuesto:{cliente}:{periodo}:50` | a settled cost takes (spent + reserved) to 50 % of the ceiling |
+  | `presupuesto_umbral_80` | aviso | NovaCiel (spec 13.1) | `presupuesto:{cliente}:{periodo}:80` | same, 80 % |
+  | `presupuesto_umbral_100` | critica | NovaCiel + the client owner (template without figures) | `presupuesto:{cliente}:{periodo}:100` | same, 100 % |
+  | `interruptor_global_apagado` | critica | NovaCiel | `interruptor_global:{actualizado_en}` | the global switch goes ON → OFF (global alert, no client) |
+  | `interruptor_cliente_apagado` | aviso | NovaCiel | `interruptor_cliente:{cliente}:{actualizado_en}` | a client switch goes ON → OFF |
+  | `trabajo_fallido` | aviso | NovaCiel | `trabajo:{cola}:{jobId}` | a pg-boss handler throws (`withFailureAlert`; queue name, job id and error name only; global alert) |
+  | `llm_schema_invalid` / `vision_schema_invalid` | aviso | NovaCiel | `schema:{cliente}:{proposito}:{id of the 2nd authorization}` | two invalid outputs (the legacy `Alert` gains an optional `referenceId`) |
+  | `aprobacion_vencida` | aviso | NovaCiel + the client's valid approvers (main and substitute) | `aprobacion_vencida:{tipo}:{id}:{plazo}` | the `vencimiento` notice, scheduled exactly at the deadline, finds the approval still waiting for the client |
+  | `aprobacion_escalada` | critica | NovaCiel only; **no extra notice** (Step 9's `escalada_cambios` is the notice) | `escalada:{piezaId}` | the escalation job (3rd client change request) |
+  | `qc_rechazada` | info | NovaCiel | `qc:{revisionId}` | a QC report is `rechazado` |
+  | `voz_fallo` | critica | NovaCiel | QC: `voz:{produccionId}`; production: `voz:intento:{piezaId}:{intento_en}` | a QC report fails with `voz_audio_ausente` or `voz_volumen_fuera_de_rango`; **or** producing a reel fails with `VoiceProviderError` (parameter `tipo`: auth, quota, rate_limit, bad_request, server, timeout) |
+  | `capa_texto_fallo` | critica | NovaCiel | QC: `capa:{produccionId}`; production: `capa:intento:{piezaId}:{intento_en}` | a QC report fails with `voz_subtitulos_ausentes`, `plantilla_invalida` or `marca_glifos_no_soportados`; **or** producing a reel fails with `RemotionNoDisponibleError` / `CapaTextoError` (parameter `razon`: the reason code) |
+
+  Client roles see only `aprobacion_vencida`. Decisions made in C: the **vencimiento** notice is a fourth scheduled notice (`TipoRecordatorio`), never cancelled, and it re-checks the state when it fires, like the reminders; voice and text-layer failures come from two places: the QC report, and the production itself (`producirPieza` raises them when the voice provider or the text engine fails, so the production job, the plan job and `piece:produce` all do; the attempt is identified by the piece and the instant it started, so each failed attempt is one alert; any other production error is only a failed job, `trabajo_fallido`); budget thresholds are evaluated right after a paid call settles and commits, at the call sites (`generateStructured`, `describeMedia`, the voice-over service), not inside `settle`. New Notifier templates: `alerta_novaciel`, `presupuesto_techo_cliente`, `aprobacion_vencida`; the reference type `alerta`; `clienteId` null for global alerts.
 
 ### Step 12 — End-to-end test
 - Full week for the fictional client: plan → brief → production → QC → approval → publish (fake) → metrics.

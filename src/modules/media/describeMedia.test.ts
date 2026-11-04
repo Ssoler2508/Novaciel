@@ -150,8 +150,10 @@ describe('describeMedia', () => {
       expect((error as Error).message).not.toContain(DESCRIPTION_SECRET);
       expect((await ledger(db, w.clienteId)).map((r) => r.resultado)).toEqual(['schema_invalido', 'schema_invalido']);
       expect(w.vision.calls).toHaveLength(2);
+      // The reference id is the id of the SECOND authorization (the dedupe key of the persistent alert).
+      const second = (await db.query<{ autorizacion_id: string }>('SELECT autorizacion_id FROM libro_gastos WHERE cliente_id = $1 ORDER BY id DESC LIMIT 1', [w.clienteId])).rows[0]!;
       expect(w.alerts.alerts).toEqual([
-        { code: 'vision_schema_invalid', clienteId: w.clienteId, purpose: 'describe_media', provider: 'fake_vision', model: 'fake-vision-model', attempts: 2 },
+        { code: 'vision_schema_invalid', clienteId: w.clienteId, purpose: 'describe_media', provider: 'fake_vision', model: 'fake-vision-model', attempts: 2, referenceId: second.autorizacion_id },
       ]);
       const stored = await getMedia(db, w.clienteId, w.media.id);
       expect(stored).toMatchObject({ descripcion: null, descrito_en: null, etiquetas_sugeridas: [] });

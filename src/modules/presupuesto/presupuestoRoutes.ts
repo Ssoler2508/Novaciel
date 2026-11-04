@@ -2,6 +2,7 @@ import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../../db/types.js';
 import type { App } from '../auth/appType.js';
+import type { AlertasDeps } from '../alertas/raiseAlert.js';
 import { requirePermission } from '../auth/authorize.js';
 import {
   listPrices,
@@ -48,6 +49,8 @@ import { getSpendSummary } from './presupuestoService.js';
 
 export interface PresupuestoRoutesOptions {
   db: Db;
+  /** Persistent alerts (Step 11): turning a switch off raises one. Absent: none. */
+  alertas?: AlertasDeps;
 }
 
 type ClientParams = { clienteId: string };
@@ -103,7 +106,7 @@ function priceView(p: ModelPrice | UnitPrice) {
 }
 
 export async function registerPresupuestoRoutes(app: App, options: PresupuestoRoutesOptions): Promise<void> {
-  const { db } = options;
+  const { db, alertas } = options;
   const verGasto = requirePermission(db, 'view_spend', (req) => (req.params as ClientParams).clienteId);
   const gestionarPresupuesto = requirePermission(db, 'manage_budget');
   const verPrecios = requirePermission(db, 'view_prices');
@@ -199,14 +202,14 @@ export async function registerPresupuestoRoutes(app: App, options: PresupuestoRo
       } catch {
         return reply.code(404).send({ error: 'not_found' });
       }
-      const change = await setClientSpendSwitch(db, clienteId, body.data.habilitado, actorOf(req));
+      const change = await setClientSpendSwitch(db, clienteId, body.data.habilitado, actorOf(req), alertas);
       return { interruptor_cliente: change.despues, anterior: change.antes };
     });
 
     scope.put('/presupuesto/interruptor-global', { preHandler: gestionarPresupuesto }, async (req, reply) => {
       const body = interruptorBody.safeParse(req.body);
       if (!body.success) return bad(reply);
-      const change = await setGlobalSpendSwitch(db, body.data.habilitado, actorOf(req));
+      const change = await setGlobalSpendSwitch(db, body.data.habilitado, actorOf(req), alertas);
       return { interruptor_global: change.despues, anterior: change.antes };
     });
 
