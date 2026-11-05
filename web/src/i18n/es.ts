@@ -17,6 +17,12 @@ export const es = {
     search: 'Buscar',
     delete: 'Eliminar',
     empty: 'No hay datos para mostrar.',
+    backHome: 'Volver al inicio',
+    forbidden: 'No tienes permiso para ver esta información.',
+    notFound: 'No encontramos esta información.',
+    unauthorized: 'Tu sesión expiró. Inicia sesión de nuevo.',
+    loadError: 'No se pudo cargar la información. Inténtalo de nuevo.',
+    networkError: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
     error: 'Ocurrió un error. Inténtalo de nuevo.',
   },
 
@@ -41,6 +47,28 @@ export const es = {
     roles: 'Roles',
     noRoles: 'Sin roles asignados.',
     noClient: 'Sin cliente',
+  },
+
+  aprobaciones: {
+    title: 'Aprobaciones pendientes',
+    subtitle: 'Revisa lo que espera la decisión del cliente.',
+    open: 'Ver aprobaciones pendientes',
+    pieces: 'Piezas',
+    plans: 'Planes',
+    noPieces: 'No hay piezas pendientes de aprobación.',
+    noPlans: 'No hay planes pendientes de aprobación.',
+    plansReadOnly:
+      'Los planes se muestran solo como referencia. La aprobación de planes todavía no está disponible.',
+    internalNotice:
+      'Esta es la vista de aprobación interna de NovaCiel. Las decisiones del cliente no se registran desde aquí.',
+    red: 'Red',
+    formato: 'Formato',
+    estado: 'Estado',
+    fechaHora: 'Fecha y hora',
+    version: 'Versión',
+    week: 'Semana',
+    piecesCount: 'Piezas',
+    firstDeadline: 'Primer plazo',
   },
 
   nav: {

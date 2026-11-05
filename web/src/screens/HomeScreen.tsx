@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Session } from '../api/auth.js';
 import { es } from '../i18n/index.js';
+import { hrefAprobaciones } from '../router.js';
+import { clientApprovalClients } from '../session/roles.js';
 import { useSession } from '../session/SessionContext.js';
 
 // Provisional home screen: it only shows what /auth/me returned. Role codes are rendered as they
@@ -9,6 +11,7 @@ export function HomeScreen({ user }: { user: Session }) {
   const { logout } = useSession();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const approvalClients = clientApprovalClients(user.roles);
 
   async function onLogout() {
     if (submitting) return;
@@ -56,6 +59,23 @@ export function HomeScreen({ user }: { user: Session }) {
             </dd>
           </div>
         </dl>
+
+        {approvalClients.length > 0 && (
+          <section className="home-nav" aria-labelledby="home-approvals-title">
+            <h2 id="home-approvals-title">{es.aprobaciones.title}</h2>
+            <ul className="nav-links">
+              {approvalClients.map((clienteId, index) => (
+                <li key={clienteId}>
+                  <a className="button button--secondary" href={hrefAprobaciones(clienteId)}>
+                    {approvalClients.length === 1
+                      ? es.aprobaciones.open
+                      : `${es.aprobaciones.open} ${index + 1}`}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {error !== null && (
           <p className="error" role="alert">
