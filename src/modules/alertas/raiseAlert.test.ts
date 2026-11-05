@@ -27,6 +27,12 @@ const PARAMS: Record<CodigoAlerta, () => Record<string, unknown>> = {
   qc_rechazada: () => ({ pieza_id: id(), revision_id: id(), codigos_fallo: ['cifra_libre'] }),
   voz_fallo: () => ({ pieza_id: id(), produccion_id: id(), codigos: ['voz_audio_ausente'] }),
   capa_texto_fallo: () => ({ pieza_id: id(), produccion_id: id(), codigos: ['marca_glifos_no_soportados'] }),
+  publicacion_fallida: () => ({ pieza_id: id(), produccion_id: id(), motivo: 'server' }),
+  publicacion_resultado_desconocido: () => ({ pieza_id: id(), produccion_id: id() }),
+  publicacion_sin_aprobacion: () => ({ pieza_id: id(), fecha_hora: NOW, reprogramaciones: 1 }),
+  publicacion_reprogramaciones_agotadas: () => ({ pieza_id: id(), fecha_hora: NOW }),
+  conexion_red_vencida: () => ({ red: 'instagram', conexion_id: id() }),
+  etiqueta_ia_no_soportada: () => ({ pieza_id: id(), produccion_id: id(), proveedor: 'fake', red: 'instagram' }),
 };
 
 function capturedLogger() {
@@ -173,7 +179,7 @@ describe('raiseAlert', () => {
   });
 
   it('every code of the catalogue has a strict schema (an extra key is refused) and a client-or-global rule', () => {
-    expect(CODIGOS_ALERTA).toHaveLength(13);
+    expect(CODIGOS_ALERTA).toHaveLength(19);
     for (const codigo of CODIGOS_ALERTA) {
       const def = CATALOGO[codigo];
       expect(def.parametros.safeParse(PARAMS[codigo]()).success, codigo).toBe(true);

@@ -15,6 +15,9 @@ export const DOMAIN_TABLES: readonly string[] = [
   'topes',
   'conexiones_redes',
   // Append-only tables: the TRUNCATE below sets the flag that lets them be emptied (test databases only).
+  'metricas_pieza',
+  'publicaciones_resultados',
+  'publicaciones',
   'aprobaciones_plan',
   'aprobaciones',
   'aprobadores_cliente',

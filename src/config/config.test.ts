@@ -95,7 +95,7 @@ describe('storage config', () => {
   it('production requires STORAGE_DRIVER to be set explicitly', () => {
     expect(() => loadConfig({ ...valid, NODE_ENV: 'production' })).toThrow(/STORAGE_DRIVER/);
     expect(() =>
-      loadConfig({ ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', ...s3Vars }),
+      loadConfig({ ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', PUBLISH_PROVIDER: 'fake', ...s3Vars }),
     ).not.toThrow();
   });
 });
@@ -178,7 +178,7 @@ describe('password scrypt cost', () => {
 
   it('rejects values below 15 outside NODE_ENV=test', () => {
     for (const NODE_ENV of ['development', 'production']) {
-      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', ...s3Vars };
+      const env = { ...valid, NODE_ENV, STORAGE_DRIVER: NODE_ENV === 'production' ? 's3' : 'local', LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', PUBLISH_PROVIDER: 'fake', ...s3Vars };
       expect(() => loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '14' })).toThrow(/PASSWORD_SCRYPT_LOG_N/);
       expect(loadConfig({ ...env, PASSWORD_SCRYPT_LOG_N: '15' }).PASSWORD_SCRYPT_LOG_N).toBe(15);
     }
@@ -218,7 +218,7 @@ describe('llm config', () => {
 
   it('requires LLM_PROVIDER to be set explicitly in production', () => {
     expect(() => loadConfig(production)).toThrow(/LLM_PROVIDER/);
-    expect(loadConfig({ ...production, LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none' }).llm.provider).toBe('fake');
+    expect(loadConfig({ ...production, LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', PUBLISH_PROVIDER: 'fake' }).llm.provider).toBe('fake');
   });
 
   it('requires both tier models with the claude provider and passes them through', () => {
@@ -253,7 +253,7 @@ describe('voice config (Step 7d)', () => {
 
   it('VOICE_PROVIDER unset in production is a startup error; "none" must be written explicitly', () => {
     expect(() => loadConfig(production)).toThrow(/VOICE_PROVIDER: must be set explicitly in production/);
-    expect(loadConfig({ ...production, VOICE_PROVIDER: 'none' }).voice).toEqual({ provider: 'none', model: undefined, timeoutMs: 30_000 });
+    expect(loadConfig({ ...production, VOICE_PROVIDER: 'none', PUBLISH_PROVIDER: 'fake' }).voice).toEqual({ provider: 'none', model: undefined, timeoutMs: 30_000 });
   });
 
   it('elevenlabs needs the model and the key, passes them through and never prints the key', () => {
@@ -274,6 +274,23 @@ describe('voice config (Step 7d)', () => {
     expect(loadConfig({ ...valid, VOICE_PROVIDER: 'none' }).voice.provider).toBe('none');
     expect(() => loadConfig({ ...valid, VOICE_PROVIDER: 'azure' })).toThrow(/VOICE_PROVIDER/);
     expect(() => loadConfig({ ...valid, TTS_TIMEOUT_MS: '10' })).toThrow(/TTS_TIMEOUT_MS/);
+  });
+});
+
+describe('publish config (Step 10)', () => {
+  const production = { ...valid, NODE_ENV: 'production', STORAGE_DRIVER: 's3', LLM_PROVIDER: 'fake', VOICE_PROVIDER: 'none', ...s3Vars };
+
+  it('defaults to the fake provider in development and test', () => {
+    for (const NODE_ENV of ['development', 'test']) expect(loadConfig({ ...valid, NODE_ENV }).publish).toEqual({ provider: 'fake' });
+  });
+
+  it('PUBLISH_PROVIDER unset in production is a startup error', () => {
+    expect(() => loadConfig(production)).toThrow(/PUBLISH_PROVIDER: must be set explicitly in production/);
+    expect(loadConfig({ ...production, PUBLISH_PROVIDER: 'fake' }).publish).toEqual({ provider: 'fake' });
+  });
+
+  it('rejects a provider that does not exist', () => {
+    expect(() => loadConfig({ ...valid, PUBLISH_PROVIDER: 'buffer' })).toThrow(/PUBLISH_PROVIDER/);
   });
 });
 

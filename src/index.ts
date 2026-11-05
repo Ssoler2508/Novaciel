@@ -20,6 +20,10 @@ import { LogNotifier } from './lib/notificaciones/index.js';
 import { createPgBossRecordatorios, registerAprobacionesRoutes, registerRecordatoriosJobs } from './modules/aprobaciones/index.js';
 import { createPgBossProduccionQueue, createReelRuntime, registerProduccionJobs, registerProduccionRoutes } from './modules/produccion/index.js';
 import { createVozRuntime } from './modules/produccion/vozRuntime.js';
+import { createPublishProvider } from './lib/publish/index.js';
+import { createPgBossPublicacionQueue } from './modules/publicaciones/publicacionQueue.js';
+import { registerPublicacionesJobs } from './modules/publicaciones/publicacionesJobs.js';
+import { registerPublicacionesRoutes } from './modules/publicaciones/publicacionesRoutes.js';
 import { reelQcConfig } from './modules/controlCalidad/reelQcConfig.js';
 import {
   createPgBossControlCalidad,
@@ -92,7 +96,12 @@ async function main(): Promise<void> {
   await registerPanelRoutes(app, { db: pool });
   // The approval routes queue the reminders through pg-boss, inside the decision's transaction. The workers
   // that deliver them (with the notifier) are registered below, after the queue starts.
-  await registerAprobacionesRoutes(app, { db: pool, storage, recordatorios: createPgBossRecordatorios(boss) });
+  const recordatorios = createPgBossRecordatorios(boss);
+  await registerAprobacionesRoutes(app, { db: pool, storage, recordatorios });
+  // Publishing (Step 10): scheduling queues the send inside its transaction; the jobs below send, sweep and measure.
+  const publicaciones = createPgBossPublicacionQueue(boss);
+  const publishProvider = createPublishProvider(config.publish);
+  await registerPublicacionesRoutes(app, { db: pool, storage, recordatorios, publicaciones });
   await startQueue(boss);
   await registerBudgetJobs(boss, pool, alertas);
   // LLM_PROVIDER=fake gives ONE deterministic development provider that serves both the planner and
@@ -119,6 +128,7 @@ async function main(): Promise<void> {
   // Approval reminders, the deadline notice and the escalation notice (spec 11.3). The notifier only logs ids and
   // template names until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
   await registerRecordatoriosJobs(boss, { db: pool, notifier, alertas });
+  await registerPublicacionesJobs(boss, { db: pool, storage, provider: publishProvider, queue: publicaciones, recordatorios, alertas });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }

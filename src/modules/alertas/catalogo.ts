@@ -144,6 +144,51 @@ export const CATALOGO = {
     clave: (_c, p) => ('produccion_id' in p ? `capa:${p.produccion_id}` : `capa:intento:${p.pieza_id}:${p.intento_en}`),
     notifica: { novaciel: true },
   }),
+  // ---- Step 10: publishing. Ids, closed codes and numbers only: never a caption or a provider message. ----
+  // `motivo` is a closed category of the retry policy or a fixed reason of the service (for example
+  // "archivo_alterado_al_enviar"). Deduplicated per production and reason.
+  publicacion_fallida: def({
+    severidad: 'critica',
+    ambito: 'cliente',
+    parametros: z.object({ pieza_id: id, produccion_id: id, motivo: codigo }).strict(),
+    clave: (_c, p) => `publicacion_fallida:${p.produccion_id}:${p.motivo}`,
+    notifica: { novaciel: true },
+  }),
+  publicacion_resultado_desconocido: def({
+    severidad: 'critica',
+    ambito: 'cliente',
+    parametros: z.object({ pieza_id: id, produccion_id: id }).strict(),
+    clave: (_c, p) => `publicacion_desconocida:${p.produccion_id}`,
+    notifica: { novaciel: true },
+  }),
+  publicacion_sin_aprobacion: def({
+    severidad: 'aviso',
+    ambito: 'cliente',
+    parametros: z.object({ pieza_id: id, fecha_hora: instante, reprogramaciones: z.number().int().min(1).max(100) }).strict(),
+    clave: (_c, p) => `publicacion_sin_aprobacion:${p.pieza_id}:${p.fecha_hora}`,
+    notifica: { novaciel: true },
+  }),
+  publicacion_reprogramaciones_agotadas: def({
+    severidad: 'critica',
+    ambito: 'cliente',
+    parametros: z.object({ pieza_id: id, fecha_hora: instante }).strict(),
+    clave: (_c, p) => `publicacion_reprogramaciones:${p.pieza_id}:${p.fecha_hora}`,
+    notifica: { novaciel: true },
+  }),
+  conexion_red_vencida: def({
+    severidad: 'critica',
+    ambito: 'cliente',
+    parametros: z.object({ red: z.enum(['instagram', 'facebook', 'tiktok', 'youtube']), conexion_id: id.optional() }).strict(),
+    clave: (clienteId, p) => `conexion_red_vencida:${clienteId}:${p.red}:${p.conexion_id ?? 'ninguna'}`,
+    notifica: { novaciel: true },
+  }),
+  etiqueta_ia_no_soportada: def({
+    severidad: 'aviso',
+    ambito: 'cliente',
+    parametros: z.object({ pieza_id: id, produccion_id: id, proveedor: codigo, red: z.enum(['instagram', 'facebook', 'tiktok', 'youtube']) }).strict(),
+    clave: (_c, p) => `etiqueta_ia_no_soportada:${p.produccion_id}`,
+    notifica: { novaciel: true },
+  }),
 } as const satisfies Record<string, Definicion>;
 
 export type CodigoAlerta = keyof typeof CATALOGO;
