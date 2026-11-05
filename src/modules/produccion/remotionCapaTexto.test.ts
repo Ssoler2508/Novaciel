@@ -17,6 +17,7 @@ import {
   crearCapaTextoRemotion,
   idComposicionRemotion,
   leerCabeceraPng,
+  margenDeLimpieza,
   normalizarCapas,
   rutaNavegadorDescargado,
   type LogNavegador,
@@ -25,6 +26,7 @@ import {
 } from './remotionCapaTexto.js';
 import type { Medir } from './textLayout.js';
 import { directorioDeFuentes } from './fonts.js';
+import type { ProcesosNavegador } from './navegadorProcesos.js';
 
 // The adapter without a browser: Remotion's functions are replaced by a fake that writes frames into the folder.
 // The REAL Chromium is in remotionCapaTexto.render.test.ts.
@@ -48,24 +50,50 @@ const entradaDe = (props: PropsPlantilla, extra: Partial<{ fotogramas: number }>
 
 // ---- a fake Remotion ---------------------------------------------------------------------------
 
-type Modo = 'ok' | 'sin_padding' | 'con_padding' | 'falta_un_fotograma' | 'sin_alfa' | 'tamano_malo' | 'falla' | 'cuelga' | 'falla_pasado_el_limite' | 'violacion_csp';
+type Modo = 'ok' | 'sin_padding' | 'con_padding' | 'falta_un_fotograma' | 'sin_alfa' | 'tamano_malo' | 'falla' | 'cuelga' | 'no_termina' | 'falla_pasado_el_limite' | 'violacion_csp';
 
 class FakeRenderer implements RendererRemotion {
   modo: Modo = 'ok';
   aperturas = 0;
   cierres = 0;
+  /** `close()` never returns (Remotion's close can wait for ever for a browser it already killed). */
+  cierreCuelga = false;
+  /** The browser takes this long to open. */
+  retrasoApertura = 0;
+  /** Runs while the browser opens (to create processes or temporary folders, as the real one does). */
+  alAbrir: (() => Promise<void>) | null = null;
+  /** Runs when `close()` is called. */
+  alCerrar: (() => void) | null = null;
+  /** Mode `no_termina`: the render ignores cancel and close and ends only when the test says so. */
+  private terminarRender: (() => void) | null = null;
+  escritoTardio = false;
   composiciones: string[] = [];
   inputProps: Record<string, unknown>[] = [];
   cancelado = false;
   limitesInternos: number[] = [];
   private liberar: (() => void) | null = null;
 
+  /** Releases a render that is waiting in mode `cuelga` (as killing the browser does). */
+  soltar(): void {
+    this.liberar?.();
+  }
+
+  /** Lets a render in mode `no_termina` end. */
+  terminar(): void {
+    this.terminarRender?.();
+  }
+
   async openBrowser(): Promise<NavegadorRemotion> {
     this.aperturas++;
+    if (this.retrasoApertura > 0) await new Promise((r) => setTimeout(r, this.retrasoApertura));
+    await this.alAbrir?.();
     return {
       close: async () => {
         this.cierres++;
+        this.alCerrar?.();
+        if (this.cierreCuelga) return new Promise<never>(() => undefined);
         this.liberar?.();
+        return undefined;
       },
     };
   }
@@ -101,6 +129,15 @@ class FakeRenderer implements RendererRemotion {
         this.liberar = resolve;
       });
       throw new Error('browser closed');
+    }
+    if (this.modo === 'no_termina') {
+      await escribir(0, png);
+      await new Promise<void>((resolve) => {
+        this.terminarRender = resolve;
+      });
+      await escribir(1, png); // written after the adapter gave up
+      this.escritoTardio = true;
+      throw new Error('late end');
     }
     if (this.modo === 'violacion_csp') o.onBrowserLog({ type: 'error', text: "Loading the image 'https://example.invalid/x.png' violates the following Content Security Policy directive: \"img-src 'self'\"." });
     for (let i = 0; i < c.fotogramas; i++) {
@@ -156,17 +193,36 @@ async function crearProyecto(): Promise<Proyecto> {
   return proyecto;
 }
 
+/** The operating system's browser processes, faked: a list that kills remove from. */
+class FakeProcesos implements ProcesosNavegador {
+  vivos: number[] = [100]; // 100: a browser of someone else, never ours
+  muertos: number[][] = [];
+  async listar(): Promise<number[]> {
+    return [...this.vivos];
+  }
+  async matar(pids: readonly number[]): Promise<void> {
+    this.muertos.push([...pids]);
+    this.vivos = this.vivos.filter((p) => !pids.includes(p));
+  }
+}
+
 let proyecto: Proyecto;
 let carpeta: string;
 let renderer: FakeRenderer;
+let procesos: FakeProcesos;
+/** A private "OS temp directory" for Remotion's temporary folders, so the tests never touch the real one. */
+let dirTemporal: string;
 beforeEach(async () => {
   proyecto = await crearProyecto();
   carpeta = await mkdtemp(path.join(os.tmpdir(), 'novaciel-capa-out-'));
+  dirTemporal = await mkdtemp(path.join(os.tmpdir(), 'novaciel-capa-tmp-'));
   renderer = new FakeRenderer();
+  procesos = new FakeProcesos();
 });
 afterEach(async () => {
   await rm(proyecto.raiz, { recursive: true, force: true });
   await rm(carpeta, { recursive: true, force: true });
+  await rm(dirTemporal, { recursive: true, force: true });
 });
 
 function adaptador(extra: Partial<Parameters<typeof crearCapaTextoRemotion>[0]> = {}, logs: string[] = []) {
@@ -177,9 +233,21 @@ function adaptador(extra: Partial<Parameters<typeof crearCapaTextoRemotion>[0]> 
     raizRemotion: proyecto.remotion,
     cacheDir: proyecto.cache,
     logger,
-    deps: { renderer, existeNavegador: () => true, empaquetar: proyecto.opciones.empaquetar },
+    deps: { renderer, procesos, directorioTemporal: dirTemporal, existeNavegador: () => true, empaquetar: proyecto.opciones.empaquetar },
     ...extra,
   });
+}
+
+/** Short bounds so the tests of the cleanup are quick; `margenDeLimpieza(LIMPIEZA_CORTA)` is the most it can add. */
+const LIMPIEZA_CORTA = { cierreMs: 200, procesoMs: 100, trabajoMs: 200, temporalesMs: 100 };
+
+async function esperarHasta(condicion: () => Promise<boolean> | boolean, maxMs = 3000): Promise<boolean> {
+  const limite = Date.now() + maxMs;
+  while (Date.now() < limite) {
+    if (await condicion()) return true;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return condicion();
 }
 const opciones = (timeoutMs = 5000) => ({ carpeta, timeoutMs });
 const nombresEnCarpeta = async () => (await readdir(carpeta)).sort();
@@ -341,6 +409,84 @@ describe('the adapter: failures leave nothing behind', () => {
     expect(renderer.cancelado).toBe(true);
     expect(renderer.cierres).toBeGreaterThanOrEqual(1);
     expect(await nombresEnCarpeta()).toEqual([]);
+  });
+
+  describe('a browser or a render that does not obey: the call still ends within the time limit plus the cleanup margin', () => {
+    const TIMEOUT = 300;
+    const COTA = TIMEOUT + margenDeLimpieza(LIMPIEZA_CORTA);
+    const conProcesosPropios = () => {
+      renderer.alAbrir = async () => void procesos.vivos.push(200, 201);
+    };
+
+    it('close() never returns: the browser is killed by its process ids (never the ones that were already running)', async () => {
+      renderer.modo = 'cuelga';
+      renderer.cierreCuelga = true;
+      conProcesosPropios();
+      procesos.matar = async (pids) => {
+        procesos.muertos.push([...pids]);
+        procesos.vivos = procesos.vivos.filter((p) => !pids.includes(p));
+        renderer.soltar(); // killing the browser makes the render fail
+      };
+      const inicio = Date.now();
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
+      expect(Date.now() - inicio).toBeLessThan(COTA);
+      expect(renderer.cancelado).toBe(true);
+      expect(procesos.muertos).toEqual([[200, 201]]);
+      expect(procesos.vivos).toEqual([100]);
+      expect(await nombresEnCarpeta()).toEqual([]);
+    });
+
+    it('the browser closed but its processes are still there: they are killed; if they are gone, nothing is killed', async () => {
+      renderer.modo = 'cuelga';
+      conProcesosPropios();
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ razon: 'tiempo_agotado' });
+      expect(procesos.muertos).toEqual([[200, 201]]);
+
+      procesos.muertos.length = 0;
+      procesos.vivos = [100];
+      renderer.alCerrar = () => void (procesos.vivos = [100]); // a clean close takes its processes with it
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ razon: 'tiempo_agotado' });
+      expect(procesos.muertos).toEqual([]);
+    });
+
+    it('a render that ignores the cancel, the close and the kill is abandoned in time, and its late frames are removed', async () => {
+      renderer.modo = 'no_termina';
+      renderer.cierreCuelga = true;
+      conProcesosPropios();
+      const inicio = Date.now();
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
+      expect(Date.now() - inicio).toBeLessThan(COTA);
+      expect(procesos.muertos).toEqual([[200, 201]]);
+      expect(await nombresEnCarpeta()).toEqual([]);
+
+      renderer.terminar(); // it ends at last, after having written one more frame
+      expect(await esperarHasta(() => renderer.escritoTardio)).toBe(true);
+      expect(await esperarHasta(async () => (await nombresEnCarpeta()).length === 0)).toBe(true);
+    });
+
+    it('time is up while the browser is still opening: nothing else starts, and the browser that opens late is closed', async () => {
+      renderer.retrasoApertura = 600;
+      const inicio = Date.now();
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(100))).rejects.toMatchObject({ razon: 'tiempo_agotado' });
+      expect(Date.now() - inicio).toBeLessThan(100 + margenDeLimpieza(LIMPIEZA_CORTA));
+      expect(await esperarHasta(() => renderer.cierres >= 1)).toBe(true);
+      expect(renderer.composiciones).toEqual([]);
+      expect(await nombresEnCarpeta()).toEqual([]);
+    });
+
+    it("removes only the temporary folders this render created (a browser profile and Remotion's assets folder), never an older or foreign one", async () => {
+      await mkdir(path.join(dirTemporal, 'puppeteer_dev_chrome_profile-viejo'));
+      await mkdir(path.join(dirTemporal, 'ajena-a-remotion'));
+      await writeFile(path.join(dirTemporal, 'puppeteer_dev_chrome_profile-archivo'), 'x');
+      renderer.modo = 'cuelga';
+      renderer.alAbrir = async () => {
+        await mkdir(path.join(dirTemporal, 'puppeteer_dev_chrome_profile-nuevo'));
+        await mkdir(path.join(dirTemporal, 'remotion-v4.0.537-assets-nuevo'));
+        await writeFile(path.join(dirTemporal, 'remotion-v4.0.537-assets-nuevo', 'dentro.txt'), 'x');
+      };
+      await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ razon: 'tiempo_agotado' });
+      expect((await readdir(dirTemporal)).sort()).toEqual(['ajena-a-remotion', 'puppeteer_dev_chrome_profile-archivo', 'puppeteer_dev_chrome_profile-viejo']);
+    });
   });
 
   it.each([
