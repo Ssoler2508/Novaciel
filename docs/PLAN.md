@@ -14,7 +14,7 @@ Rule of thumb: one branch per step (`step-XX`), one commit per checkpoint, plan 
 | 8 (automatic quality control) | Done |
 | 9 (two-level approval) | Done |
 | 10 (publishing) | Pending |
-| 11 (dashboard and alerts) | Pending |
+| 11 (dashboard and alerts) | Done on branch `step-11` (checkpoints A to E), pending merge; contract for the web in `docs/API_PANEL.md`, decisions in `docs/ADR-09_ALERTAS_Y_TABLERO.md` |
 | 12 (end-to-end test) | Pending |
 
 Delivery notes (what is real and what is fake, consolidated debt, open questions): `docs/ENTREGA.md`. Decisions: `docs/ADR_INDEX.md`.
@@ -144,6 +144,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Views: plan, pieces by state, pending approvals, spend vs budget, results. Protected by Step 2b sessions and permissions.
 - Alerts: budget thresholds, failed jobs, schema failures, pending approvals.
 - **Done when:** the fictional client's week is visible and alerts fire in tests.
+- **Built on branch `step-11`** (checkpoints A to E): persistent alerts (`alertas`, `alertas_reconocimientos`), budget and price routes, alert routes, the dashboard read routes (`/clientes/:id/panel/semana`, `/panel/piezas`, `/panel/gasto`, `/panel/resumen`) and `docs/API_PANEL.md`. Results of published pieces are not available until Step 10. The overview counts by state use a 35-day window (future included); pending approvals have none. Cost breakdown and export of spec 13.4 are known debt (ENTREGA, item 30).
 - **Permissions approved in checkpoint A** (`src/modules/auth/permissions.ts`). B writes the first two global rows; C and D add the rest in their own commits. Roles: A = administrador_novaciel, O = operador_novaciel, D = dueno_cliente.
 
   | Action | Scope | Roles | Checkpoint | Notes |
