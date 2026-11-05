@@ -70,3 +70,10 @@ Tablero de avance: `docs/PLAN.md`.
 - Do not merge `web-*` branches and do not add remotes. The developer does that.
 - The routes `/auth/login`, `/auth/me`, `/auth/logout` and the plan, piece and approval routes keep their paths, methods and response shapes, because the web interface depends on them. Change them only if a plan proposes it and the developer approves it.
 - New backend routes are designed here, in the plan, as always; opencode does not design them.
+
+## Working rules for Claude Code
+- Never run the full `npm test` yourself. Run `npm run typecheck` and the affected test files, then ask the developer to run the full suite. Commit only after the developer confirms it passed.
+- Edit files only with the Edit/Write tools; never python, sed, awk, heredocs or other shell edits.
+- Tests must not depend on the language of PostgreSQL messages: compare by constraint name or error code.
+- Never read `.env`, never copy it anywhere, never handle passwords.
+- Do not touch `web/` or `AGENTS.md`. Existing routes keep their shape; new routes and fields go into `docs/API_PANEL.md`.
