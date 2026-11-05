@@ -21,6 +21,7 @@ interface SessionContextValue {
   state: SessionState;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  expire: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -55,7 +56,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState({ status: 'anonymous' });
   }, []);
 
-  const value = useMemo(() => ({ state, login, logout }), [state, login, logout]);
+  const expire = useCallback(() => {
+    setState({ status: 'anonymous' });
+  }, []);
+
+  const value = useMemo(
+    () => ({ state, login, logout, expire }),
+    [state, login, logout, expire],
+  );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

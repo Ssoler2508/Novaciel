@@ -18,6 +18,13 @@ export const es = {
     delete: 'Eliminar',
     empty: 'No hay datos para mostrar.',
     error: 'Ocurrió un error. Inténtalo de nuevo.',
+    backHome: 'Volver al inicio',
+    forbidden: 'No tienes permiso para ver esta información.',
+    notFound: 'No encontramos esta información.',
+    unauthorized: 'Tu sesión expiró. Inicia sesión de nuevo.',
+    invalidRequest: 'La solicitud no es válida.',
+    loadError: 'No se pudo cargar la información. Inténtalo de nuevo.',
+    networkError: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
   },
 
   auth: {
@@ -50,6 +57,12 @@ export const es = {
     approvals: 'Aprobaciones',
     results: 'Resultados',
     settings: 'Configuración',
+  },
+
+  interna: {
+    navigation: 'Navegación interna',
+    piece: 'Pieza',
+    pending: 'Sección en preparación.',
   },
 
   // Labels for the 16 piece states of spec section 15. The codes are the exact values the backend
