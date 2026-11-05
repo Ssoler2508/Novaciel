@@ -1,60 +1,106 @@
 # Web NovaCiel — notas de la rama `web-novaciel`
 
-## Checkpoint D — vista interna de pieza (solo lectura)
+## Alcance
 
-Ruta de la interfaz:
+Vistas internas de solo lectura para NovaCiel. Las pantallas de lectura no envían `POST` ni `PUT`;
+solo autenticación usa `POST` (`/auth/login`, `/auth/logout`). No hay acciones de aprobar, decidir,
+producir, programar ni regenerar.
 
-- `#/clientes/:clienteId/piezas/:piezaId` → cuatro `GET` independientes:
-  - `GET .../piezas/:piezaId/revision`
-  - `GET .../piezas/:piezaId/produccion`
-  - `GET .../piezas/:piezaId/brief`
-  - `GET .../piezas/:piezaId/control-calidad`
+La Fase 2 (panel, presupuesto, alertas y resumen) está pendiente y depende de rutas del paso 11 que
+ya están en `main`; no está implementada en esta rama.
 
-Las cuatro secciones cargan, fallan y se reintentan por separado: un error o un `404` en una no
-oculta las demás. `404` se muestra como estado vacío; `403` como sin permiso; `401` cierra la sesión;
-cualquier otro error se muestra en español con un botón de reintento manual.
+## Acceso y roles
 
-- **Revisión:** estado de la pieza, fecha y hora, estado de aprobación (con ronda solo si es
-  `cambios_pedidos`) e historial completo. Los niveles de NovaCiel ven todas las decisiones.
-- **Producción:** plantilla (si viene), archivos en orden, medios, dimensiones, tamaño, datos de
-  vídeo y fuentes (escena e intervalos). Los `sha256`, `media_id` y hashes no se guardan ni se
-  renderizan. Las URL firmadas se usan tal cual llegan: no se construyen, reescriben, registran ni
-  persisten. Si un medio falla se recarga la producción una vez; si vuelve a fallar se muestra
-  «Archivo no disponible». La URL se renueva una vez cuando vence `url_expira_en_s`.
-- **Guion:** formato, gancho, escenas, tomas, publicación (texto, hashtags, ubicación), llamado a la
-  acción y notas opcionales. `hecho_ids` solo se muestra como conteo («N hechos verificados»), nunca
-  como identificadores.
-- **Control de calidad:** resultado, vigencia, versión, fecha, comprobaciones y códigos de fallo y
-  advertencia. Los códigos conocidos se traducen con el catálogo del backend; los desconocidos se
-  muestran tal cual.
+- Al cargar la aplicación se consulta `GET /auth/me`. Sin sesión se muestra la pantalla de login (no
+  hay una ruta hash dedicada para el login).
+- Cualquier usuario autenticado puede ver Inicio (`#/`).
+- Las rutas internas `#/clientes/...` exigen uno de estos roles en la interfaz:
+  `administrador_novaciel` u `operador_novaciel`. Cualquier otro rol ve la pantalla de sin permiso,
+  aunque haya iniciado sesión.
+- En el backend, `read_client_data` también permite `dueno_cliente` y `aprobador_cliente`. El guard
+  de la web es más estricto: esos roles no entran a las vistas de esta rama.
+- El `clienteId` sale siempre de la URL. No hay selector ni ruta de listado de clientes.
 
-La pantalla no envía `POST` ni `PUT` y no tiene acciones de aprobar, decidir, producir ni regenerar.
+## Rutas por pantalla
 
-## Checkpoint C — detalle y revisión de plan (solo lectura)
+| Pantalla | Ruta hash | Peticiones | Roles en la UI |
+|---|---|---|---|
+| Login | — (sin sesión) | `POST /auth/login`, luego `GET /auth/me` | Anónimo |
+| Inicio | `#/` | `GET /auth/me` al cargar la aplicación | Cualquier usuario autenticado |
+| Lista de planes | `#/clientes/:clienteId/planes` | `GET /clientes/:clienteId/planes` (opcional `?semana=YYYY-MM-DD`) | `administrador_novaciel`, `operador_novaciel` |
+| Detalle de plan | `#/clientes/:clienteId/planes/:planId` | `GET /clientes/:clienteId/planes/:planId` | `administrador_novaciel`, `operador_novaciel` |
+| Revisión de plan | `#/clientes/:clienteId/planes/:planId/revision` | `GET /clientes/:clienteId/planes/:planId/revision` | `administrador_novaciel`, `operador_novaciel` |
+| Pieza | `#/clientes/:clienteId/piezas/:piezaId` | `GET .../piezas/:piezaId/revision`, `.../produccion`, `.../brief`, `.../control-calidad` | `administrador_novaciel`, `operador_novaciel` |
 
-Rutas de la interfaz:
+`POST /auth/logout` se usa desde Inicio, pero no pertenece a ninguna vista de lectura.
 
-- `#/clientes/:clienteId/planes/:planId` → `GET /clientes/:clienteId/planes/:planId`
-- `#/clientes/:clienteId/planes/:planId/revision` → `GET /clientes/:clienteId/planes/:planId/revision`
+## Cómo probar
 
-La pantalla de detalle muestra los metadatos del plan (semana, estado en español, zona horaria,
-creado por, creado el) y sus piezas (red, formato, pilar si viene informado, fecha y hora local del
-plan, estado en español). Cada pieza enlaza a `#/clientes/:clienteId/piezas/:piezaId`, que abre la
-vista interna del checkpoint D. También enlaza a la pantalla de revisión.
+1. Arranca el backend y `npm run dev` dentro de `web/`.
+2. Usa un usuario de prueba con rol `administrador_novaciel` u `operador_novaciel`, un cliente con
+   planes y una pieza con producción, guion y control de calidad.
+3. Abre una ventana privada. Debe aparecer el login. Prueba credenciales incorrectas y luego
+   correctas.
+4. Tras entrar, Inicio muestra nombre, correo y roles. Con un rol de cliente, entra a una ruta
+   `#/clientes/...` y comprueba que aparece sin permiso. Sin sesión, la misma ruta debe volver al
+   login.
+5. Abre `#/clientes/:clienteId/planes`. Prueba el filtro de semana con una fecha válida, una fecha
+   inválida y el botón de limpiar; abre un plan.
+6. En el detalle, comprueba los metadatos del plan y sus piezas, el enlace a revisión y el enlace a
+   la pieza. En revisión, comprueba los mismos datos en modo lectura y los enlaces de vuelta.
+7. En la pieza, revisa las cuatro secciones por separado: revisión, producción, guion y control de
+   calidad. Comprueba el enlace de vuelta a planes.
+8. En las herramientas de red del navegador, confirma que las vistas de lectura solo hacen `GET`.
+   Login y logout son las únicas peticiones `POST`.
 
-La pantalla de revisión muestra el plan y sus piezas en modo lectura. El campo `huella_plan` que
-devuelve el endpoint de revisión se descarta al leer la respuesta: no se guarda en estado ni se
-renderiza.
+## Verificación manual
 
-Estas pantallas no envían `POST` ni `PUT` y no tienen acciones de aprobar, proponer, regenerar,
-producir ni acciones en lote.
+### VERIFIED
 
-## Campos que las rutas no devuelven (no se inventan)
+Solo lo probado manualmente:
 
-- **Nombre o correo del creador del plan.** `GET .../planes/:planId` solo devuelve `creado_por`
-  como identificador de usuario (o `null`). La interfaz muestra ese identificador o `—`; no hay
-  nombre visible. Para mostrar un nombre haría falta que el backend lo devuelva o una ruta de
-  usuarios que lo resuelva.
+- Login y guard de acceso.
+- Lista de planes.
+- Detalle y revisión de plan.
+- Vista interna de pieza.
+
+### UNVERIFIED
+
+- Renovación por expiración de la URL firmada (`url_expira_en_s`).
+- Reintento por error de carga de un archivo de producción.
+- Respuestas reales `403` y `404` de las rutas.
+- Pantallas estrechas.
+- Plan sin piezas.
+
+## Detalle implementado
+
+Lo siguiente describe el comportamiento del código; no amplía la lista de pruebas manuales.
+
+- **Lista de planes:** filtro por semana local (`YYYY-MM-DD`), validación antes de pedir y enlaces a
+  cada plan.
+- **Detalle y revisión:** metadatos del plan y piezas en modo lectura. `huella_plan` se descarta al
+  leer la respuesta de revisión.
+- **Pieza:** las cuatro secciones cargan, fallan y se reintentan por separado. `404` se muestra como
+  estado vacío; `403` como sin permiso; `401` cierra la sesión; otros errores se muestran en español
+  con reintento manual.
+- **Producción:** usa la URL firmada tal cual llega; no la construye, reescribe, registra ni
+  persiste. No guarda ni renderiza `sha256`, `media_id` ni hashes. Si un medio falla, recarga la
+  producción una vez; si vuelve a fallar, muestra «Archivo no disponible».
+- **Guion:** `hecho_ids` se reduce a un conteo («N hechos verificados»); los identificadores no se
+  guardan ni se renderizan.
+- **Control de calidad:** los códigos conocidos se traducen con el catálogo copiado del backend; los
+  desconocidos se muestran tal cual.
+
+## Gaps para Claude Code
+
+- `creado_por` es solo un identificador de usuario; hace falta un nombre visible.
+- No hay ruta de listado de clientes para construir un selector. El `clienteId` se escribe en la URL.
+- El catálogo QC de 43 códigos todavía no está confirmado contra el backend.
+- Inicio muestra el id de cliente de cada rol; la intención de esa pantalla no está confirmada.
+- `hecho_ids` no tienen ruta para resolver sus textos; solo se muestra el conteo.
+
+## Otras limitaciones de datos
+
 - **Título o nombre del plan.** El plan no tiene un campo de nombre; solo `semana_inicio`.
 - **Nombre del creador de una pieza.** `PiezaView` no incluye autor ni nombre de autor.
 - **Título, red, formato y fecha de una pieza en su propia ruta.** La vista interna solo recibe
@@ -72,10 +118,24 @@ producir ni acciones en lote.
 - **Datos de control de calidad no mostrados:** `produccion_id`, `hash_version` y `hash_pieza` se
   descartan al leer la respuesta. `actor_tipo` indica el tipo de ejecución, no una persona.
 
-## Campos devueltos por la API que este checkpoint no muestra
+## Phase 2 (pending, read-only): views that depend on routes added by step-11, now in main. Not implemented in this branch.
 
-- `pieza.idea`: existe en `PiezaView`, pero el alcance del checkpoint C solo pide red, formato,
-  pilar, fecha/hora y estado.
-- `pieza.trabajo`, `pieza.estado_previo`, `pieza.hecho_ids`: devueltos y no usados aquí.
-- `plan.perfil_marca_id`: devuelto y no usado aquí.
-- `plan.piezas` (conteo): solo lo usa la lista del checkpoint B.
+- GET /clientes/:C/panel/piezas (filters: estado, red, formato, desde, hasta,
+  limite, antes)
+- GET /clientes/:C/panel/semana?semana=
+- GET /clientes/:C/panel/gasto?meses=
+- GET /panel/resumen?limite=&antes= (administrador_novaciel and
+  operador_novaciel only)
+- GET /clientes/:C/presupuesto, /presupuesto/libro
+- GET /clientes/:C/alertas and GET /alertas
+
+Reference: `docs/API_PANEL.md` once available in this clone (it is not present in this clone yet).
+
+Out of scope for the web, even in phase 2 (write operations, not planned):
+PUT /clientes/:C/presupuesto/techo, PUT .../presupuesto/interruptor,
+PUT /presupuesto/interruptor-global, POST .../alertas/:id/reconocer,
+POST /precios, and all approve, decide, produce, schedule or regenerate
+actions.
+
+Not available in the backend at all: single-piece detail route, cost
+breakdown/export (debt 30), results/metrics (until step 10).
