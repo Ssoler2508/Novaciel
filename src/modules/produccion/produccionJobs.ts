@@ -1,6 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { z } from 'zod';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
+import { withFailureAlert } from '../alertas/withFailureAlert.js';
 import { PiezaNotFoundError, PlanDescartadoError } from '../piezas/errors.js';
 import { listPiezas } from '../piezas/piezasRepository.js';
 import { PlanNoAprobadoError, PlanNotFoundError } from '../planificador/errors.js';
@@ -192,14 +193,14 @@ export async function ejecutarJobProducirPlan(deps: ProduccionDeps, data: unknow
 export async function registerProduccionJobs(boss: PgBoss, deps: ProduccionDeps): Promise<void> {
   await boss.createQueue(PRODUCIR_PIEZA_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 900 });
   await boss.createQueue(PRODUCIR_PLAN_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 1800 });
-  await boss.work<ProducirPiezaPayload, ProducirPiezaOutput>(PRODUCIR_PIEZA_QUEUE, { batchSize: 1 }, async (jobs) => {
+  await boss.work<ProducirPiezaPayload, ProducirPiezaOutput>(PRODUCIR_PIEZA_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, PRODUCIR_PIEZA_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobProducirPieza(deps, job.data, job.id);
-  });
-  await boss.work<ProducirPlanPayload, ProducirPlanOutput>(PRODUCIR_PLAN_QUEUE, { batchSize: 1 }, async (jobs) => {
+  }));
+  await boss.work<ProducirPlanPayload, ProducirPlanOutput>(PRODUCIR_PLAN_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, PRODUCIR_PLAN_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobProducirPlan(deps, job.data, job.id);
-  });
+  }));
 }
 
 // ---- The port the routes use, so they can be tested without pg-boss.

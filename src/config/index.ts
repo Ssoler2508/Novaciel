@@ -119,6 +119,14 @@ const schema = z
     TTS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
     // Only with VOICE_PROVIDER=elevenlabs. Entered by hand in .env, never in code or commits.
     ELEVENLABS_API_KEY: z.string().min(1).optional(),
+    // Budget alert thresholds in percent (Step 11). VERIFY: the alert codes encode the number
+    // (presupuesto_umbral_50/80/100), so this list can only switch those three on or off.
+    ALERT_BUDGET_THRESHOLDS: z
+      .string()
+      .default('50,80,100')
+      .transform((v) => v.split(',').map((x) => x.trim()))
+      .pipe(z.array(z.enum(['50', '80', '100'])).min(1))
+      .transform((list) => [...new Set(list.map(Number))].sort((a, b) => a - b)),
     // Our own key. Never ANTHROPIC_API_KEY: Claude Code reads that one for its own login.
     NOVACIEL_ANTHROPIC_API_KEY: z.string().min(1).optional(),
     SECRETS_KEYS: z.string().min(1),
@@ -225,7 +233,13 @@ export interface RemotionConfig {
   timeoutMs: number;
 }
 
-export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY' | 'ELEVENLABS_API_KEY'> & {
+export interface AlertasConfig {
+  /** Budget alert thresholds in percent (subset of 50, 80, 100; VERIFY). */
+  umbralesPresupuesto: readonly number[];
+}
+
+export type Config = Omit<Env, 'NOVACIEL_ANTHROPIC_API_KEY' | 'ELEVENLABS_API_KEY' | 'ALERT_BUDGET_THRESHOLDS'> & {
+  alertas: AlertasConfig;
   storage: StorageConfig;
   secrets: SecretsConfig;
   llm: LlmConfig;
@@ -315,9 +329,10 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const { keys, active } = parseSecrets(result.data.SECRETS_KEYS, result.data.SECRETS_ACTIVE_KEY_VERSION);
   if (active === undefined) throw new Error('Invalid secrets configuration');
-  const { NOVACIEL_ANTHROPIC_API_KEY: _apiKey, ELEVENLABS_API_KEY: _voiceKey, ...publicEnv } = result.data;
+  const { NOVACIEL_ANTHROPIC_API_KEY: _apiKey, ELEVENLABS_API_KEY: _voiceKey, ALERT_BUDGET_THRESHOLDS: umbrales, ...publicEnv } = result.data;
   return {
     ...publicEnv,
+    alertas: { umbralesPresupuesto: umbrales },
     storage: buildStorageConfig(result.data),
     secrets: new SecretsConfig(keys, active),
     llm: buildLlmConfig(result.data),

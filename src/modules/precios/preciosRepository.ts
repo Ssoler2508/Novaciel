@@ -28,6 +28,14 @@ export class PermissionDeniedError extends Error {
   }
 }
 
+/** A new price may not start before now: past costs were computed with the price valid then. */
+export class PriceRetroactiveError extends Error {
+  constructor() {
+    super('A price cannot be effective from a past date');
+    this.name = 'PriceRetroactiveError';
+  }
+}
+
 export class PriceExistsError extends Error {
   constructor(provider: string, model: string) {
     super(`A price for ${provider}/${model} with that vigente_desde already exists`);
@@ -127,17 +135,25 @@ function toUnitPrice(row: PrecioModeloRow): UnitPrice {
   };
 }
 
+/** Refuses an explicit start date earlier than the database clock. No date means now(), which is fine. */
+async function assertNotRetroactive(db: Db, vigenteDesde: Date | undefined): Promise<void> {
+  if (vigenteDesde === undefined) return;
+  const { rows } = await db.query<{ retro: boolean }>('SELECT $1::timestamptz < now() AS retro', [vigenteDesde]);
+  if (rows[0]!.retro) throw new PriceRetroactiveError();
+}
+
 /**
- * Writes a new price row (never updates). Needs a signed-in user with the global `manage_budget`
+ * Writes a new price row (never updates). Needs a signed-in user with the global `manage_prices`
  * permission; audited in the same transaction.
  */
 export async function setModelPrice(db: Db, input: NewModelPrice, actor: AuditActor): Promise<ModelPrice> {
   if (actor.tipo !== 'usuario') throw new PriceActorError();
   assertMicro(input.inputPerMillion, 'inputPerMillion');
   assertMicro(input.outputPerMillion, 'outputPerMillion');
-  if (!can(await getUserRoles(db, actor.usuarioId), 'manage_budget')) throw new PermissionDeniedError('manage_budget');
+  if (!can(await getUserRoles(db, actor.usuarioId), 'manage_prices')) throw new PermissionDeniedError('manage_prices');
 
   return runInTransaction(db, async (tx) => {
+    await assertNotRetroactive(tx, input.vigenteDesde);
     const { rows } = await tx.query<PrecioModeloRow>(
       `INSERT INTO precios_modelos
          (proveedor, modelo, unidad, precio_entrada_por_millon, precio_salida_por_millon, vigente_desde, nota, creado_por)
@@ -176,7 +192,7 @@ export async function setModelPrice(db: Db, input: NewModelPrice, actor: AuditAc
 
 /**
  * Writes a new price per block of units (characters, seconds, images); same rules as setModelPrice:
- * a signed-in user with `manage_budget`, a new row each time, audited in the same transaction.
+ * a signed-in user with `manage_prices`, a new row each time, audited in the same transaction.
  */
 export async function setUnitPrice(db: Db, input: NewUnitPrice, actor: AuditActor): Promise<UnitPrice> {
   if (actor.tipo !== 'usuario') throw new PriceActorError();
@@ -185,9 +201,10 @@ export async function setUnitPrice(db: Db, input: NewUnitPrice, actor: AuditActo
   if (!(PRICE_UNITS as readonly string[]).includes(input.unit) || (input.unit as string) === 'tokens') {
     throw new Error('setUnitPrice is for units other than tokens');
   }
-  if (!can(await getUserRoles(db, actor.usuarioId), 'manage_budget')) throw new PermissionDeniedError('manage_budget');
+  if (!can(await getUserRoles(db, actor.usuarioId), 'manage_prices')) throw new PermissionDeniedError('manage_prices');
 
   return runInTransaction(db, async (tx) => {
+    await assertNotRetroactive(tx, input.vigenteDesde);
     const { rows } = await tx.query<PrecioModeloRow>(
       `INSERT INTO precios_modelos
          (proveedor, modelo, unidad, precio_por_bloque, tamano_bloque, vigente_desde, nota, creado_por)
@@ -266,4 +283,61 @@ export async function hasAnyUnitPrice(db: Db, provider: string, model: string, u
 export async function hasAnyPrice(db: Db, provider: string, model: string): Promise<boolean> {
   const { rows } = await db.query("SELECT 1 FROM precios_modelos WHERE proveedor = $1 AND modelo = $2 AND unidad = 'tokens' LIMIT 1", [provider, model]);
   return rows.length > 0;
+}
+
+export const PRICE_LIST_MAX_LIMIT = 200;
+export const PRICE_LIST_DEFAULT_LIMIT = 50;
+
+/** What a listed price is relative to now: the one in force, a scheduled one, or a superseded one. */
+export type PriceStatus = 'vigente' | 'futuro' | 'anterior';
+
+export interface ListedPrice {
+  id: string;
+  proveedor: string;
+  modelo: string;
+  unidad: PriceUnit;
+  /** USD decimal strings; token prices fill the two "per million" fields, the other units the block fields. */
+  precioEntradaPorMillon: string | null;
+  precioSalidaPorMillon: string | null;
+  precioPorBloque: string | null;
+  tamanoBloque: string | null;
+  vigenteDesde: Date;
+  nota: string | null;
+  estado: PriceStatus;
+}
+
+/**
+ * Price list, newest first (vigente_desde DESC, id DESC: a total order). `limit` is clamped to
+ * 1..PRICE_LIST_MAX_LIMIT; `offset` pages through it. Prices are global (no client), so no cliente_id.
+ */
+export async function listPrices(db: Db, page: { limit?: number; offset?: number } = {}): Promise<{ items: ListedPrice[]; total: number }> {
+  const limit = Math.min(Math.max(Math.trunc(page.limit ?? PRICE_LIST_DEFAULT_LIMIT), 1), PRICE_LIST_MAX_LIMIT);
+  const offset = Math.max(Math.trunc(page.offset ?? 0), 0);
+  const { rows } = await db.query<PrecioModeloRow & { estado: PriceStatus; total: string }>(
+    `SELECT * FROM (
+       SELECT ${COLUMNS},
+         CASE WHEN vigente_desde > now() THEN 'futuro'
+              WHEN vigente_desde = max(vigente_desde) FILTER (WHERE vigente_desde <= now()) OVER (PARTITION BY proveedor, modelo, unidad) THEN 'vigente'
+              ELSE 'anterior' END AS estado,
+         count(*) OVER ()::text AS total
+       FROM precios_modelos
+     ) p ORDER BY vigente_desde DESC, id DESC LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  );
+  return {
+    total: rows[0] ? Number(rows[0].total) : 0,
+    items: rows.map((r) => ({
+      id: r.id,
+      proveedor: r.proveedor,
+      modelo: r.modelo,
+      unidad: r.unidad,
+      precioEntradaPorMillon: r.precio_entrada_por_millon,
+      precioSalidaPorMillon: r.precio_salida_por_millon,
+      precioPorBloque: r.precio_por_bloque,
+      tamanoBloque: r.tamano_bloque,
+      vigenteDesde: r.vigente_desde,
+      nota: r.nota,
+      estado: r.estado,
+    })),
+  };
 }

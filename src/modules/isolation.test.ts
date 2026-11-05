@@ -3,6 +3,8 @@ import type { Db } from '../db/types.js';
 import { withTestTransaction } from '../../tests/utils/transaction.js';
 import {
   assignRole,
+  createAlerta,
+  createAlertaReconocimiento,
   createAprobableWorld,
   createRevisionCalidad,
   createAprobacion,
@@ -74,12 +76,13 @@ import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/
 import { assertProducible, producirPieza } from './produccion/produccionService.js';
 import { decidirPlan, ejecutarJobEscalada, ejecutarJobRecordatorio, proponerPlan, reabrirPieza, registrarDecision } from './aprobaciones/index.js';
 import { FakeNotifier } from '../lib/notificaciones/index.js';
+import { getAlerta, listAlertas } from './alertas/alertasRepository.js';
 import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad', 'locuciones', 'producciones_locuciones'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad', 'locuciones', 'producciones_locuciones', 'alertas', 'alertas_reconocimientos'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -112,6 +115,8 @@ interface World {
   revisionId: string;
   /** Step 7d: a voice-over of the brief and the production that used it. */
   locucionId: string;
+  /** Step 11: a client alert with its acknowledgement. */
+  alertaId: string;
   extraPiezaIds: string[];
   extraPlanIds: string[];
   extraMediaIds: string[];
@@ -137,6 +142,8 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   await createAutorizacionGasto(db, { clienteId: cliente.id });
   await createLibroGasto(db, { clienteId: cliente.id });
   await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
+  const alerta = await createAlerta(db, { clienteId: cliente.id, codigo: 'aprobacion_vencida' });
+  await createAlertaReconocimiento(db, { alertaId: alerta.id });
   const media = await createMedia(db, { clienteId: cliente.id, aparecenPersonas: true, subidoPor: creadoPor });
   await createMediaAutorizacion(db, { mediaId: media.id, clienteId: cliente.id, autorizacionId: valida.id });
   const plan = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id });
@@ -194,6 +201,7 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     qcPiezaId: enQc.piezaId,
     revisionId: revision.id,
     locucionId: locucion.id,
+    alertaId: alerta.id,
     extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id, enQc.piezaId],
     extraPlanIds: [aprobable.planId, planPropuesto.id, enQc.planId],
     extraMediaIds: [aprobableMediaId, enQcMediaId],
@@ -647,6 +655,18 @@ describe('isolation: production job and free checks', () => {
       expect(await ejecutarJobProducirPieza({ db, storage }, { clienteId: a.clienteId, piezaId: b.piezaConGuionId, reproducir: true })).toEqual({ resultado: 'rechazado', codigo: 'PiezaNotFoundError' });
       expect(await ejecutarJobProducirPlan({ db, storage }, { clienteId: a.clienteId, planId: b.planId })).toEqual({ resultado: 'rechazado', codigo: 'PlanNotFoundError' });
       expect(storage.keys()).toEqual([]);
+    });
+  });
+});
+
+describe('isolation: alertas', () => {
+  it("A's client scope lists only its own alert; B's alert and the global alerts stay invisible and unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const global = await createAlerta(db, { codigo: 'trabajo_fallido' });
+      expect((await listAlertas(db, { tipo: 'cliente', clienteId: a.clienteId })).map((x) => x.id)).toEqual([a.alertaId]);
+      expect(await getAlerta(db, { tipo: 'cliente', clienteId: a.clienteId }, b.alertaId)).toBeNull();
+      expect(await getAlerta(db, { tipo: 'cliente', clienteId: a.clienteId }, global.id)).toBeNull();
+      expect(await getAlerta(db, { tipo: 'novaciel', clienteId: a.clienteId }, b.alertaId)).toBeNull();
     });
   });
 });

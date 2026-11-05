@@ -1,6 +1,6 @@
 # Notas de entrega: novaciel-core
 
-Para NovaCiel y el Senior. Estado a 2026-11-02: Pasos 0 a 7d, 8 y 9 construidos; Paso 10, Paso 11 y Paso 12 no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
+Para NovaCiel y el Senior. Estado a 2026-11-04: Pasos 0 a 7d, 8, 9 y 11 construidos (el 11 en la rama `step-11`, pendiente de fusionar); Paso 10 y Paso 12 no. Para instalar y ejecutar, ver el [README](../README.md). Tablero: [PLAN.md](PLAN.md). Decisiones: [ADR_INDEX.md](ADR_INDEX.md).
 
 Resultado de la verificación final de esta entrega (Paso 7d, 2026-11-02): 167 archivos de pruebas y 2578 pruebas en verde con `npm test` (15 min) y 160 archivos y 2485 pruebas con `npm run test:fast` (6 min); `npm run typecheck` limpio. `npm run build` y `npm audit` se verificaron por última vez en la limpieza anterior (127 archivos y 2087 pruebas), no en los Pasos 8 ni 7d.
 
@@ -21,6 +21,7 @@ Resultado de la verificación final de esta entrega (Paso 7d, 2026-11-02): 167 a
 | 7d | Locución sintética de los reels: ElevenLabs detrás de un puerto `VoiceProvider` con versión falsa, precios por unidad (caracteres) en el control de presupuesto, voz por cliente en el perfil (`voz.locucion`, con `voice:configure`), caché de locuciones por cliente, mezcla en la pasada de FFmpeg con ganancia estática a −16 LUFS, subtítulos palabra por palabra con los tiempos reales de la voz y control de calidad de la voz (ADR-08) | Adaptador ElevenLabs escrito y probado con `fetch` simulado, **nunca llamado de verdad**: `voice:smoke` es la primera llamada real. **Voz simulada (`fake`) por defecto en desarrollo**; en producción `VOICE_PROVIDER` debe fijarse (`none` para no usar voz). Sin plantilla de subtítulos (Remotion apagado) el reel sale sin voz y el control de calidad lo avisa. |
 | 8 | Control de calidad automático: 43 comprobaciones deterministas (38 del Paso 8 y 5 de la voz del Paso 7d: archivos releídos y re-hasheados, imágenes, reels, formato de los textos, palabras y promesas prohibidas, cifras contra hechos verificados, media usable, horario, marca), informe atado a la producción exacta, trabajo automático tras cada producción y rutas de lectura y reejecución solo para NovaCiel (ADR-07) | Real. **Ninguna comprobación usa un modelo**; las de visión y de tono son deuda. |
 | 9 | Aprobación en dos niveles sobre el hash exacto de la pieza, rondas de cambios, escalada, recordatorios, suplente, puerta de publicación (`assertPublicable`) | Real. **Notificador simulado**: solo registra ids y nombres de plantilla. |
+| 11 | Alertas persistentes (tabla `alertas` solo de inserción, reconocimiento aparte, clave de deduplicación), rutas de presupuesto y precios solo para el administrador, rutas de alertas y rutas de lectura del tablero (semana, piezas por estado, gasto frente al tope, resumen de NovaCiel) | Real. **Notificador simulado** (solo ids y nombres de plantilla). Contrato para la interfaz web en [API_PANEL.md](API_PANEL.md); decisiones en [ADR-09](ADR-09_ALERTAS_Y_TABLERO.md). **Resultados de piezas publicadas: no disponibles hasta el Paso 10.** |
 
 Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, voz `fake` por defecto, visión `fake`, notificador `fake`/log, almacenamiento local en disco, **no hay publicación en ninguna red**.
 
@@ -41,8 +42,8 @@ Resumen de lo que es simulado o local: modelo de lenguaje `fake` por defecto, vo
 ## 3. Qué NO está construido
 
 - **Controles de calidad con modelo** (consistencia visual de marca, tono de voz, ortografía, defectos de tomas con IA) y los técnicos que la espec. 10 pide y no se decidieron en código (volumen de audio normalizado solo existe para los reels con locución; cuadros negros o congelados, medición de zonas seguras, licencia de música). Ver ADR-07, sección 8.
-- **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios**. Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
-- **Paso 11, tablero y alertas reales.** Las alertas de hoy van al log; no hay vistas ni rutas de gestión de aprobadores.
+- **Paso 10, publicación.** Debe llamar a `assertPublicable` **con la pieza bloqueada** (o volver a comprobar justo antes de enviar), recalcular y verificar el hash antes de enviar y, si cambia `fecha_hora`, **reprogramar los recordatorios y también el aviso de vencimiento** (`vencimiento`, que se programa justo a la hora límite y levanta la alerta `aprobacion_vencida`). Tampoco existe aún el intermediario de publicación ni la recolección de métricas.
+- **Del Paso 11 quedan fuera:** los resultados de las piezas publicadas (esperan al Paso 10; la API no reserva ninguna forma), la vista de costos y la exportación del §13.4 (deuda 30), los proveedores reales de notificación y las rutas de gestión de aprobadores, perfil, hechos, usuarios y conexiones (hoy se hacen con scripts).
 - **Paso 12, prueba de punta a punta** de la semana completa.
 - **Interfaz web** (`web/`): la mantiene otra herramienta y está fuera de estas notas; las rutas de plan, pieza y aprobación mantienen su forma porque la interfaz depende de ellas.
 
@@ -59,7 +60,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 
 **Aprobaciones (ADR-05)**
 4. `assertPublicable` comprueba pero **no bloquea**: entre la comprobación y el envío algo puede cambiar. El Paso 10 debe llamarlo con la pieza bloqueada.
-5. El Paso 10 debe reprogramar los recordatorios al cambiar `fecha_hora`; los trabajos ya en cola llevan el plazo viejo y no hacen nada.
+5. El Paso 10 debe reprogramar los recordatorios **y el aviso de vencimiento** al cambiar `fecha_hora`; los trabajos ya en cola llevan el plazo viejo y no hacen nada. Sin reprogramar el vencimiento, una pieza movida que nadie aprueba no genera la alerta `aprobacion_vencida`.
 6. La regla "sin aprobación a la hora programada: reprogramar y avisar a NovaCiel" (espec. 11.3) pertenece a la publicación.
 7. No hay rutas para `reabrirPieza` ni para cambiar aprobadores del cliente (hoy solo scripts de desarrollo).
 8. La revisión interna no se retira nunca (espec. 11.1 prevé retirarla tras 4 semanas por cliente o 20 piezas del mismo tipo sin cambios).
@@ -96,6 +97,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 27. ~~"Voz omitida" vive en la auditoría de la producción~~ **Resuelto en chore/deuda-01:** columna `producciones.voz_omitida_motivo` (inmutable, lista cerrada de motivos); el control de calidad la lee y, para las producciones anteriores (NULL), usa la fila de auditoría como respaldo y lo registra como `origen: auditoria`.
 28. `voice:smoke` y la primera llamada real de ElevenLabs siguen sin hacerse: hasta entonces están por verificar la cabecera `xi-api-key`, la cabecera `request-id` y que la cantidad facturada coincida con los caracteres enviados (ADR-08).
 29. La voz solo existe en reels. Voces clonadas, varias voces por reel, emoción por escena, música y efectos son deuda (spec 9.5 y 16).
+30. **Vista de costos del panel (spec 13.4) y exportación:** el Paso 11 solo da, por cliente, el gasto frente al tope y el historial por mes (`/panel/gasto`). Quedan como deuda: costo total, directo y compartido (el reparto de costos compartidos y `costos_compartidos`); costo por tipo de pieza y costo promedio por pieza publicada; costo por proveedor y por modelo; gasto en intentos fallidos y en piezas rechazadas; uso frente a las cuotas del plan; la exportación a hoja de cálculo por cliente y por mes; y el cierre mensual (`cierres_mensuales`, el día 1 se congela el mes anterior). El libro de gastos ya guarda proveedor, modelo, propósito y resultado, así que el desglose se puede añadir con rutas nuevas de solo lectura sin cambiar las existentes.31. **Los scripts de desarrollo `plan:generate` y `brief:generate` no conectan las alertas persistentes** (pasan solo el registro de texto heredado), así que un umbral de presupuesto cruzado desde un script no crea alerta; el servidor sí las conecta. Para ver una alerta de umbral hay que gastar con el servidor en marcha (o conectar `alertas` en esos scripts).
 
 ## 5. Preguntas abiertas para NovaCiel
 
@@ -115,6 +117,7 @@ Fuentes: PLAN.md, ADR-05, ADR-06, ADR-07 y esta limpieza.
 
 14. **Qué ve el cliente del control de calidad:** hoy solo el resultado, la versión y la fecha; los códigos y las advertencias son de NovaCiel. ¿Se confirma, o el cliente debe ver los motivos de un rechazo?
 15. **Piezas anteriores al Paso 8:** las que estaban en `en_control_calidad` se controlan con `npm run qc:run`; las rechazadas por `media_no_usable` (media de prueba ya borrada) hay que producirlas de nuevo. ¿Basta así, o se limpian los datos de desarrollo?
+16. **Gasto y techo para el dueño del cliente (Paso 11):** hoy el dueño no ve ni el gasto ni el techo (solo el administrador y el operador de NovaCiel tienen `view_spend`). Al llegar al 100 % del techo recibe un aviso con plantilla y sin cifras (espec. 13.1). ¿Debe ver su propio gasto y techo, en solo lectura? Pendiente del Senior.
 
 La Fase 0 (verificaciones previas: precios de modelos de imagen y video, intermediarios de publicación, límites de estadísticas, términos de música libre, requisitos legales de EE. UU., etc.) sigue abierta salvo la licencia de Remotion.
 

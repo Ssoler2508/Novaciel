@@ -276,3 +276,22 @@ describe('voice config (Step 7d)', () => {
     expect(() => loadConfig({ ...valid, TTS_TIMEOUT_MS: '10' })).toThrow(/TTS_TIMEOUT_MS/);
   });
 });
+
+describe('alert config (Step 11)', () => {
+  it('the budget thresholds default to 50, 80 and 100 and are exposed under alertas, not as a raw variable', () => {
+    const cfg = loadConfig(valid);
+    expect(cfg.alertas.umbralesPresupuesto).toEqual([50, 80, 100]);
+    expect('ALERT_BUDGET_THRESHOLDS' in cfg).toBe(false);
+  });
+
+  it('accepts a subset, sorts it and removes duplicates; an empty value means the default', () => {
+    expect(loadConfig({ ...valid, ALERT_BUDGET_THRESHOLDS: '100, 80,80' }).alertas.umbralesPresupuesto).toEqual([80, 100]);
+    expect(loadConfig({ ...valid, ALERT_BUDGET_THRESHOLDS: '' }).alertas.umbralesPresupuesto).toEqual([50, 80, 100]);
+  });
+
+  it('rejects a threshold that has no alert code', () => {
+    for (const bad of ['90', '50,abc', '0', '150']) {
+      expect(() => loadConfig({ ...valid, ALERT_BUDGET_THRESHOLDS: bad }), bad).toThrow(/ALERT_BUDGET_THRESHOLDS/);
+    }
+  });
+});

@@ -9,6 +9,8 @@ export interface Alert {
   provider: string;
   model: string;
   attempts?: number;
+  /** The id of the spend authorization of the last attempt: the persistent sink uses it as the dedupe reference. */
+  referenceId?: string;
 }
 
 export interface AlertSink {

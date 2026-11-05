@@ -59,6 +59,13 @@ Review this ADR when any of these happens: a **fourth person** joins NovaCiel (o
 
 **Known debt from C.** Frames after the last word appears are identical (they could be hard-linked instead of stored); one browser is opened per scene (it could be shared across the scenes of a reel); old cached bundles in `.data/remotion` are not cleaned up yet.
 
+## 8. Timeout cancellation and browser cleanup (Step 11 fix)
+`renderizar` always settles within `timeoutMs` plus `margenDeLimpieza()` (about 14 s by default): the cancel, the browser close, the wait for the render and the temp-folder cleanup are each bounded. When the browser does not close by itself, `navegadorProcesos.ts` kills the processes this render opened (only the new pids found when it opened its browser, never ones that were already running). The platform is chosen by `process.platform`:
+- **Windows:** `tasklist` to list, `taskkill /PID <n> /T /F` to kill a process and its children. Exercised on a real machine (5 of 5 runs of the real-render file).
+- **Linux and other POSIX:** `ps -e -o pid=,ppid=,args=` to read the process table; the browser's tree is its executable's processes plus all their descendants. Killing sends `SIGTERM` to the whole tree (children first), waits at most 800 ms (polling, it returns as soon as everything is gone) and sends `SIGKILL` to whatever is still alive. The adapter's own bound for killing (2 s) covers that wait.
+
+**The Linux path is not yet exercised on a real Linux machine.** It is covered by unit tests with fake process tables and fake signals (`navegadorProcesos.test.ts`), which prove the parsing, the tree order, the escalation and the bounds, not the behavior of a real `ps`, real signals or real Chrome processes. Before the first production deployment on Linux, run `remotionCapaTexto.render.test.ts` there and check that no `chrome-headless-shell` process or `puppeteer_dev_chrome_profile-*` folder is left after the timeout test. Pids can in principle be reused between listing and killing; the window is a few seconds and the listing is taken right before the browser opens.
+
 ## Open question
 - Does the contractor (the developer) count as a person of NovaCiel, i.e. 3 or 4? (For NovaCiel, before production use.)
 

@@ -36,8 +36,8 @@ interface Mundo {
   clienteId: ReturnType<typeof asClienteId>;
   principal: string;
   suplente: string;
-  /** Payloads of the three notices of the piece, ready to be fired. */
-  payloads: Record<'recordatorio_24h' | 'recordatorio_4h' | 'turno_suplente', PayloadRecordatorio>;
+  /** Payloads of the four notices of the piece (three reminders and the deadline notice), ready to be fired. */
+  payloads: Record<'recordatorio_24h' | 'recordatorio_4h' | 'turno_suplente' | 'vencimiento', PayloadRecordatorio>;
   plazo: Date;
 }
 
@@ -62,10 +62,10 @@ const enHoras = (m: Mundo, horasAntes: number) => new Date(m.plazo.getTime() - h
 const mensajes = (n: FakeNotifier) => n.enviados.map((e) => [e.plantilla, e.destinatarioUsuarioId]);
 
 describe('the services schedule the reminders when the client starts to wait', () => {
-  it('an internal approval that leaves the piece waiting asks for the three notices, once, with the production hash', async () => {
+  it('an internal approval that leaves the piece waiting asks for the three reminders and the deadline notice, once, with the production hash', async () => {
     await withTestTransaction(async (db) => {
       const m = await mundo(db);
-      expect(Object.keys(m.payloads)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']);
+      expect(Object.keys(m.payloads)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']);
       const p = m.payloads.recordatorio_24h;
       expect(p).toMatchObject({ clienteId: m.w.clienteId, tipo: 'pieza', objetoId: m.w.piezaId, referencia: m.w.hashHex, plazo: m.plazo.toISOString() });
     });
@@ -96,7 +96,7 @@ describe('the services schedule the reminders when the client starts to wait', (
       const { input, avisos } = recordatorios.programados[0]!;
       expect(input).toMatchObject({ tipo: 'plan', objetoId: plan.id, plazo: temprano, zona: plan.zona_horaria });
       expect(input.referencia).toBe(await getHuellaPlan(db, asClienteId(cliente.id), plan.id));
-      expect(avisos.map((a) => a.aviso)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']);
+      expect(avisos.map((a) => a.aviso)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']);
     });
   });
 });
@@ -202,6 +202,90 @@ describe('ejecutarJobRecordatorio: the notices', () => {
       await decidirPlan({ db }, clienteId, plan.id, actores.cliente, { decision: 'aprobado', huellaVista: huella });
       expect(await ejecutarJobRecordatorio({ db, notifier }, payloadActual, 'job', ahora)).toEqual({ resultado: 'omitido', codigo: 'ya_decidido' });
       expect(notifier.enviados).toHaveLength(1);
+    });
+  });
+});
+
+describe('ejecutarJobRecordatorio: the deadline notice (vencimiento) raises aprobacion_vencida', () => {
+  const alertasDe = async (db: Db, clienteId: string) =>
+    (await db.query<{ codigo: string; severidad: string; parametros: Record<string, unknown>; clave_dedupe: string }>(
+      'SELECT codigo, severidad, parametros, clave_dedupe FROM alertas WHERE cliente_id = $1 ORDER BY creado_en, id',
+      [clienteId],
+    )).rows;
+
+  it('at the deadline, with the client still waiting: one alert, NovaCiel and both approvers told, nothing else', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await mundo(db);
+      const notifier = new FakeNotifier();
+      const salida = await ejecutarJobRecordatorio({ db, notifier, alertas: { db, notifier } }, m.payloads.vencimiento, 'job', m.plazo);
+      expect(salida).toEqual({ resultado: 'vencida', alerta_creada: true });
+      expect(await alertasDe(db, m.w.clienteId)).toEqual([
+        {
+          codigo: 'aprobacion_vencida',
+          severidad: 'aviso',
+          parametros: { tipo: 'pieza', objeto_id: m.w.piezaId, plazo: m.plazo.toISOString() },
+          clave_dedupe: `aprobacion_vencida:pieza:${m.w.piezaId}:${m.plazo.toISOString()}`,
+        },
+      ]);
+      const alertaId = (await db.query<{ id: string }>('SELECT id FROM alertas WHERE cliente_id = $1', [m.w.clienteId])).rows[0]!.id;
+      expect(notifier.enviados.every((e) => e.referencia.tipo === 'alerta' && e.referencia.id === alertaId && e.clienteId === m.w.clienteId)).toBe(true);
+      expect(notifier.enviados.filter((e) => e.plantilla === 'aprobacion_vencida').map((e) => e.destinatarioUsuarioId).sort()).toEqual([m.principal, m.suplente].sort());
+      const staff = notifier.enviados.filter((e) => e.plantilla === 'alerta_novaciel').map((e) => e.destinatarioUsuarioId);
+      expect(staff).toContain(m.actores.ids.novaciel);
+      expect(notifier.enviados.some((e) => e.plantilla !== 'alerta_novaciel' && e.plantilla !== 'aprobacion_vencida')).toBe(false);
+    });
+  });
+
+  it('runs again: the same alert, no second row and no second notice', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await mundo(db);
+      const notifier = new FakeNotifier();
+      await ejecutarJobRecordatorio({ db, notifier, alertas: { db, notifier } }, m.payloads.vencimiento, 'job', m.plazo);
+      const enviados = notifier.enviados.length;
+      const again = await ejecutarJobRecordatorio({ db, notifier, alertas: { db, notifier } }, m.payloads.vencimiento, 'job', enHoras(m, -1));
+      expect(again).toEqual({ resultado: 'vencida', alerta_creada: false });
+      expect(await alertasDe(db, m.w.clienteId)).toHaveLength(1);
+      expect(notifier.enviados).toHaveLength(enviados);
+    });
+  });
+
+  it('does nothing once the client decided, when the production changed or when the deadline moved', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await mundo(db);
+      const notifier = new FakeNotifier();
+      const run = (payload: PayloadRecordatorio) => ejecutarJobRecordatorio({ db, notifier, alertas: { db, notifier } }, payload, 'job', m.plazo);
+      expect(await run({ ...m.payloads.vencimiento, referencia: 'f'.repeat(64) })).toEqual({ resultado: 'omitido', codigo: 'produccion_cambiada' });
+      // Rescheduled: the old deadline notice sees the change and does nothing (a new one must be scheduled, see ADR-05).
+      await db.query(`UPDATE piezas SET fecha_hora = fecha_hora + interval '1 day' WHERE id = $1`, [m.w.piezaId]);
+      expect(await run(m.payloads.vencimiento)).toEqual({ resultado: 'omitido', codigo: 'plazo_cambiado' });
+      await db.query(`UPDATE piezas SET fecha_hora = fecha_hora - interval '1 day' WHERE id = $1`, [m.w.piezaId]);
+      await registrarDecision({ db }, m.clienteId, m.w.piezaId, m.actores.cliente, { nivel: 'cliente', decision: 'aprobada', hashVisto: m.w.hashHex });
+      expect(await run(m.payloads.vencimiento)).toEqual({ resultado: 'omitido', codigo: 'ya_decidida' });
+      expect(await alertasDe(db, m.w.clienteId)).toEqual([]);
+      expect(notifier.enviados).toEqual([]);
+    });
+  });
+
+  it('without the alerts wired it only skips; a plan past its deadline raises the same alert with tipo plan', async () => {
+    await withTestTransaction(async (db) => {
+      const m = await mundo(db);
+      const notifier = new FakeNotifier();
+      expect(await ejecutarJobRecordatorio({ db, notifier }, m.payloads.vencimiento, 'job', m.plazo)).toEqual({ resultado: 'omitido', codigo: 'sin_alertas' });
+      expect(await alertasDe(db, m.w.clienteId)).toEqual([]);
+
+      const cliente = await createCliente(db);
+      const clienteId = asClienteId(cliente.id);
+      const plan = await createPlanSemanal(db, { clienteId: cliente.id });
+      await createPieza(db, { clienteId: cliente.id, planId: plan.id, fechaHora: new Date(Date.now() + 3 * 24 * H) });
+      const actores = await createActores(db, cliente.id);
+      await createAprobadoresCliente(db, { clienteId: cliente.id, principalUsuarioId: actores.ids.cliente });
+      const recordatorios = new FakeRecordatorios();
+      await proponerPlan({ db, recordatorios }, clienteId, plan.id, actores.novaciel);
+      const { input, avisos } = recordatorios.programados[0]!;
+      const vencimiento = avisos.find((a) => a.aviso === 'vencimiento')!;
+      expect(vencimiento.cuando).toEqual(input.plazo);
+      expect(await ejecutarJobRecordatorio({ db, notifier, alertas: { db, notifier } }, vencimiento.payload, 'job', input.plazo)).toEqual({ resultado: 'vencida', alerta_creada: true });
+      expect((await alertasDe(db, cliente.id))[0]).toMatchObject({ codigo: 'aprobacion_vencida', parametros: { tipo: 'plan', objeto_id: plan.id } });
     });
   });
 });

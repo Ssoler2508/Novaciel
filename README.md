@@ -1,6 +1,6 @@
 # novaciel-core: NovaCiel content engine
 
-Multi-client backend that plans, produces, routes through human approval, publishes and measures social media content for NovaCiel's business clients. Today it covers the path from the weekly plan to a finished, hashed and approved piece (carousels and reels, with real media from the client's library); automatic quality control, publishing, the dashboard and voice are not built yet. Nothing is published without a recorded human approval of the exact file.
+Multi-client backend that plans, produces, routes through human approval, publishes and measures social media content for NovaCiel's business clients. Today it covers the path from the weekly plan to a finished, hashed and approved piece (carousels and reels, with real media from the client's library); publishing and the results of published pieces are not built yet (automatic quality control, the voice-over, the dashboard routes and the alerts are). Nothing is published without a recorded human approval of the exact file.
 
 The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). The delivery notes (what is real and what is fake, known debt, open questions) are in [`docs/ENTREGA.md`](docs/ENTREGA.md) (Spanish).
 
@@ -20,7 +20,7 @@ The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). Th
 | 8 | Automatic quality control | Done |
 | 9 | Two-level approval | Done |
 | 10 | Publishing | Not built |
-| 11 | Dashboard and real alerts | Not built |
+| 11 | Dashboard read routes, persistent alerts, budget and price routes | Done (branch `step-11`); contract for the web: [`docs/API_PANEL.md`](docs/API_PANEL.md) |
 | 12 | End-to-end test | Pending |
 
 Details per step, what is a real adapter and what is a fake: [`docs/ENTREGA.md`](docs/ENTREGA.md). Task board: [`docs/PLAN.md`](docs/PLAN.md).
@@ -167,7 +167,7 @@ remotion/           React templates of the animated text layer (rendered by Remo
 assets/fonts        Inter, the only font used for on-screen text
 seed-data           fictional media for the seed
 tests               shared test utilities, fixtures and factories
-docs                specification, plan, delivery notes, ADRs, hash format
+docs                specification, plan, delivery notes, ADRs, hash format, API contract for the web (API_PANEL.md)
 web/                the web interface, maintained separately (own package.json); not documented here
 ```
 

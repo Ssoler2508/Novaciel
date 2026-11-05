@@ -7,7 +7,11 @@ import { createMediaProbe } from './lib/media/probe/index.js';
 import { registerMediaRoutes } from './modules/media/mediaRoutes.js';
 import { createQueue, enqueuePing, startQueue } from './lib/queue/index.js';
 import { registerBudgetJobs } from './modules/presupuesto/presupuestoJobs.js';
+import { registerPresupuestoRoutes } from './modules/presupuesto/presupuestoRoutes.js';
 import { LogAlertSink } from './lib/ai/alerts.js';
+import { registerAlertasRoutes } from './modules/alertas/alertasRoutes.js';
+import { registerPanelRoutes } from './modules/panel/panelRoutes.js';
+import { PersistentAlertSink } from './modules/alertas/persistentAlertSink.js';
 import { registerPlanificadorRoutes } from './modules/planificador/planificadorRoutes.js';
 import { createPgBossPlanQueue, registerPlanificadorJobs } from './modules/planificador/planificadorJobs.js';
 import { createLlmRuntime } from './modules/desarrollo/developmentProvider.js';
@@ -79,33 +83,42 @@ async function main(): Promise<void> {
   await registerDirectorRoutes(app, { db: pool, queue: createPgBossBriefQueue(boss) });
   await registerProduccionRoutes(app, { db: pool, queue: createPgBossProduccionQueue(boss), storage });
   await registerControlCalidadRoutes(app, { db: pool, queue: createPgBossControlCalidadQueue(boss) });
+  // Persistent alerts (Step 11). LogNotifier only logs ids and template names until a real provider exists.
+  const notifier = new LogNotifier();
+  const alertas = { db: pool, notifier, umbrales: config.alertas.umbralesPresupuesto };
+  const alertSink = new PersistentAlertSink(alertas, new LogAlertSink());
+  await registerPresupuestoRoutes(app, { db: pool, alertas });
+  await registerAlertasRoutes(app, { db: pool });
+  await registerPanelRoutes(app, { db: pool });
   // The approval routes queue the reminders through pg-boss, inside the decision's transaction. The workers
   // that deliver them (with the notifier) are registered below, after the queue starts.
   await registerAprobacionesRoutes(app, { db: pool, storage, recordatorios: createPgBossRecordatorios(boss) });
   await startQueue(boss);
-  await registerBudgetJobs(boss, pool);
+  await registerBudgetJobs(boss, pool, alertas);
   // LLM_PROVIDER=fake gives ONE deterministic development provider that serves both the planner and
   // the creative director (dispatching by purpose); claude gives the real provider.
   const llm = createLlmRuntime(config.llm, config.NODE_ENV);
   await registerPlanificadorJobs(boss, {
     db: pool,
     provider: llm.provider,
-    alerts: new LogAlertSink(),
+    alerts: alertSink,
+    alertas,
     ...(llm.withPlannerContext ? { withContext: llm.withPlannerContext } : {}),
   });
   await registerDirectorJobs(boss, {
     db: pool,
     provider: llm.provider,
-    alerts: new LogAlertSink(),
+    alerts: alertSink,
+    alertas,
     ...(llm.withBriefContext ? { withContext: llm.withBriefContext } : {}),
   });
   // Reels need FFmpeg; the check runs lazily, the first time one is produced, so a machine without it still boots.
   // Every stored production queues its quality-control job inside the same transaction (Step 8).
-  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad: createPgBossControlCalidad(boss) });
-  await registerControlCalidadJobs(boss, { db: pool, storage, reel: reelQcConfig(config.media) });
-  // Approval reminders and the escalation notice (spec 11.3). LogNotifier only logs ids and template names
-  // until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
-  await registerRecordatoriosJobs(boss, { db: pool, notifier: new LogNotifier() });
+  await registerProduccionJobs(boss, { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad: createPgBossControlCalidad(boss), alertas });
+  await registerControlCalidadJobs(boss, { db: pool, storage, reel: reelQcConfig(config.media), alertas });
+  // Approval reminders, the deadline notice and the escalation notice (spec 11.3). The notifier only logs ids and
+  // template names until a real provider exists. The routes above queue them with createPgBossRecordatorios(boss).
+  await registerRecordatoriosJobs(boss, { db: pool, notifier, alertas });
   await app.listen({ port: config.PORT, host: '0.0.0.0' });
   await enqueuePing(boss, 'startup');
 }

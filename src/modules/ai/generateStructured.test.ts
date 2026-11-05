@@ -104,8 +104,10 @@ describe('generateStructured', () => {
       expect((error as Error).message).not.toContain(OUTPUT_SECRET);
       expect((await ledger(db, w.clienteId)).map((r) => r.resultado)).toEqual(['schema_invalido', 'schema_invalido']);
       expect(w.provider.calls).toHaveLength(2);
+      // The reference id is the id of the SECOND authorization (the dedupe key of the persistent alert).
+      const second = (await db.query<{ autorizacion_id: string }>(`SELECT autorizacion_id FROM libro_gastos WHERE cliente_id = $1 ORDER BY id DESC LIMIT 1`, [w.clienteId])).rows[0]!;
       expect(w.alerts.alerts).toEqual([
-        { code: 'llm_schema_invalid', clienteId: w.clienteId, purpose: 'smoke_test_pesado', tier: 'heavy', provider: 'fake', model: 'fake-model', attempts: 2 },
+        { code: 'llm_schema_invalid', clienteId: w.clienteId, purpose: 'smoke_test_pesado', tier: 'heavy', provider: 'fake', model: 'fake-model', attempts: 2, referenceId: second.autorizacion_id },
       ]);
     });
   });

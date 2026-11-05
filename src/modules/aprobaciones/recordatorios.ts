@@ -6,7 +6,10 @@ import { isValidZone, localLabel } from '../planificador/fechas.js';
 // report the local date and time of each notice. The substitute's exact time is not in the spec: 2 h
 // before by default, configurable (open question in docs/PLAN.md).
 
-export type TipoRecordatorio = 'recordatorio_24h' | 'recordatorio_4h' | 'turno_suplente';
+// "vencimiento" is not a reminder to the client: it fires exactly AT the deadline and, if the approval is still
+// pending, raises the aprobacion_vencida alert (Step 11). Same rule as the others: it is never cancelled, it
+// re-checks the state when it fires.
+export type TipoRecordatorio = 'recordatorio_24h' | 'recordatorio_4h' | 'turno_suplente' | 'vencimiento';
 
 export interface ReglasRecordatorios {
   /** Hours before the deadline of the two reminders to the main approver, in this order. */
@@ -20,7 +23,7 @@ export const REGLAS_RECORDATORIOS: ReglasRecordatorios = { recordatorioLargoHora
 
 export interface Recordatorio {
   tipo: TipoRecordatorio;
-  /** The instant to send it. Always after `ahora` and before the deadline. */
+  /** The instant to send it. Always after `ahora`; before the deadline, except the vencimiento notice, which is AT the deadline. */
   cuando: Date;
   /** The same instant on the client's wall clock. */
   localFecha: string;
@@ -41,6 +44,7 @@ export function calcularRecordatorios(
     ['recordatorio_24h', reglas.recordatorioLargoHoras],
     ['recordatorio_4h', reglas.recordatorioCortoHoras],
     ['turno_suplente', reglas.suplenteHoras],
+    ['vencimiento', 0],
   ];
   const result: Recordatorio[] = [];
   for (const [tipo, horas] of reglasEnOrden) {
