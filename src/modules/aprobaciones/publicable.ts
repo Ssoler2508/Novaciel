@@ -56,11 +56,20 @@ interface ArchivoBruto {
   media_id: string;
 }
 
-export async function assertPublicable(deps: PublicableDeps, clienteId: ClienteId, piezaId: string): Promise<PiezaPublicable> {
+export interface PublicableOptions {
+  /**
+   * States the piece may be in. Default: `aprobada` and `programada`. Only the manual retry out of
+   * `fallo_publicacion` (Step 10) widens it, and it does so to re-schedule, never to send.
+   */
+  estados?: readonly string[];
+}
+
+export async function assertPublicable(deps: PublicableDeps, clienteId: ClienteId, piezaId: string, options: PublicableOptions = {}): Promise<PiezaPublicable> {
   const { db, storage } = deps;
+  const permitidos: readonly string[] = options.estados ?? ESTADOS_PUBLICABLES;
   const pieza = await getPieza(db, clienteId, piezaId, { includeDescartados: true });
   if (!pieza) throw new PiezaNotFoundError();
-  if (pieza.plan_estado !== 'aprobado' || !(ESTADOS_PUBLICABLES as readonly string[]).includes(pieza.estado)) {
+  if (pieza.plan_estado !== 'aprobado' || !permitidos.includes(pieza.estado)) {
     throw new PiezaNoPublicableError(pieza.estado, pieza.plan_estado);
   }
 
