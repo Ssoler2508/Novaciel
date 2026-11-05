@@ -24,8 +24,6 @@ const JSON_HEADERS = { 'content-type': 'application/json' };
 const NOVACIEL: RoleCode[] = ['administrador_novaciel', 'operador_novaciel'];
 const SISTEMA = { tipo: 'sistema' } as const;
 const COPY = 'Hecho con calma'; // a piece of the copy of the fictional piece
-// Per-test timeout for the tests that produce a real carousel (`produce(ctx)`): measured idle 0.9-4.8 s each (the slowest is the first), 15 s leaves room for a loaded full run.
-const RENDER_MS = 15_000;
 
 class FakeQueue implements ControlCalidadQueue {
   readonly jobs: ControlCalidadPayload[] = [];
@@ -118,7 +116,7 @@ describe('GET .../piezas/:piezaId/control-calidad', () => {
       // The operator reads it too.
       expect((await get(ctx, await login(ctx, 'operador_novaciel'), qcUrl(ctx))).statusCode).toBe(200);
     });
-  }, RENDER_MS);
+  });
 
   it('shows the failed codes of a rejected piece', async () => {
     await withApp(async (ctx) => {
@@ -130,7 +128,7 @@ describe('GET .../piezas/:piezaId/control-calidad', () => {
       expect(body).toMatchObject({ pieza_estado: 'en_produccion', vigente: true, informe: { resultado: 'rechazado' } });
       expect(body.informe.codigos_fallo).toContain('archivo_hash_distinto');
     });
-  }, RENDER_MS);
+  });
 
   it('answers 200 with informe null and vigente false when the piece has no report, or only a report of an old production', async () => {
     await withApp(async (ctx) => {
@@ -146,7 +144,7 @@ describe('GET .../piezas/:piezaId/control-calidad', () => {
       await producirPieza({ db: ctx.db, storage: ctx.w.storage }, ctx.w.clienteId, ctx.w.piezaId, SISTEMA, { reproducir: true });
       expect((await get(ctx, admin, qcUrl(ctx))).json()).toEqual({ pieza_estado: 'en_control_calidad', vigente: false, informe: null });
     });
-  }, RENDER_MS);
+  });
 
   it('answers 404 for a piece that does not exist, belongs to another client or has a discarded plan', async () => {
     await withApp(async (ctx) => {
@@ -194,7 +192,7 @@ describe('POST .../piezas/:piezaId/control-calidad', () => {
       expect((await post(ctx, await login(ctx, 'operador_novaciel'), qcUrl(ctx))).statusCode).toBe(409);
       expect((await post(ctx, admin, qcUrl(ctx), { otro: true })).statusCode).toBe(400);
     });
-  }, RENDER_MS);
+  });
 
   it('refuses with codes and queues nothing: wrong state, missing piece, foreign piece, discarded plan', async () => {
     await withApp(async (ctx) => {
@@ -217,7 +215,7 @@ describe('POST .../piezas/:piezaId/control-calidad', () => {
       await refuse(qcUrl(ctx), 404, { error: 'not_found' }); // a piece of a discarded plan is hidden
       expect(ctx.queue.jobs).toHaveLength(0);
     });
-  }, RENDER_MS);
+  });
 
   it('follows the matrix and the CSRF guard: nothing is queued for the client roles, strangers or anonymous callers', async () => {
     await withApp(async (ctx) => {
@@ -232,7 +230,7 @@ describe('POST .../piezas/:piezaId/control-calidad', () => {
       expect((await post(ctx, admin, qcUrl(ctx), {}, { origin: 'http://evil.example' })).statusCode).toBe(403);
       expect(ctx.queue.jobs).toHaveLength(0);
     });
-  }, RENDER_MS);
+  });
 });
 
 describe('the control_calidad field of GET .../piezas/:piezaId/revision (additive)', () => {
@@ -245,7 +243,7 @@ describe('the control_calidad field of GET .../piezas/:piezaId/revision (additiv
       expect(body).toMatchObject({ version: 1, pieza_estado: 'en_control_calidad' });
       expect(Object.keys(body)).toEqual(expect.arrayContaining(['archivos', 'pieza_estado', 'fecha_hora', 'estado_aprobacion', 'historial', 'control_calidad']));
     });
-  }, RENDER_MS);
+  });
 
   it('gives NovaCiel the result, version, date and the codes; the client roles the result, version and date only', async () => {
     await withApp(async (ctx) => {
@@ -267,5 +265,5 @@ describe('the control_calidad field of GET .../piezas/:piezaId/revision (additiv
       // colaborador_cliente cannot read the view at all (unchanged).
       expect((await get(ctx, await login(ctx, 'colaborador_cliente'), revisionUrl(ctx))).statusCode).toBe(403);
     });
-  }, RENDER_MS);
+  });
 });
