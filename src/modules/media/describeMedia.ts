@@ -7,6 +7,8 @@ import { modelForPurpose, tierForPurpose, type Purpose } from '../../lib/ai/mode
 import { VisionProviderError, type VisionProvider } from '../../lib/ai/vision/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { SchemaValidationError } from '../ai/generateStructured.js';
+import type { AlertasRuntime } from '../alertas/raiseAlert.js';
+import { evaluarUmbrales } from '../alertas/umbrales.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { computeCost, estimateCost } from '../precios/costEstimation.js';
 import { microToUsd, type MicroUsd } from '../presupuesto/money.js';
@@ -42,6 +44,8 @@ export interface DescribeMediaDeps {
   vision: VisionProvider;
   alerts: AlertSink;
   logger?: Logger;
+  /** Persistent alerts (Step 11): budget thresholds are checked after each settled call. Absent: none. */
+  alertas?: AlertasRuntime;
   /** Upper bound used for the cost estimate; see DEFAULT_MAX_INPUT_TOKENS. */
   maxInputTokens?: number;
 }
@@ -64,6 +68,7 @@ function normalizeSuggestedTags(tags: readonly string[]): string[] {
 }
 
 interface Attempt {
+  authorizationId: string;
   cost: MicroUsd;
   inputTokens: number;
   outputTokens: number;
@@ -141,13 +146,14 @@ export async function describeMedia(
       },
       'vision call settled',
     );
-    return { cost, inputTokens: result.inputTokens, outputTokens: result.outputTokens, output: parsed.success ? parsed.data : null };
+    await evaluarUmbrales(deps.alertas, clienteId);
+    return { authorizationId: authorization.id, cost, inputTokens: result.inputTokens, outputTokens: result.outputTokens, output: parsed.success ? parsed.data : null };
   };
 
   let attempt = await attemptOnce(1);
   if (!attempt.output) attempt = await attemptOnce(2); // a new paid call with its own authorization
   if (!attempt.output) {
-    await deps.alerts.alert({ code: 'vision_schema_invalid', clienteId, purpose: DESCRIBE_PURPOSE, provider: vision.name, model, attempts: 2 });
+    await deps.alerts.alert({ code: 'vision_schema_invalid', clienteId, purpose: DESCRIBE_PURPOSE, provider: vision.name, model, attempts: 2, referenceId: attempt.authorizationId });
     throw new SchemaValidationError(DESCRIBE_PURPOSE, 2);
   }
 
@@ -210,6 +216,7 @@ async function closeAfterProviderError(
         { actualCost: cost, inputUnits: error.usage.inputTokens, outputUnits: error.usage.outputTokens, outcome: 'error' },
         actor,
       );
+      await evaluarUmbrales(deps.alertas, clienteId);
     } else {
       await release(deps.db, authorization, actor);
     }

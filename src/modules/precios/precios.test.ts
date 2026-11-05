@@ -11,7 +11,9 @@ import {
   PriceActorError,
   PriceExistsError,
   PriceNotFoundError,
+  PriceRetroactiveError,
   setModelPrice,
+  setUnitPrice,
 } from './preciosRepository.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -126,7 +128,7 @@ describe('setModelPrice', () => {
     });
   });
 
-  it('refuses everyone without manage_budget and writes nothing', async () => {
+  it('refuses everyone without manage_prices and writes nothing', async () => {
     await withTestTransaction(async (db) => {
       const cliente = await createCliente(db);
       const operator = await createUsuario(db);
@@ -145,11 +147,25 @@ describe('setModelPrice', () => {
     });
   });
 
+  it('a price cannot start in the past (tokens or units); now and the future are fine; nothing is written or audited', async () => {
+    await withTestTransaction(async (db) => {
+      const actor = await admin(db);
+      const { provider, model } = names();
+      const past = new Date(Date.now() - 1000);
+      await expect(setModelPrice(db, { provider, model, inputPerMillion: 1n, outputPerMillion: 1n, vigenteDesde: past }, actor)).rejects.toThrow(PriceRetroactiveError);
+      await expect(setUnitPrice(db, { provider, model, unit: 'segundos', pricePerBlock: 1n, blockSize: 60, vigenteDesde: past }, actor)).rejects.toThrow(PriceRetroactiveError);
+      expect((await db.query('SELECT 1 FROM precios_modelos WHERE proveedor = $1', [provider])).rows).toHaveLength(0);
+      await setModelPrice(db, { provider, model, inputPerMillion: 1n, outputPerMillion: 1n, vigenteDesde: new Date(Date.now() + 1000) }, actor);
+      await setModelPrice(db, { provider, model, inputPerMillion: 2n, outputPerMillion: 2n }, actor);
+      expect((await db.query('SELECT 1 FROM precios_modelos WHERE proveedor = $1', [provider])).rows).toHaveLength(2);
+    });
+  });
+
   it('a price change is a new row; the same provider, model and date is refused', async () => {
     await withTestTransaction(async (db) => {
       const actor = await admin(db);
       const { provider, model } = names();
-      const at = new Date(Date.now() - DAY_MS);
+      const at = new Date(Date.now() + DAY_MS);
       await setModelPrice(db, { provider, model, inputPerMillion: 1n, outputPerMillion: 1n, vigenteDesde: at }, actor);
       await expect(
         setModelPrice(db, { provider, model, inputPerMillion: 2n, outputPerMillion: 2n, vigenteDesde: at }, actor),

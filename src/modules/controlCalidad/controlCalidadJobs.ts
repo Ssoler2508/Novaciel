@@ -2,6 +2,7 @@ import type { PgBoss } from 'pg-boss';
 import { z } from 'zod';
 import type { Db } from '../../db/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
+import { withFailureAlert } from '../alertas/withFailureAlert.js';
 import { PiezaNotFoundError } from '../piezas/errors.js';
 import { PlanNoAprobadoError } from '../planificador/errors.js';
 import type { ControlCalidadEncolador } from '../produccion/produccionService.js';
@@ -73,10 +74,10 @@ export async function crearColaControlCalidad(boss: PgBoss): Promise<void> {
 /** Creates the queue and its worker. Call after boss.start(). */
 export async function registerControlCalidadJobs(boss: PgBoss, deps: QcDeps): Promise<void> {
   await crearColaControlCalidad(boss);
-  await boss.work<ControlCalidadPayload, ControlCalidadOutput>(CONTROL_CALIDAD_QUEUE, { batchSize: 1 }, async (jobs) => {
+  await boss.work<ControlCalidadPayload, ControlCalidadOutput>(CONTROL_CALIDAD_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, CONTROL_CALIDAD_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobControlCalidad(deps, job.data, job.id);
-  });
+  }));
 }
 
 // ---- The ports.

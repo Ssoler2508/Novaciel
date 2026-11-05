@@ -36,8 +36,16 @@ export type Action =
   | 'manage_connections'
   | 'manage_users'
   | 'manage_plans'
+  | 'schedule_pieces'
   | 'view_spend'
   | 'manage_budget'
+  | 'view_prices'
+  | 'manage_prices'
+  | 'view_alerts'
+  | 'ack_alerts'
+  | 'view_alerts_global'
+  | 'ack_alerts_global'
+  | 'view_overview'
   | 'manage_novaciel_staff';
 
 export interface ActionRule {
@@ -72,9 +80,25 @@ export const PERMISSIONS: Record<Action, ActionRule> = {
   // Generate a client's weekly plan (a paid model call) and pause or resume its pieces. NovaCiel
   // staff only: the client's approver receives the plan and approves it (spec 7, 14).
   manage_plans: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // Schedule, reschedule and cancel the publication time of an approved piece (Step 10). NovaCiel staff only.
+  schedule_pieces: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   view_spend: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
-  // Prices, caps and switches.
+  // Monthly ceilings and spend switches (the client's and the global one). Prices are NOT covered: see manage_prices.
   manage_budget: { scope: 'global', roles: ['administrador_novaciel'] },
+  // Read the model price list (Step 11).
+  view_prices: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // Write model prices (Step 11): a price change moves every client's cost, so administrator only.
+  manage_prices: { scope: 'global', roles: ['administrador_novaciel'] },
+  // Persistent alerts (Step 11). A client owner sees only the alert codes in CODIGOS_VISIBLES_CLIENTE (aprobacion_vencida);
+  // the repository enforces that, the permission only opens the door.
+  view_alerts: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel', 'dueno_cliente'] },
+  ack_alerts: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // Alerts that belong to no client (a failed job, the global switch) and the list across all clients.
+  view_alerts_global: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  ack_alerts_global: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // The NovaCiel overview across clients (Step 11, dashboard): counts, pending approvals, open alerts and budget
+  // percentage per client. Never client content. It is the only read that spans clients, so staff only.
+  view_overview: { scope: 'global', roles: ['administrador_novaciel', 'operador_novaciel'] },
   // Assign NovaCiel roles.
   manage_novaciel_staff: { scope: 'global', roles: ['administrador_novaciel'] },
 };

@@ -83,7 +83,7 @@ describe('prices by unit', () => {
     });
   });
 
-  it('setUnitPrice needs manage_budget, audits the row and never updates: a duplicate is refused', async () => {
+  it('setUnitPrice needs manage_prices, audits the row and never updates: a duplicate is refused', async () => {
     await withTestTransaction(async (db) => {
       const { provider, model } = names();
       const actor = await admin(db);

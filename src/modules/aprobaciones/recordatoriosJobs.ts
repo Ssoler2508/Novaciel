@@ -4,6 +4,9 @@ import { z } from 'zod';
 import type { Db } from '../../db/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import type { Notifier, Plantilla } from '../../lib/notificaciones/types.js';
+import { esAprobadorValido, listPersonalNovaciel } from '../alertas/destinatarios.js';
+import { raiseAlert, raiseAlertBestEffort, type AlertasDeps } from '../alertas/raiseAlert.js';
+import { withFailureAlert } from '../alertas/withFailureAlert.js';
 import { getPieza } from '../piezas/piezasRepository.js';
 import { getPlan } from '../planificador/planesRepository.js';
 import { asClienteId, type ClienteId } from '../shared/clienteId.js';
@@ -36,7 +39,7 @@ const payloadSchema = z
     clienteId: z.uuid(),
     tipo: z.enum(['pieza', 'plan']),
     objetoId: z.uuid(),
-    aviso: z.enum(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']),
+    aviso: z.enum(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']),
     referencia: z.string().regex(/^[0-9a-f]{64}$/),
     plazo: z.iso.datetime(),
   })
@@ -48,48 +51,25 @@ export interface RecordatoriosJobDeps {
   db: Db;
   notifier: Notifier;
   logger?: Logger;
+  /** Persistent alerts (Step 11): the vencimiento notice and the escalation raise one. Absent: none. */
+  alertas?: AlertasDeps;
 }
 
 export type SalidaAviso =
   | { resultado: 'enviado'; plantilla: Plantilla; destinatarios: number }
+  | { resultado: 'vencida'; alerta_creada: boolean }
   | { resultado: 'omitido'; codigo: string }
   | { resultado: 'rechazado'; codigo: 'PayloadInvalido' };
 
 const errorName = (error: unknown) => (error instanceof Error ? error.name : 'UnknownError');
-
-// ---- Who receives the notices ---------------------------------------------------------------------
-
-/** Active users who hold a NovaCiel role (administrators and operators), in a stable order. */
-async function listPersonalNovaciel(db: Db): Promise<string[]> {
-  const { rows } = await db.query<{ id: string }>(
-    `SELECT DISTINCT u.id FROM usuarios u JOIN usuario_roles ur ON ur.usuario_id = u.id
-     WHERE u.activo AND ur.ambito = 'novaciel' ORDER BY u.id`,
-  );
-  return rows.map((r) => r.id);
-}
-
-/**
- * Re-validated when the job fires: the user is active, still holds an approval role FOR THIS CLIENT,
- * and holds no NovaCiel role (the same rule as the database guard of aprobadores_cliente).
- */
-async function esAprobadorValido(db: Db, clienteId: ClienteId, usuarioId: string): Promise<boolean> {
-  const { rows } = await db.query(
-    `SELECT 1 FROM usuarios u
-     WHERE u.id = $1 AND u.activo
-       AND EXISTS (SELECT 1 FROM usuario_roles ur JOIN roles r ON r.id = ur.rol_id
-                   WHERE ur.usuario_id = u.id AND ur.cliente_id = $2 AND r.codigo IN ('dueno_cliente', 'aprobador_cliente'))
-       AND NOT EXISTS (SELECT 1 FROM usuario_roles ur WHERE ur.usuario_id = u.id AND ur.ambito = 'novaciel')`,
-    [usuarioId, clienteId],
-  );
-  return rows.length > 0;
-}
 
 // ---- The reminder job -----------------------------------------------------------------------------
 
 /** Is the approval target still waiting for the client, exactly as it was when the notice was scheduled? Null = yes, else the reason. */
 async function motivoParaOmitir(db: Db, clienteId: ClienteId, p: PayloadRecordatorio, ahora: Date): Promise<string | null> {
   const plazo = new Date(p.plazo);
-  if (ahora.getTime() >= plazo.getTime()) return 'plazo_vencido';
+  // The vencimiento notice fires AT the deadline, so for it the deadline having passed is the expected case.
+  if (p.aviso !== 'vencimiento' && ahora.getTime() >= plazo.getTime()) return 'plazo_vencido';
   if (p.tipo === 'pieza') {
     const pieza = await getPieza(db, clienteId, p.objetoId);
     if (!pieza) return 'objeto_no_encontrado';
@@ -124,6 +104,20 @@ export async function ejecutarJobRecordatorio(deps: RecordatoriosJobDeps, data: 
     if (motivo) {
       log.info({ jobId, clienteId, tipo: payload.tipo, objetoId: payload.objetoId, aviso: payload.aviso, resultado: 'omitido', codigo: motivo }, 'approval reminder skipped');
       return { resultado: 'omitido', codigo: motivo };
+    }
+
+    if (payload.aviso === 'vencimiento') {
+      if (!deps.alertas) {
+        log.info({ jobId, clienteId, objetoId: payload.objetoId, aviso: payload.aviso, resultado: 'omitido', codigo: 'sin_alertas' }, 'approval deadline notice skipped');
+        return { resultado: 'omitido', codigo: 'sin_alertas' };
+      }
+      // Still waiting for the client at the deadline: raise the alert (once per object and deadline: the dedupe key).
+      const { creada } = await raiseAlert(deps.alertas, 'aprobacion_vencida', {
+        clienteId,
+        parametros: { tipo: payload.tipo, objeto_id: payload.objetoId, plazo: payload.plazo },
+      });
+      log.info({ jobId, clienteId, tipo: payload.tipo, objetoId: payload.objetoId, resultado: 'vencida', alertaCreada: creada }, 'approval deadline passed without a decision');
+      return { resultado: 'vencida', alerta_creada: creada };
     }
 
     const { rows } = await deps.db.query<{ principal: string; suplente: string | null }>(
@@ -173,6 +167,8 @@ export async function ejecutarJobEscalada(deps: RecordatoriosJobDeps, data: unkn
     const pieza = await getPieza(deps.db, clienteId, piezaId);
     if (!pieza) return { resultado: 'omitido', codigo: 'objeto_no_encontrado' };
     if (!decidirEscalada(await listRegistros(deps.db, clienteId, piezaId)).escalada) return { resultado: 'omitido', codigo: 'no_escalada' };
+    // The alert is stored first; it does not notify again (the escalada_cambios notice below is the notice).
+    await raiseAlertBestEffort(deps.alertas, 'aprobacion_escalada', { clienteId, parametros: { pieza_id: piezaId } });
     const personal = await listPersonalNovaciel(deps.db);
     for (const usuarioId of personal) {
       await deps.notifier.enviar({ clienteId, destinatarioUsuarioId: usuarioId, plantilla: 'escalada_cambios', referencia: { tipo: 'pieza', id: piezaId } });
@@ -200,8 +196,8 @@ export async function crearColasRecordatorios(boss: PgBoss): Promise<void> {
 /** Registers both queues and their workers. Call after boss.start(). */
 export async function registerRecordatoriosJobs(boss: PgBoss, deps: RecordatoriosJobDeps): Promise<void> {
   await crearColasRecordatorios(boss);
-  await boss.work<unknown, SalidaAviso>(RECORDATORIO_QUEUE, { batchSize: 1 }, async (jobs) => ejecutarJobRecordatorio(deps, jobs[0]!.data, jobs[0]!.id));
-  await boss.work<unknown, SalidaAviso>(ESCALADA_QUEUE, { batchSize: 1 }, async (jobs) => ejecutarJobEscalada(deps, jobs[0]!.data, jobs[0]!.id));
+  await boss.work<unknown, SalidaAviso>(RECORDATORIO_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, RECORDATORIO_QUEUE, async (jobs) => ejecutarJobRecordatorio(deps, jobs[0]!.data, jobs[0]!.id)));
+  await boss.work<unknown, SalidaAviso>(ESCALADA_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, ESCALADA_QUEUE, async (jobs) => ejecutarJobEscalada(deps, jobs[0]!.data, jobs[0]!.id)));
 }
 
 export interface AvisoEncolado {

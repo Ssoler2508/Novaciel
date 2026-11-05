@@ -26,6 +26,10 @@ export { createGuion, createToma, createGuionHecho, guionContenido } from './gui
 export { createProduccion, createProduccionArchivo, createProduccionFuente } from './producciones.js';
 export { createLocucion, createProduccionLocucion } from './locuciones.js';
 export type { LocucionRow, ProduccionLocucionRow } from './locuciones.js';
+export { createAlerta, createAlertaReconocimiento } from './alertas.js';
+export type { AlertaRow, AlertaReconocimientoRow } from './alertas.js';
+export { createPublicacion, createPublicacionResultado, createMetricaPieza } from './publicaciones.js';
+export type { PublicacionRow, PublicacionResultadoRow, MetricaPiezaRow } from './publicaciones.js';
 export { createRevisionCalidad, checkQC } from './revisionesCalidad.js';
 export type { RevisionCalidadRow, CheckQC } from './revisionesCalidad.js';
 export {

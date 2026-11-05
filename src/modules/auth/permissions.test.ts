@@ -18,8 +18,16 @@ const EXPECTED: Record<Action, { scope: 'client' | 'global'; allowed: RoleCode[]
   manage_connections: { scope: 'client', allowed: [A, D] },
   manage_users: { scope: 'client', allowed: [A, D] },
   manage_plans: { scope: 'client', allowed: [A, O] },
+  schedule_pieces: { scope: 'client', allowed: [A, O] },
   view_spend: { scope: 'client', allowed: [A, O] },
   manage_budget: { scope: 'global', allowed: [A] },
+  view_prices: { scope: 'global', allowed: [A, O] },
+  manage_prices: { scope: 'global', allowed: [A] },
+  view_alerts: { scope: 'client', allowed: [A, O, D] },
+  ack_alerts: { scope: 'client', allowed: [A, O] },
+  view_alerts_global: { scope: 'global', allowed: [A, O] },
+  ack_alerts_global: { scope: 'global', allowed: [A, O] },
+  view_overview: { scope: 'global', allowed: [A, O] },
   manage_novaciel_staff: { scope: 'global', allowed: [A] },
 };
 

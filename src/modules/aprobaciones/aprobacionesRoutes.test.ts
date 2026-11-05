@@ -391,7 +391,7 @@ describe('the routes queue the reminders with the real pg-boss', () => {
       [RECORDATORIO_QUEUE, piezaId],
     )).rows;
 
-  it('an internal approval through the route leaves the three reminder jobs in the queue; a refused one leaves none', async () => {
+  it('an internal approval through the route leaves the three reminder jobs and the deadline job in the queue; a refused one leaves none', async () => {
     await boss.start();
     await crearColasRecordatorios(boss);
     await withApp(
@@ -403,10 +403,10 @@ describe('the routes queue the reminders with the real pg-boss', () => {
 
         await esperandoAlCliente(ctx);
         const jobs = await trabajos(ctx.db, ctx.w.piezaId);
-        expect(jobs.map((j) => j.aviso)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']);
+        expect(jobs.map((j) => j.aviso)).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']);
         expect(jobs.every((j) => j.state === 'created' && j.data.referencia === ctx.w.hashHex)).toBe(true);
         const plazo = (await ctx.db.query<{ fecha_hora: Date }>('SELECT fecha_hora FROM piezas WHERE id = $1', [ctx.w.piezaId])).rows[0]!.fecha_hora;
-        expect(jobs.map((j) => plazo.getTime() - j.start_after.getTime())).toEqual([24 * 3_600_000, 4 * 3_600_000, 2 * 3_600_000]);
+        expect(jobs.map((j) => plazo.getTime() - j.start_after.getTime())).toEqual([24 * 3_600_000, 4 * 3_600_000, 2 * 3_600_000, 0]);
       },
       createPgBossRecordatorios(boss),
     );

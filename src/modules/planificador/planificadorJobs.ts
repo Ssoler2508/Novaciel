@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import { z } from 'zod';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { SchemaValidationError } from '../ai/generateStructured.js';
+import { withFailureAlert } from '../alertas/withFailureAlert.js';
 import { PriceNotFoundError } from '../precios/preciosRepository.js';
 import { BudgetRefusedError } from '../presupuesto/presupuestoService.js';
 import { asClienteId } from '../shared/clienteId.js';
@@ -91,10 +92,10 @@ export async function ejecutarJobGenerarPlan(
 /** Registers the queue (exclusive, no automatic retries) and its worker. Call after boss.start(). */
 export async function registerPlanificadorJobs(boss: PgBoss, deps: PlanificadorDeps): Promise<void> {
   await boss.createQueue(GENERAR_PLAN_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 900 });
-  await boss.work<GenerarPlanPayload, GenerarPlanOutput>(GENERAR_PLAN_QUEUE, { batchSize: 1 }, async (jobs) => {
+  await boss.work<GenerarPlanPayload, GenerarPlanOutput>(GENERAR_PLAN_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, GENERAR_PLAN_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobGenerarPlan(deps, job.data, job.id);
-  });
+  }));
 }
 
 // ---- The port the routes use, so they can be tested without pg-boss.

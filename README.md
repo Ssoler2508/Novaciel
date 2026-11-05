@@ -1,6 +1,6 @@
 # novaciel-core: NovaCiel content engine
 
-Multi-client backend that plans, produces, routes through human approval, publishes and measures social media content for NovaCiel's business clients. Today it covers the path from the weekly plan to a finished, hashed and approved piece (carousels and reels, with real media from the client's library); automatic quality control, publishing, the dashboard and voice are not built yet. Nothing is published without a recorded human approval of the exact file.
+Multi-client backend that plans, produces, routes through human approval, publishes and measures social media content for NovaCiel's business clients. Today it covers the path from the weekly plan to a finished, hashed and approved piece (carousels and reels, with real media from the client's library); publishing and the results of published pieces are not built yet (automatic quality control, the voice-over, the dashboard routes and the alerts are). Nothing is published without a recorded human approval of the exact file.
 
 The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). The delivery notes (what is real and what is fake, known debt, open questions) are in [`docs/ENTREGA.md`](docs/ENTREGA.md) (Spanish).
 
@@ -20,7 +20,7 @@ The full specification is `docs/ESPECIFICACION_MOTOR_CONTENIDO.md` (Spanish). Th
 | 8 | Automatic quality control | Done |
 | 9 | Two-level approval | Done |
 | 10 | Publishing | Not built |
-| 11 | Dashboard and real alerts | Not built |
+| 11 | Dashboard read routes, persistent alerts, budget and price routes | Done (branch `step-11`); contract for the web: [`docs/API_PANEL.md`](docs/API_PANEL.md) |
 | 12 | End-to-end test | Pending |
 
 Details per step, what is a real adapter and what is a fake: [`docs/ENTREGA.md`](docs/ENTREGA.md). Task board: [`docs/PLAN.md`](docs/PLAN.md).
@@ -55,6 +55,7 @@ Details per step, what is a real adapter and what is a fake: [`docs/ENTREGA.md`]
 | --- | --- | --- |
 | Language model | Claude (`LLM_PROVIDER=claude`) | `FakeLLMProvider`, the default in development |
 | Voice-over | ElevenLabs (`VOICE_PROVIDER=elevenlabs`; `none` is written explicitly in production) | `FakeVoiceProvider`, the default in development |
+| Publishing | Intermediary not chosen yet (real adapter pending; `PUBLISH_PROVIDER` has no default in production) | `FakePublishProvider`, the default in development: nothing is sent to any network |
 | Vision (media description) | none yet | `FakeVisionProvider` |
 | Storage | `LocalFileStorage` (development), `S3Storage` (production, never run against a real server) | `FakeStorage` |
 | Media probe | ffprobe | `FakeMediaProbe` |
@@ -149,6 +150,9 @@ npm run piece:produce    -- --cliente $C --pieza <PIECE_ID>       # 4. produce t
 npm run qc:run           -- --cliente $C --pieza <PIECE_ID>       # 5. quality control, if the server is not running its worker
 npm run piece:approve    -- --cliente $C --pieza <PIECE_ID>       # 6. internal and client approval of the exact file
 npm run piece:publicable -- --cliente $C --pieza <PIECE_ID>       # 7. PUBLICABLE only with a passing QC and both approvals of the current hash
+npm run piece:schedule -- --cliente $C --pieza <PIECE_ID> --at 2027-03-01T15:00:00Z   # 8. programada (reminders and the send are queued)
+npm run piece:publish  -- --cliente $C --pieza <PIECE_ID>         # 9. publish now through the same gate (PUBLISH_PROVIDER=fake: nothing leaves this machine)
+npm run publish:metrics -- --cliente $C --pieza <PIECE_ID>        # 10. collect the next metrics window (24h, 72h, 7d, 28d)
 ```
 
 Quality control runs by itself after each production when the server is up (`npm run dev`): the piece moves to `revision_novaciel` on a pass and back to `en_produccion` on a fail, with the failed codes in the report. `qc:run` does the same directly (`--pieza <id>` or `--plan <id>`) and is also the way to control pieces left in `en_control_calidad` in development data. The internal approval only accepts `revision_novaciel`.
@@ -167,7 +171,7 @@ remotion/           React templates of the animated text layer (rendered by Remo
 assets/fonts        Inter, the only font used for on-screen text
 seed-data           fictional media for the seed
 tests               shared test utilities, fixtures and factories
-docs                specification, plan, delivery notes, ADRs, hash format
+docs                specification, plan, delivery notes, ADRs, hash format, API contract for the web (API_PANEL.md)
 web/                the web interface, maintained separately (own package.json); not documented here
 ```
 

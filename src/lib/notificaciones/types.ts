@@ -8,15 +8,20 @@ export const PLANTILLAS = [
   'turno_suplente',
   'escalada_cambios',
   'aprobador_no_configurado',
+  // Persistent alerts (Step 11). The provider builds the text from the template and the alert id.
+  'alerta_novaciel',
+  'presupuesto_techo_cliente',
+  'aprobacion_vencida',
 ] as const;
 export type Plantilla = (typeof PLANTILLAS)[number];
 
 export interface Aviso {
-  clienteId: string;
+  /** Null only for a global alert (no client). */
+  clienteId: string | null;
   destinatarioUsuarioId: string;
   plantilla: Plantilla;
   /** What the message is about. */
-  referencia: { tipo: 'pieza' | 'plan'; id: string };
+  referencia: { tipo: 'pieza' | 'plan' | 'alerta'; id: string };
 }
 
 export interface Notifier {

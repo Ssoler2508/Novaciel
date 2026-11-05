@@ -9,35 +9,41 @@ const NY = 'America/New_York';
 const tipos = (xs: { tipo: string }[]) => xs.map((x) => x.tipo);
 
 describe('calcularRecordatorios', () => {
-  it('gives the 24 h, 4 h and substitute notices (2 h by default), in order, with the client local time', () => {
+  it('gives the 24 h, 4 h and substitute notices (2 h by default) and the deadline notice, in order, with the client local time', () => {
     const out = calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, new Date(plazo.getTime() - 48 * H));
     expect(out.map((x) => [x.tipo, x.cuando.toISOString(), x.localFecha, x.localHora])).toEqual([
       ['recordatorio_24h', '2026-12-09T15:00:00.000Z', '2026-12-09', '10:00'],
       ['recordatorio_4h', '2026-12-10T11:00:00.000Z', '2026-12-10', '06:00'],
       ['turno_suplente', '2026-12-10T13:00:00.000Z', '2026-12-10', '08:00'],
+      ['vencimiento', '2026-12-10T15:00:00.000Z', '2026-12-10', '10:00'],
     ]);
+  });
+
+  it('the deadline notice is exactly AT the deadline', () => {
+    const out = calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, new Date(plazo.getTime() - 48 * H));
+    expect(out.find((x) => x.tipo === 'vencimiento')!.cuando.getTime()).toBe(plazo.getTime());
   });
 
   it('drops the notices that are already due: a deadline too close for one or more', () => {
     const at = (hoursBefore: number) => calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, new Date(plazo.getTime() - hoursBefore * H));
-    expect(tipos(at(30))).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente']);
-    expect(tipos(at(10))).toEqual(['recordatorio_4h', 'turno_suplente']);
-    expect(tipos(at(3))).toEqual(['turno_suplente']);
-    expect(at(1)).toEqual([]);
+    expect(tipos(at(30))).toEqual(['recordatorio_24h', 'recordatorio_4h', 'turno_suplente', 'vencimiento']);
+    expect(tipos(at(10))).toEqual(['recordatorio_4h', 'turno_suplente', 'vencimiento']);
+    expect(tipos(at(3))).toEqual(['turno_suplente', 'vencimiento']);
+    expect(tipos(at(1))).toEqual(['vencimiento']); // only the deadline notice is still ahead
     expect(at(0)).toEqual([]);
     expect(at(-5)).toEqual([]); // the deadline has passed
   });
 
   it('a notice exactly at "now" is already due; one millisecond earlier it is not', () => {
     const exactly = new Date(plazo.getTime() - 4 * H);
-    expect(tipos(calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, exactly))).toEqual(['turno_suplente']);
-    expect(tipos(calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, new Date(exactly.getTime() - 1)))).toEqual(['recordatorio_4h', 'turno_suplente']);
+    expect(tipos(calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, exactly))).toEqual(['turno_suplente', 'vencimiento']);
+    expect(tipos(calcularRecordatorios(plazo, NY, REGLAS_RECORDATORIOS, new Date(exactly.getTime() - 1)))).toEqual(['recordatorio_4h', 'turno_suplente', 'vencimiento']);
   });
 
   it('uses elapsed hours across the US spring-forward day: the instants do not move, the local labels do', () => {
     const spring = new Date('2027-03-14T14:00:00Z'); // 10:00 EDT on the day clocks jumped at 02:00
     const out = calcularRecordatorios(spring, NY, REGLAS_RECORDATORIOS, new Date(spring.getTime() - 48 * H));
-    expect(out.map((x) => spring.getTime() - x.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H]);
+    expect(out.map((x) => spring.getTime() - x.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H, 0]);
     expect(out[0]).toMatchObject({ localFecha: '2027-03-13', localHora: '09:00' }); // 24 h earlier is 09:00 local, not 10:00
     expect(out[1]).toMatchObject({ localFecha: '2027-03-14', localHora: '06:00' });
   });
@@ -45,7 +51,7 @@ describe('calcularRecordatorios', () => {
   it('uses elapsed hours across the US fall-back day', () => {
     const fall = new Date('2026-11-01T15:00:00Z'); // 10:00 EST after the change at 02:00
     const out = calcularRecordatorios(fall, NY, REGLAS_RECORDATORIOS, new Date(fall.getTime() - 48 * H));
-    expect(out.map((x) => fall.getTime() - x.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H]);
+    expect(out.map((x) => fall.getTime() - x.cuando.getTime())).toEqual([24 * H, 4 * H, 2 * H, 0]);
     expect(out[0]).toMatchObject({ localFecha: '2026-10-31', localHora: '11:00' }); // 24 h earlier is 11:00 local (EDT)
   });
 
@@ -64,7 +70,7 @@ describe('calcularRecordatorios', () => {
 
   it('honours custom rules and sorts the result even if the rules are out of order', () => {
     const out = calcularRecordatorios(plazo, NY, { recordatorioLargoHoras: 6, recordatorioCortoHoras: 12, suplenteHoras: 1 }, new Date(plazo.getTime() - 48 * H));
-    expect(out.map((x) => plazo.getTime() - x.cuando.getTime())).toEqual([12 * H, 6 * H, 1 * H]);
+    expect(out.map((x) => plazo.getTime() - x.cuando.getTime())).toEqual([12 * H, 6 * H, 1 * H, 0]);
   });
 
   it('refuses an unknown zone even when every notice is already due', () => {

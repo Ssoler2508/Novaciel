@@ -1,6 +1,7 @@
 import { config } from '../config/index.js';
 import { closePool, pool } from '../db/pool.js';
 import { createStorage, LocalFileStorage } from '../lib/media/storage/index.js';
+import { LogNotifier } from '../lib/notificaciones/index.js';
 import { getClienteById } from '../modules/clientes/clientesRepository.js';
 import { createReelRuntime } from '../modules/produccion/index.js';
 import { createVozRuntime } from '../modules/produccion/vozRuntime.js';
@@ -28,9 +29,12 @@ async function main(): Promise<void> {
   console.log(`Database "${database}" (url name "${urlName}"), storage: ${config.storage.driver}`);
   if (!(await getClienteById(pool, args.clienteId))) throw new Error(`${SCRIPT} refused: that client does not exist`);
 
+  // Persistent alerts (Step 11): a voice or text-engine failure while producing is stored here too. The notifier
+  // only logs ids and template names.
+  const alertas = { db: pool, notifier: new LogNotifier(), umbrales: config.alertas.umbralesPresupuesto };
   const result = await withDevControlCalidad((controlCalidad) =>
     runPieceProduce(
-      { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad, ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
+      { db: pool, storage, reel: createReelRuntime(config.media, config.remotion), voz: createVozRuntime(config.voice, config.media), controlCalidad, alertas, ...(storage instanceof LocalFileStorage ? { localPath: (key: string) => storage.localPath(key) } : {}) },
       args,
     ),
   );

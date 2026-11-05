@@ -21,6 +21,7 @@ interface SessionContextValue {
   state: SessionState;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Drops the in-memory session after the backend answers 401. */
   expire: () => void;
 }
 

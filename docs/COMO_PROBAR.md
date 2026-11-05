@@ -36,6 +36,7 @@ Copy-Item .env.example .env
 | `TEST_DATABASE_URL` | `postgresql://USER:PASSWORD@localhost:5432/novaciel_test?sslmode=disable` | Base exclusiva de pruebas. |
 | `PUBLIC_BASE_URL` | `http://localhost:5173` | Origen del panel. Es el único `Origin` aceptado en peticiones que cambian algo. |
 | `LLM_PROVIDER` | `fake` | Modelo simulado: no hace falta ninguna clave de Anthropic. |
+| `PUBLISH_PROVIDER` | `fake` (o vacío) | Publicación simulada: nada sale a ninguna red. En producción no tiene valor por defecto (vacío es un error de arranque). El adaptador real llega cuando NovaCiel elija el intermediario. |
 | `VOICE_PROVIDER` | `fake` (o vacío) | Voz simulada: no hace falta ninguna clave de ElevenLabs. Con `elevenlabs` hacen falta `TTS_MODEL` (sin valor por defecto) y `ELEVENLABS_API_KEY`; con `none` los reels salen sin voz. En producción hay que escribirlo (`none` si no se usa voz). |
 | `TTS_TIMEOUT_MS` | vacío (30000) | Tiempo límite de una llamada de voz. |
 | `STORAGE_DRIVER` | `local` | Guarda los archivos en disco (`LOCAL_STORAGE_DIR`). |
@@ -129,6 +130,9 @@ npm run piece:produce  -- --cliente $C --pieza <PIEZA_ID>       # imprime la rut
 npm run qc:run         -- --cliente $C --pieza <PIEZA_ID>       # control de calidad directo (si el servidor no está corriendo)
 npm run piece:approve  -- --cliente $C --pieza <PIEZA_ID>       # aprobación interna y del cliente
 npm run piece:publicable -- --cliente $C --pieza <PIEZA_ID>     # PUBLICABLE solo con control de calidad aprobado y las dos aprobaciones
+npm run piece:schedule -- --cliente $C --pieza <PIEZA_ID> --at 2027-03-01T15:00:00Z   # programa la pieza (o la reprograma, o reintenta una en fallo_publicacion)
+npm run piece:publish  -- --cliente $C --pieza <PIEZA_ID>       # publica YA por la misma puerta; con PUBLISH_PROVIDER=fake nada sale de esta máquina
+npm run publish:metrics -- --cliente $C --pieza <PIEZA_ID>      # recoge la siguiente ventana de métricas (24h, 72h, 7d, 28d)
 ```
 
 **Voz en off (Paso 7d).** Un reel lleva voz sintética si el cliente la tiene configurada, el proceso tiene un proveedor de voz, hay una plantilla de subtítulos (Remotion con `REMOTION_LICENCIA`) y alguna escena trae `voz_en_off`. Si falta algo de eso, el reel sale como antes, con la pista en silencio, y `piece:produce` imprime el motivo (`voice-over: none (sin_plantilla)`). En una escena con voz se dibuja el texto hablado como subtítulos, con los tiempos reales de la voz; el texto en pantalla de esa escena no se dibuja.

@@ -3,6 +3,8 @@ import { runInTransaction } from '../../db/transaction.js';
 import type { Db } from '../../db/types.js';
 import type { Storage } from '../../lib/media/storage/types.js';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
+import { fallosDeVozYCapa } from '../alertas/catalogo.js';
+import { raiseAlertBestEffort, type AlertasDeps } from '../alertas/raiseAlert.js';
 import { recordAudit, type AuditActor } from '../auditoria/recordAudit.js';
 import { getBriefDeProduccion } from '../directorCreativo/guionesRepository.js';
 import { extractFactTokenIds } from '../directorCreativo/tokens.js';
@@ -49,6 +51,8 @@ import type { CampoPublicado, CheckQC } from './tipos.js';
 export interface QcDeps {
   db: Db;
   storage: Pick<Storage, 'getFile'>;
+  /** Persistent alerts (Step 11): a rejected QC and its voice or text-layer failures raise one. Absent: none. */
+  alertas?: AlertasDeps;
   /** Needed when the production holds a video. */
   reel?: ReelQcConfig;
   logger?: Logger;
@@ -244,6 +248,21 @@ export async function ejecutarQC(deps: QcDeps, clienteId: ClienteId, piezaId: st
     const revision = (await getUltimaRevision(tx, clienteId, produccion.id))!;
     return { revision, pieza: piezaFinal };
   });
+
+  // After the commit. One alert per report (dedupe qc:{revisionId}) and per production for the voice and text layer.
+  if (resultado !== 'aprobado') {
+    await raiseAlertBestEffort(deps.alertas, 'qc_rechazada', {
+      clienteId,
+      parametros: { pieza_id: piezaId, revision_id: guardado.revision.id, codigos_fallo: fallos },
+    });
+    const { voz, capa } = fallosDeVozYCapa(fallos);
+    if (voz.length > 0) {
+      await raiseAlertBestEffort(deps.alertas, 'voz_fallo', { clienteId, parametros: { pieza_id: piezaId, produccion_id: produccion.id, codigos: voz } });
+    }
+    if (capa.length > 0) {
+      await raiseAlertBestEffort(deps.alertas, 'capa_texto_fallo', { clienteId, parametros: { pieza_id: piezaId, produccion_id: produccion.id, codigos: capa } });
+    }
+  }
 
   log.info(
     {

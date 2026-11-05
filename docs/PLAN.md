@@ -14,7 +14,7 @@ Rule of thumb: one branch per step (`step-XX`), one commit per checkpoint, plan 
 | 8 (automatic quality control) | Done |
 | 9 (two-level approval) | Done |
 | 10 (publishing) | Pending |
-| 11 (dashboard and alerts) | Pending |
+| 11 (dashboard and alerts) | Done on branch `step-11` (checkpoints A to E), pending merge; contract for the web in `docs/API_PANEL.md`, decisions in `docs/ADR-09_ALERTAS_Y_TABLERO.md` |
 | 12 (end-to-end test) | Pending |
 
 Delivery notes (what is real and what is fake, consolidated debt, open questions): `docs/ENTREGA.md`. Decisions: `docs/ADR_INDEX.md`.
@@ -131,7 +131,8 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
 - Built on branch `step-09` (checkpoints A to E), merged; design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`.
 
-### Step 10 — Publishing
+### Step 10 — Publishing ✅ (fake provider; real adapter pending, checkpoint F)
+- **Built on branch `step-10`** (checkpoints A to E): `PublishProvider` port with `FakePublishProvider`, `programarPieza`/`reprogramarPieza`/`cancelarProgramacion`, `publicarPieza` (three phases, no transaction during the call, idempotent by key), pg-boss jobs (scheduled send, minute sweep, metrics collection), routes (schedule, reschedule, cancel, attempt history, results of a piece and of a week), development scripts `piece:schedule`, `piece:publish`, `publish:metrics`, `PUBLISH_PROVIDER` config. Design and decisions: `docs/ADR-10_PUBLICACION.md`; routes: `docs/API_PANEL.md` §7b. Checkpoint F (real adapter, `publish:smoke`, price unit `publicaciones`) waits for NovaCiel to choose the intermediary.
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
 - Publishes only approved pieces; recomputes and verifies the piece-level hash before sending.
 - When it changes a piece's `fecha_hora` (rescheduling), it must schedule the approval reminders again (Step 9 jobs carry the old deadline and become no-ops; ADR-05, known debt).
@@ -139,11 +140,54 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Network credentials come from `conexiones_redes` (Step 2b), decrypted only at the moment of use.
 - Metrics collection after publishing.
 - **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.
+- **Design approved in checkpoint A** (branch `step-10`; prompt in `docs/prompts/step-10.md`; ADR-10 is written in checkpoint E):
+  - **States:** no new ones. `aprobada -> programada -> publicada -> en_medicion -> cerrada`; a definitive failure is `programada -> fallo_publicacion` (spec 15) with a critical alert, and `fallo_publicacion -> programada` is the manual retry. An unknown outcome leaves the piece in `programada` with the attempt marked `desconocida`. Cancelling or correcting a schedule is `programada -> con_cambios` (NovaCiel only). A manual-publication exit (spec 11.5, 17) is not built.
+  - **Records** (migration `1700000002600`): `publicaciones` (one append-only row per attempt, written before the network call), `publicaciones_resultados` (append-only: `publicada`, `fallida` or `desconocida`; only a `desconocida` can be followed by a second result that settles it) and `metricas_pieza` (append-only snapshots, windows 24h / 72h / 7d / 28d, NULL when a network does not report a metric). One idempotency key per production, shared by its attempts; a new attempt needs the previous one to have ended `fallida`; one `publicada` result per production and per piece (unique indexes). No provider message is stored: a closed error category.
+  - **Scheduling:** permission `schedule_pieces` (administrador, operador; NovaCiel only). `fecha_hora` is not part of np1 (checked in `pieceHash.ts`), so rescheduling keeps the approvals; it queues the reminders and the `vencimiento` notice again with the new deadline.
+  - **No approval at the scheduled time (spec 11.3):** applies to pieces still in `revision_novaciel` or `esperando_aprobacion` when `fecha_hora` arrives: move `fecha_hora` to the next allowed slot at least 24 h ahead (VERIFY), queue the reminders and `vencimiento` again, raise `publicacion_sin_aprobacion`. After 3 consecutive automatic reschedules, stop and raise a critical alert. A `programada` piece that fails the gate for another reason (file altered, fact expired, QC) goes to `fallo_publicacion` with a critical alert.
+  - **Retries:** 2 retries with growing waits for rate limit, server and timeout (spec 11.4; VERIFY the waits); auth, quota and bad request are not retried. An unknown outcome is never resent blindly.
+  - **AI label:** `etiqueta_ia` when the QC report has `voz_etiqueta_ia_pendiente`; if the provider or network cannot set it, the send is blocked (`etiqueta_ia_no_soportada`) until NovaCiel decides.
+  - **Alerts (added in checkpoint C):** `publicacion_fallida`, `publicacion_resultado_desconocido`, `publicacion_sin_aprobacion`, `conexion_red_vencida`, `etiqueta_ia_no_soportada`, plus the critical one for the cap of automatic reschedules.
+  - **Price unit `publicaciones`:** waits for checkpoint F.
 
-### Step 11 — Basic dashboard and alerts
+### Step 11 — Basic dashboard and alerts ✅
 - Views: plan, pieces by state, pending approvals, spend vs budget, results. Protected by Step 2b sessions and permissions.
 - Alerts: budget thresholds, failed jobs, schema failures, pending approvals.
 - **Done when:** the fictional client's week is visible and alerts fire in tests.
+- **Built on branch `step-11`** (checkpoints A to E): persistent alerts (`alertas`, `alertas_reconocimientos`), budget and price routes, alert routes, the dashboard read routes (`/clientes/:id/panel/semana`, `/panel/piezas`, `/panel/gasto`, `/panel/resumen`) and `docs/API_PANEL.md`. Results of published pieces are not available until Step 10. The overview counts by state use a 35-day window (future included); pending approvals have none. Cost breakdown and export of spec 13.4 are known debt (ENTREGA, item 30).
+- **Permissions approved in checkpoint A** (`src/modules/auth/permissions.ts`). B writes the first two global rows; C and D add the rest in their own commits. Roles: A = administrador_novaciel, O = operador_novaciel, D = dueno_cliente.
+
+  | Action | Scope | Roles | Checkpoint | Notes |
+  |---|---|---|---|---|
+  | `view_spend` (existing, reused; no `view_budget`) | client | A, O | B | Budget summary and ledger of a client. |
+  | `manage_budget` (existing) | global | A | B | Monthly ceilings, client switch and global switch. No longer covers prices. |
+  | `view_prices` (new) | global | A, O | B | Price list. |
+  | `manage_prices` (new) | global | A | B | Writes prices (also `set-price`); explicit start date may not be in the past. |
+  | `view_alerts` (new) | client | A, O, D | C | D only sees the code `aprobacion_vencida`. |
+  | `ack_alerts` (new) | client | A, O | C | Acknowledge a client alert. |
+  | `view_alerts_global` (new) | global | A, O | C | Alerts without a client. |
+  | `ack_alerts_global` (new) | global | A, O | C | Acknowledge a global alert. |
+  | `view_overview` (new) | global | A, O | D | NovaCiel overview across clients. |
+
+  The client owner sees neither spend nor ceiling (open question below). Money rules decided in B: a ceiling below what is already spent is allowed and audited (`por_debajo_del_gasto`), new authorizations are then refused; the ceiling of a past month is refused (400 `periodo_pasado`); a retroactive price is refused (400 `precio_retroactivo`, enforced in the price repository so `set-price` and the route share it).
+- **Alert catalogue approved in checkpoint A, built in C** (`src/modules/alertas/catalogo.ts`). Parameters are ids, codes and numbers only (zod per code, strict). Alerts clear only by acknowledgement. The Notifier is called once, only when the row was really inserted; a Notifier failure keeps the alert and logs only the error name. "NovaCiel" = active administrators and operators. Thresholds (percent of the monthly ceiling, config `ALERT_BUDGET_THRESHOLDS`, a subset of 50, 80, 100) are **VERIFY**.
+
+  | Code | Severity | Who is told | Dedupe key | Raised when |
+  |---|---|---|---|---|
+  | `presupuesto_umbral_50` | info | NovaCiel | `presupuesto:{cliente}:{periodo}:50` | a settled cost takes (spent + reserved) to 50 % of the ceiling |
+  | `presupuesto_umbral_80` | aviso | NovaCiel (spec 13.1) | `presupuesto:{cliente}:{periodo}:80` | same, 80 % |
+  | `presupuesto_umbral_100` | critica | NovaCiel + the client owner (template without figures) | `presupuesto:{cliente}:{periodo}:100` | same, 100 % |
+  | `interruptor_global_apagado` | critica | NovaCiel | `interruptor_global:{actualizado_en}` | the global switch goes ON → OFF (global alert, no client) |
+  | `interruptor_cliente_apagado` | aviso | NovaCiel | `interruptor_cliente:{cliente}:{actualizado_en}` | a client switch goes ON → OFF |
+  | `trabajo_fallido` | aviso | NovaCiel | `trabajo:{cola}:{jobId}` | a pg-boss handler throws (`withFailureAlert`; queue name, job id and error name only; global alert) |
+  | `llm_schema_invalid` / `vision_schema_invalid` | aviso | NovaCiel | `schema:{cliente}:{proposito}:{id of the 2nd authorization}` | two invalid outputs (the legacy `Alert` gains an optional `referenceId`) |
+  | `aprobacion_vencida` | aviso | NovaCiel + the client's valid approvers (main and substitute) | `aprobacion_vencida:{tipo}:{id}:{plazo}` | the `vencimiento` notice, scheduled exactly at the deadline, finds the approval still waiting for the client |
+  | `aprobacion_escalada` | critica | NovaCiel only; **no extra notice** (Step 9's `escalada_cambios` is the notice) | `escalada:{piezaId}` | the escalation job (3rd client change request) |
+  | `qc_rechazada` | info | NovaCiel | `qc:{revisionId}` | a QC report is `rechazado` |
+  | `voz_fallo` | critica | NovaCiel | QC: `voz:{produccionId}`; production: `voz:intento:{piezaId}:{intento_en}` | a QC report fails with `voz_audio_ausente` or `voz_volumen_fuera_de_rango`; **or** producing a reel fails with `VoiceProviderError` (parameter `tipo`: auth, quota, rate_limit, bad_request, server, timeout) |
+  | `capa_texto_fallo` | critica | NovaCiel | QC: `capa:{produccionId}`; production: `capa:intento:{piezaId}:{intento_en}` | a QC report fails with `voz_subtitulos_ausentes`, `plantilla_invalida` or `marca_glifos_no_soportados`; **or** producing a reel fails with `RemotionNoDisponibleError` / `CapaTextoError` (parameter `razon`: the reason code) |
+
+  Client roles see only `aprobacion_vencida`. Decisions made in C: the **vencimiento** notice is a fourth scheduled notice (`TipoRecordatorio`), never cancelled, and it re-checks the state when it fires, like the reminders; voice and text-layer failures come from two places: the QC report, and the production itself (`producirPieza` raises them when the voice provider or the text engine fails, so the production job, the plan job and `piece:produce` all do; the attempt is identified by the piece and the instant it started, so each failed attempt is one alert; any other production error is only a failed job, `trabajo_fallido`); budget thresholds are evaluated right after a paid call settles and commits, at the call sites (`generateStructured`, `describeMedia`, the voice-over service), not inside `settle`. New Notifier templates: `alerta_novaciel`, `presupuesto_techo_cliente`, `aprobacion_vencida`; the reference type `alerta`; `clienteId` null for global alerts.
 
 ### Step 12 — End-to-end test
 - Full week for the fictional client: plan → brief → production → QC → approval → publish (fake) → metrics.
@@ -165,6 +209,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Image consent in the US: is "end date required + revocation" enough legally?
 - Voice provider: ElevenLabs, built in Step 7d (ADR-08). **Open:** which ElevenLabs plan NovaCiel buys and whether its terms allow commercial use of TTS output (the pricing page does not say); which AI-disclosure label Meta and TikTok require for synthetic audio; whether cloning the voice of a client's owner will ever be offered (needs written consent, known debt).
 - Publishing intermediary (after Phase 0).
+- Should the client owner see their own spend and ceiling in the web panel? (Step 11 decision, pending the Senior: today they see neither; only NovaCiel administrators and operators hold `view_spend`. The spec 13.1 asks to notify the client when the ceiling is reached; the notice is a template without figures.)
 - Deadline of the client's reminders for a WEEKLY PLAN (spec 11.3 defines it only for pieces): Step 9 uses the earliest scheduled time of the plan's pieces. Confirm with the Senior.
 - Third NovaCiel-only edge `revision_novaciel → con_cambios` (Step 8, docs/ADR-05_APROBACION_DOS_NIVELES.md): section 15 has no exit from `revision_novaciel` other than `esperando_aprobacion`, and the internal "cambios" decision needs one now that the Step 8 bridge is gone. Confirm with the Senior (together with `aprobada` and `programada` → `con_cambios`).
 - Exact time of the substitute approver's turn (spec 11.3 says only "after the reminders"): Step 9 uses 2 h before the scheduled time, configurable in the reminder rules (`suplenteHoras`). Confirm with the Senior.

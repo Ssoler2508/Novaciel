@@ -1,3 +1,4 @@
+// Minimal hash router: no dependency and no server rewrite needed. Routes are client-side only.
 import { useEffect, useState } from 'react';
 
 export type Route =
@@ -5,7 +6,9 @@ export type Route =
   | { name: 'planes'; clienteId: string; semana: string | null }
   | { name: 'plan'; clienteId: string; planId: string }
   | { name: 'planRevision'; clienteId: string; planId: string }
-  | { name: 'pieza'; clienteId: string; piezaId: string };
+  | { name: 'pieza'; clienteId: string; piezaId: string }
+  | { name: 'aprobaciones'; clienteId: string }
+  | { name: 'revision'; clienteId: string; piezaId: string };
 
 function decode(value: string): string | null {
   try {
@@ -56,8 +59,18 @@ export function parseRoute(hash: string): Route {
   if (pieza) {
     const clienteId = decode(pieza[1]!);
     const piezaId = decode(pieza[2]!);
-    if (clienteId !== null && piezaId !== null) return { name: 'pieza', clienteId, piezaId };
+    if (clienteId !== null && piezaId !== null) {
+      return params.get('modo') === 'pieza'
+        ? { name: 'pieza', clienteId, piezaId }
+        : { name: 'revision', clienteId, piezaId };
+    }
     return { name: 'home' };
+  }
+
+  const approvals = /^\/clientes\/([^/]+)\/aprobaciones\/?$/.exec(path);
+  if (approvals) {
+    const clienteId = decode(approvals[1]!);
+    if (clienteId !== null) return { name: 'aprobaciones', clienteId };
   }
 
   return { name: 'home' };
@@ -77,6 +90,14 @@ export function hrefPlanRevision(clienteId: string, planId: string): string {
 }
 
 export function hrefPieza(clienteId: string, piezaId: string): string {
+  return `#/clientes/${encodeURIComponent(clienteId)}/piezas/${encodeURIComponent(piezaId)}?modo=pieza`;
+}
+
+export function hrefAprobaciones(clienteId: string): string {
+  return `#/clientes/${encodeURIComponent(clienteId)}/aprobaciones`;
+}
+
+export function hrefRevision(clienteId: string, piezaId: string): string {
   return `#/clientes/${encodeURIComponent(clienteId)}/piezas/${encodeURIComponent(piezaId)}`;
 }
 

@@ -2,6 +2,7 @@ import type { PgBoss } from 'pg-boss';
 import { z } from 'zod';
 import { logger as defaultLogger } from '../../lib/logger/index.js';
 import { SchemaValidationError } from '../ai/generateStructured.js';
+import { withFailureAlert } from '../alertas/withFailureAlert.js';
 import { PiezaNotFoundError, PlanDescartadoError } from '../piezas/errors.js';
 import { PlanNoAprobadoError, PlanNotFoundError } from '../planificador/errors.js';
 import type { JobEstado } from '../planificador/planificadorJobs.js';
@@ -139,14 +140,14 @@ export async function registerDirectorJobs(boss: PgBoss, deps: DirectorDeps): Pr
   // A plan run is up to 14 sequential model calls; a single piece is one.
   await boss.createQueue(GENERAR_BRIEFS_PLAN_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 1800 });
   await boss.createQueue(GENERAR_BRIEF_PIEZA_QUEUE, { policy: 'exclusive', retryLimit: 0, expireInSeconds: 900 });
-  await boss.work<BriefsPlanPayload, BriefsPlanOutput>(GENERAR_BRIEFS_PLAN_QUEUE, { batchSize: 1 }, async (jobs) => {
+  await boss.work<BriefsPlanPayload, BriefsPlanOutput>(GENERAR_BRIEFS_PLAN_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, GENERAR_BRIEFS_PLAN_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobBriefsPlan(deps, job.data, job.id);
-  });
-  await boss.work<BriefPiezaPayload, BriefPiezaOutput>(GENERAR_BRIEF_PIEZA_QUEUE, { batchSize: 1 }, async (jobs) => {
+  }));
+  await boss.work<BriefPiezaPayload, BriefPiezaOutput>(GENERAR_BRIEF_PIEZA_QUEUE, { batchSize: 1 }, withFailureAlert(deps.alertas, GENERAR_BRIEF_PIEZA_QUEUE, async (jobs) => {
     const job = jobs[0]!;
     return ejecutarJobBriefPieza(deps, job.data, job.id);
-  });
+  }));
 }
 
 // ---- The port the routes use, so they can be tested without pg-boss.

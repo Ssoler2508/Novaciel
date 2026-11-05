@@ -71,6 +71,6 @@ When should the internal review be retired (spec 11.1: after 4 weeks per client,
 
 ## Known debt
 - **`assertPublicable` checks but does not lock.** Between the check and the publish something could change (a file, a fact, a revocation). Step 10 must call it with the piece locked, or re-check immediately before sending, so nothing changes between the check and the publish.
-- **Step 10 must schedule the reminders again when it changes a piece's `fecha_hora` (rescheduling).** The jobs already queued carry the old deadline; they see the change and do nothing, so without a new schedule nobody is reminded.
+- **Step 10 must schedule the reminders again when it changes a piece's `fecha_hora` (rescheduling).** The jobs already queued carry the old deadline; they see the change and do nothing, so without a new schedule nobody is reminded. **This includes the `vencimiento` notice** (Step 11): it is scheduled exactly AT the deadline and raises the `aprobacion_vencida` alert if the approval is still waiting for the client. A job queued with the old deadline sees `plazo_cambiado` and does nothing, so rescheduling must queue the whole set again (reminders and `vencimiento`) with the new deadline; otherwise a piece that is rescheduled and never approved raises no overdue alert.
 - Spec 11.3 "no approval by the scheduled time: reschedule the piece and warn NovaCiel" belongs to publishing (Step 10).
 - Routes for `reabrirPieza` and for changing a client's approvers (NovaCiel dashboard, Step 11); today only the development scripts reopen a piece.

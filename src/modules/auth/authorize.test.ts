@@ -91,8 +91,16 @@ describe('requirePermission: every role on every action', () => {
     manage_connections: ['administrador_novaciel', 'dueno_cliente'],
     manage_users: ['administrador_novaciel', 'dueno_cliente'],
     manage_plans: ['administrador_novaciel', 'operador_novaciel'],
+    schedule_pieces: ['administrador_novaciel', 'operador_novaciel'],
     view_spend: ['administrador_novaciel', 'operador_novaciel'],
     manage_budget: ['administrador_novaciel'],
+    view_prices: ['administrador_novaciel', 'operador_novaciel'],
+    manage_prices: ['administrador_novaciel'],
+    view_alerts: ['administrador_novaciel', 'operador_novaciel', 'dueno_cliente'],
+    ack_alerts: ['administrador_novaciel', 'operador_novaciel'],
+    view_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
+    ack_alerts_global: ['administrador_novaciel', 'operador_novaciel'],
+    view_overview: ['administrador_novaciel', 'operador_novaciel'],
     manage_novaciel_staff: ['administrador_novaciel'],
   };
 

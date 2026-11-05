@@ -3,6 +3,8 @@ import type { Db } from '../db/types.js';
 import { withTestTransaction } from '../../tests/utils/transaction.js';
 import {
   assignRole,
+  createAlerta,
+  createAlertaReconocimiento,
   createAprobableWorld,
   createRevisionCalidad,
   createAprobacion,
@@ -19,6 +21,9 @@ import {
   createProduccionLocucion,
   createMedia,
   createMediaAutorizacion,
+  createMetricaPieza,
+  createPublicacion,
+  createPublicacionResultado,
   createGuion,
   createPieza,
   createProduccion,
@@ -74,12 +79,13 @@ import { ejecutarJobProducirPieza, ejecutarJobProducirPlan } from './produccion/
 import { assertProducible, producirPieza } from './produccion/produccionService.js';
 import { decidirPlan, ejecutarJobEscalada, ejecutarJobRecordatorio, proponerPlan, reabrirPieza, registrarDecision } from './aprobaciones/index.js';
 import { FakeNotifier } from '../lib/notificaciones/index.js';
+import { getAlerta, listAlertas } from './alertas/alertasRepository.js';
 import { getPlan, getPlanActivoDeSemana, listPlanes, PlanNotFoundError } from './planificador/index.js';
 
 const SISTEMA = { tipo: 'sistema' } as const;
 
 /** Every client table the isolation tests cover, one entry per table. */
-const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad', 'locuciones', 'producciones_locuciones'] as const;
+const CLIENT_TABLES = ['perfil_marca', 'hechos_verificados', 'reglas_prohibidas', 'autorizaciones_imagen', 'usuario_roles', 'conexiones_redes', 'topes', 'autorizaciones_gasto', 'libro_gastos', 'configuracion_gasto_cliente', 'media', 'media_autorizaciones', 'planes_semanales', 'piezas', 'piezas_hechos', 'historial_estados_pieza', 'guiones', 'tomas', 'guiones_hechos', 'producciones', 'producciones_archivos', 'producciones_fuentes', 'aprobaciones', 'aprobaciones_plan', 'aprobadores_cliente', 'revisiones_calidad', 'locuciones', 'producciones_locuciones', 'alertas', 'alertas_reconocimientos', 'publicaciones', 'publicaciones_resultados', 'metricas_pieza'] as const;
 
 interface World {
   clienteId: ClienteId;
@@ -112,6 +118,13 @@ interface World {
   revisionId: string;
   /** Step 7d: a voice-over of the brief and the production that used it. */
   locucionId: string;
+  /** Step 11: a client alert with its acknowledgement. */
+  alertaId: string;
+  /** Step 10: a scheduled piece with a published attempt and a metrics snapshot. */
+  publicadaPiezaId: string;
+  publicacionId: string;
+  resultadoId: string;
+  metricaId: string;
   extraPiezaIds: string[];
   extraPlanIds: string[];
   extraMediaIds: string[];
@@ -137,6 +150,8 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   await createAutorizacionGasto(db, { clienteId: cliente.id });
   await createLibroGasto(db, { clienteId: cliente.id });
   await createConfiguracionGastoCliente(db, { clienteId: cliente.id });
+  const alerta = await createAlerta(db, { clienteId: cliente.id, codigo: 'aprobacion_vencida' });
+  await createAlertaReconocimiento(db, { alertaId: alerta.id });
   const media = await createMedia(db, { clienteId: cliente.id, aparecenPersonas: true, subidoPor: creadoPor });
   await createMediaAutorizacion(db, { mediaId: media.id, clienteId: cliente.id, autorizacionId: valida.id });
   const plan = await createPlanSemanal(db, { clienteId: cliente.id, perfilMarcaId: perfil.id });
@@ -168,6 +183,11 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
   const enQc = await createAprobableWorld(db, { clienteId: cliente.id, semanaInicio: '2026-12-07', estado: 'en_control_calidad' });
   const revision = await createRevisionCalidad(db, { piezaId: enQc.piezaId });
   const enQcMediaId = (await db.query<{ media_id: string }>('SELECT media_id FROM producciones_archivos WHERE produccion_id = $1', [enQc.produccionId])).rows[0]!.media_id;
+  const programada = await createAprobableWorld(db, { clienteId: cliente.id, semanaInicio: '2026-12-14', estado: 'programada' });
+  const publicacion = await createPublicacion(db, { piezaId: programada.piezaId });
+  const resultado = await createPublicacionResultado(db, { publicacionId: publicacion.id });
+  const metrica = await createMetricaPieza(db, { publicacionId: publicacion.id });
+  const programadaMediaId = (await db.query<{ media_id: string }>('SELECT media_id FROM producciones_archivos WHERE produccion_id = $1', [programada.produccionId])).rows[0]!.media_id;
   return {
     clienteId: asClienteId(cliente.id),
     creadoPor,
@@ -194,9 +214,14 @@ async function buildWorld(db: Db, sharedUsuarioId: string): Promise<World> {
     qcPiezaId: enQc.piezaId,
     revisionId: revision.id,
     locucionId: locucion.id,
-    extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id, enQc.piezaId],
-    extraPlanIds: [aprobable.planId, planPropuesto.id, enQc.planId],
-    extraMediaIds: [aprobableMediaId, enQcMediaId],
+    alertaId: alerta.id,
+    publicadaPiezaId: programada.piezaId,
+    publicacionId: publicacion.id,
+    resultadoId: resultado.id,
+    metricaId: metrica.id,
+    extraPiezaIds: [aprobable.piezaId, planPropuestoPieza.id, enQc.piezaId, programada.piezaId],
+    extraPlanIds: [aprobable.planId, planPropuesto.id, enQc.planId, programada.planId],
+    extraMediaIds: [aprobableMediaId, enQcMediaId, programadaMediaId],
   };
 }
 
@@ -647,6 +672,50 @@ describe('isolation: production job and free checks', () => {
       expect(await ejecutarJobProducirPieza({ db, storage }, { clienteId: a.clienteId, piezaId: b.piezaConGuionId, reproducir: true })).toEqual({ resultado: 'rechazado', codigo: 'PiezaNotFoundError' });
       expect(await ejecutarJobProducirPlan({ db, storage }, { clienteId: a.clienteId, planId: b.planId })).toEqual({ resultado: 'rechazado', codigo: 'PlanNotFoundError' });
       expect(storage.keys()).toEqual([]);
+    });
+  });
+});
+
+describe('isolation: alertas', () => {
+  it("A's client scope lists only its own alert; B's alert and the global alerts stay invisible and unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      const global = await createAlerta(db, { codigo: 'trabajo_fallido' });
+      expect((await listAlertas(db, { tipo: 'cliente', clienteId: a.clienteId })).map((x) => x.id)).toEqual([a.alertaId]);
+      expect(await getAlerta(db, { tipo: 'cliente', clienteId: a.clienteId }, b.alertaId)).toBeNull();
+      expect(await getAlerta(db, { tipo: 'cliente', clienteId: a.clienteId }, global.id)).toBeNull();
+      expect(await getAlerta(db, { tipo: 'novaciel', clienteId: a.clienteId }, b.alertaId)).toBeNull();
+    });
+  });
+});
+
+describe('isolation: publishing records (Step 10)', () => {
+  it("A never reads B's attempts, results or metrics, and cannot change them: B stays unchanged", async () => {
+    await withTwoClients(async (a, b, db) => {
+      for (const [table, id] of [['publicaciones', b.publicacionId], ['publicaciones_resultados', b.resultadoId], ['metricas_pieza', b.metricaId]] as const) {
+        expect((await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1`, [a.clienteId])).rows.length).toBeGreaterThan(0);
+        expect((await db.query(`SELECT 1 FROM ${table} WHERE cliente_id = $1 AND id = $2`, [a.clienteId, id])).rows).toEqual([]);
+        expect((await db.query(`DELETE FROM ${table} WHERE cliente_id = $1 AND id = $2`, [a.clienteId, id])).rowCount).toBe(0);
+      }
+    });
+  });
+
+  it("an attempt of A cannot point at B's piece, production or connection", async () => {
+    await withTestTransaction(async (db) => {
+      const shared = await createUsuario(db);
+      const a = await buildWorld(db, shared.id);
+      const b = await buildWorld(db, shared.id);
+      const prodB = (await db.query<{ id: string; version: number; hash_version: string; hash_pieza: Buffer }>('SELECT id, version, hash_version, hash_pieza FROM producciones WHERE pieza_id = $1', [b.publicadaPiezaId])).rows[0]!;
+      const insertar = (piezaId: string, conexionId: string) =>
+        db.query(
+          `INSERT INTO publicaciones (cliente_id, pieza_id, produccion_id, produccion_version, hash_version, hash_pieza, conexion_id, red, proveedor, clave_idempotencia, numero_intento, etiqueta_ia, actor_tipo)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'instagram', 'fake', 'iso:key', 9, false, 'sistema')`,
+          [a.clienteId, piezaId, prodB.id, prodB.version, prodB.hash_version, prodB.hash_pieza, conexionId],
+        );
+      for (const [piezaId, conexionId] of [[b.publicadaPiezaId, a.conexionId], [a.publicadaPiezaId, b.conexionId]] as const) {
+        await db.query('SAVEPOINT iso_pub');
+        await expect(insertar(piezaId, conexionId)).rejects.toThrow();
+        await db.query('ROLLBACK TO SAVEPOINT iso_pub');
+      }
     });
   });
 });

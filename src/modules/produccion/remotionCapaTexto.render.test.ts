@@ -14,7 +14,7 @@ import { crearMedidor } from './medidor.js';
 import { PLANTILLAS } from './plantillas.js';
 import { construirPropsPlantilla, type PropsPlantilla } from './propsPlantilla.js';
 import { POLITICA_CSP } from './remotionBundle.js';
-import { crearCapaTextoRemotion, raizDelProyecto, type OpcionesCapaTextoRemotion } from './remotionCapaTexto.js';
+import { crearCapaTextoRemotion, margenDeLimpieza, raizDelProyecto, type OpcionesCapaTextoRemotion } from './remotionCapaTexto.js';
 
 // REAL Remotion, REAL Chrome Headless Shell (the one `npm run remotion:browser` downloaded). Slow: the first
 // test builds the bundle (about 30 s, cached on disk afterwards) and each scene takes seconds, so the file is
@@ -167,9 +167,13 @@ describeRemotion('renderCapaTexto with the real Remotion', () => {
     await adaptador().renderizar(entrada(props('barra_inferior', 2, 'Hola', 12)), { carpeta: await carpetaNueva(), timeoutMs: 110_000 }); // warms the bundle
     const antesProcesos = procesosDeNavegador();
     const antesTmp = temporalesDeRender();
+    const inicio = Date.now();
     await expect(adaptador().renderizar(entrada(props('palabra_a_palabra', 2, TEXTO, 300)), { carpeta, timeoutMs: 1500 })).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
+    // It must END by itself within the limit plus the cleanup margin, whatever the browser does.
+    expect(Date.now() - inicio).toBeLessThan(1500 + margenDeLimpieza());
     expect(await readdir(carpeta)).toEqual([]);
-    await new Promise((r) => setTimeout(r, 2000)); // the browser takes a moment to exit
+    // The browser takes a moment to exit: poll (bounded) until processes and temporary folders are back to the baseline.
+    await esperarHasta(() => procesosDeNavegador() === antesProcesos && JSON.stringify(temporalesDeRender()) === JSON.stringify(antesTmp), 15_000);
     expect(procesosDeNavegador()).toBe(antesProcesos);
     expect(temporalesDeRender()).toEqual(antesTmp);
   }, 120_000);
@@ -254,6 +258,16 @@ describeRemotion('the page cannot reach the network (a Content-Security-Policy i
 });
 
 // ---- helpers: processes and temporary folders ------------------------------------------------------
+
+/** Polls `condicion` every 100 ms until it holds or `maxMs` pass. Returns whether it held. */
+async function esperarHasta(condicion: () => boolean, maxMs: number): Promise<boolean> {
+  const limite = Date.now() + maxMs;
+  while (Date.now() < limite) {
+    if (condicion()) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return condicion();
+}
 
 /** How many Chrome Headless Shell processes are running now. */
 function procesosDeNavegador(): number {
