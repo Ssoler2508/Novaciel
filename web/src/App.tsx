@@ -4,7 +4,9 @@ import { useHashRoute, type Route } from './router.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NoAccessScreen } from './screens/NoAccessScreen.js';
+import { PlanDetailScreen } from './screens/PlanDetailScreen.js';
 import { PlanesScreen } from './screens/PlanesScreen.js';
+import { PlanRevisionScreen } from './screens/PlanRevisionScreen.js';
 import { hasNovaCielAccess } from './session/roles.js';
 import { SessionProvider, useSession } from './session/SessionContext.js';
 
@@ -23,8 +25,9 @@ function NovaCielScreen({ route }: { route: Exclude<Route, { name: 'home' }> }) 
     case 'pieza':
       return <PendingNovaCielScreen title={es.interna.piece} />;
     case 'plan':
+      return <PlanDetailScreen clienteId={route.clienteId} planId={route.planId} />;
     case 'planRevision':
-      return <PendingNovaCielScreen title={es.nav.planner} />;
+      return <PlanRevisionScreen clienteId={route.clienteId} planId={route.planId} />;
   }
 }
 

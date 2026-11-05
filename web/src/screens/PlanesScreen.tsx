@@ -5,6 +5,7 @@ import { NovaCielShell } from '../components/NovaCielShell.js';
 import { es } from '../i18n/index.js';
 import { esEstadoPlan, etiquetaEstadoPlan } from '../i18n/estados.js';
 import { formatDateOnly, formatDateTime, isValidLocalDate } from '../lib/dates.js';
+import { loadError } from '../lib/loadError.js';
 import { hrefPlan, hrefPlanes } from '../router.js';
 import { useSession } from '../session/SessionContext.js';
 
@@ -13,21 +14,6 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string; retryable: boolean }
   | { status: 'ready'; data: PlanListItem[] };
-
-interface LoadError {
-  message: string;
-  retryable: boolean;
-}
-
-function loadError(error: unknown): LoadError {
-  if (error instanceof ApiError) {
-    if (error.status === 400) return { message: es.common.invalidRequest, retryable: false };
-    if (error.status === 403) return { message: es.common.forbidden, retryable: false };
-    if (error.status === 404) return { message: es.common.notFound, retryable: false };
-    return { message: es.common.loadError, retryable: true };
-  }
-  return { message: es.common.networkError, retryable: true };
-}
 
 function textOrPlaceholder(value: string | null): string {
   const trimmed = value?.trim();

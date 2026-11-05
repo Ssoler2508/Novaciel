@@ -81,6 +81,18 @@ export const es = {
     pieces: 'Piezas',
     createdBy: 'Creado por',
     createdAt: 'Creado el',
+    detailTitle: 'Detalle del plan',
+    revisionTitle: 'Revisión del plan',
+    planData: 'Datos del plan',
+    piecesTitle: 'Piezas del plan',
+    emptyPieces: 'Este plan no tiene piezas.',
+    backToList: 'Volver a planes',
+    openRevision: 'Ver revisión',
+    backToPlan: 'Volver al plan',
+    network: 'Red',
+    format: 'Formato',
+    pillar: 'Pilar',
+    datetime: 'Fecha y hora',
   },
 
   // Labels for the 16 piece states of spec section 15. The codes are the exact values the backend
