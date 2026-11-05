@@ -140,7 +140,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - Metrics collection after publishing.
 - **Done when:** a piece publishes through the fake, and an unapproved or modified piece is refused.
 
-### Step 11 — Basic dashboard and alerts
+### Step 11 — Basic dashboard and alerts ✅
 - Views: plan, pieces by state, pending approvals, spend vs budget, results. Protected by Step 2b sessions and permissions.
 - Alerts: budget thresholds, failed jobs, schema failures, pending approvals.
 - **Done when:** the fictional client's week is visible and alerts fire in tests.
