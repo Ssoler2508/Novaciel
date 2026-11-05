@@ -52,6 +52,7 @@ export class FakePublishProvider implements PublishProvider {
   private readonly lookupScript: { fail: PublishErrorKind }[] = [];
   private readonly etiquetaIa: boolean | readonly PublishNetwork[];
   private readonly registroRetrasadoMs: number;
+  private hold: { enter: () => void; released: Promise<void> } | null = null;
 
   constructor(options: FakePublishOptions = {}) {
     this.name = options.name ?? 'fake';
@@ -75,6 +76,19 @@ export class FakePublishProvider implements PublishProvider {
   scriptLookupFailure(...kinds: PublishErrorKind[]): this {
     this.lookupScript.push(...kinds.map((fail) => ({ fail })));
     return this;
+  }
+
+  /**
+   * A barrier for concurrency tests: the NEXT `publish` call blocks inside `publish()` until `release()`.
+   * `entered` resolves when that call is inside (so the test knows the attempt is in flight).
+   */
+  holdNextPublish(): { entered: Promise<void>; release: () => void } {
+    let release!: () => void;
+    let enter!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const entered = new Promise<void>((resolve) => (enter = resolve));
+    this.hold = { enter, released };
+    return { entered, release };
   }
 
   /** Test helper: the provider already knows this key (a post that went out before the caller crashed). */
@@ -103,6 +117,12 @@ export class FakePublishProvider implements PublishProvider {
     const reply = this.publishScript.shift();
     if (reply && 'fail' in reply) throw new PublishProviderError(reply.fail, reply.status, reply.retryAfterMs);
 
+    const hold = this.hold;
+    if (hold) {
+      this.hold = null;
+      hold.enter();
+      await hold.released;
+    }
     if (this.registroRetrasadoMs > 0) await sleep(this.registroRetrasadoMs);
     // Idempotent: a key that is already known returns the same post.
     const result = this.published.get(request.claveIdempotencia) ?? this.preRegister(request.claveIdempotencia);

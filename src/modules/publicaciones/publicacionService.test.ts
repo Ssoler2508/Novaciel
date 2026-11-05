@@ -526,28 +526,42 @@ describe('two publishes of the same piece at the same time', () => {
     await closeTestPool();
   });
 
-  it('exactly one send, even when the provider does not know the key yet', async () => {
+  it('while the first call is inside the provider, the second gets en_curso and makes no call: exactly one send', async () => {
     const pool = getTestPool();
     const p = await runInTransaction(pool, (tx) => createPiezaProgramada(tx));
-    // The fake only registers the key 200 ms after the call starts: a lookup by key would find nothing.
-    const provider = new FakePublishProvider({ registroRetrasadoMs: 200 });
-    const cap = capturedLogger();
-    const deps: PublicacionDeps = { db: pool, storage: p.storage, provider, logger: cap.log };
+    // The provider does not know the key until the first call is released: a lookup by key would find nothing.
+    const provider = new FakePublishProvider();
+    const barrera = provider.holdNextPublish();
+    const deps: PublicacionDeps = { db: pool, storage: p.storage, provider, logger: capturedLogger().log };
 
-    const resultados2 = await Promise.allSettled([publicarPieza(deps, p.clienteId, p.w.piezaId, sistema), publicarPieza(deps, p.clienteId, p.w.piezaId, sistema)]);
-    // Exactly one wins. The other normally sees the open attempt ("en_curso"); on a loaded machine it can start
-    // after the winner finished and then finds the piece already published (a refusal). Neither sends.
-    const ganadoras = resultados2.filter((r) => r.status === 'fulfilled' && r.value.estado === 'publicada');
-    const perdedoras = resultados2.filter((r) => !(r.status === 'fulfilled' && r.value.estado === 'publicada'));
-    expect(ganadoras).toHaveLength(1);
-    expect(perdedoras).toHaveLength(1);
-    const perdedora = perdedoras[0]!;
-    if (perdedora.status === 'fulfilled') expect(perdedora.value).toEqual({ estado: 'en_curso' });
-    else expect(perdedora.reason).toBeInstanceOf(PiezaEstadoProgramacionError);
+    const primera = publicarPieza(deps, p.clienteId, p.w.piezaId, sistema);
+    try {
+      await barrera.entered; // the first attempt is recorded and the first call is blocked inside publish()
+      expect(await publicarPieza(deps, p.clienteId, p.w.piezaId, sistema)).toEqual({ estado: 'en_curso' });
+      expect(provider.publishCalls).toBe(1);
+      expect(provider.calls.filter((c) => c.op === 'findByKey')).toEqual([]);
+    } finally {
+      barrera.release();
+    }
+    expect(await primera).toMatchObject({ estado: 'publicada', intento: 1 });
     expect(provider.publishCalls).toBe(1);
     expect(provider.posts).toBe(1);
     expect(await intentos(pool, p.w.piezaId)).toHaveLength(1);
     expect(await resultados(pool, p.w.piezaId)).toHaveLength(1);
     expect(await estadoPieza(pool, p)).toBe('publicada');
+  });
+
+  it('a second call after the first finished is refused and makes no second send', async () => {
+    const pool = getTestPool();
+    const p = await runInTransaction(pool, (tx) => createPiezaProgramada(tx));
+    const provider = new FakePublishProvider();
+    const deps: PublicacionDeps = { db: pool, storage: p.storage, provider, logger: capturedLogger().log };
+
+    expect(await publicarPieza(deps, p.clienteId, p.w.piezaId, sistema)).toMatchObject({ estado: 'publicada' });
+    await expect(publicarPieza(deps, p.clienteId, p.w.piezaId, sistema)).rejects.toBeInstanceOf(PiezaEstadoProgramacionError);
+    expect(provider.publishCalls).toBe(1);
+    expect(provider.posts).toBe(1);
+    expect(await intentos(pool, p.w.piezaId)).toHaveLength(1);
+    expect(await resultados(pool, p.w.piezaId)).toHaveLength(1);
   });
 });
