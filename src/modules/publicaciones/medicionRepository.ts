@@ -84,7 +84,12 @@ export interface MedicionPendiente {
 }
 
 /** Windows (24h, 72h, 7d, 28d after publishing) that are due and have no snapshot yet. Oldest due first. */
-export async function listMedicionesPendientes(db: Db, ahora: Date, limite = 100): Promise<MedicionPendiente[]> {
+export async function listMedicionesPendientes(
+  db: Db,
+  ahora: Date,
+  opciones: { limite?: number; clienteId?: ClienteId; piezaId?: string } = {},
+): Promise<MedicionPendiente[]> {
+  const limite = opciones.limite ?? 100;
   const horas = ventanasDeMedicion(new Date(0)).map((v) => v.en.getTime() / 3_600_000);
   const { rows } = await db.query<MedicionPendiente>(
     `SELECT pu.cliente_id, pu.id AS publicacion_id, pu.pieza_id, pz.estado AS pieza_estado, pu.conexion_id, pu.red, r.id_externo, v.ventana
@@ -95,8 +100,9 @@ export async function listMedicionesPendientes(db: Db, ahora: Date, limite = 100
      WHERE r.estado = 'publicada' AND pz.estado IN ('publicada', 'en_medicion')
        AND r.creado_en + make_interval(hours => v.horas) <= $1
        AND NOT EXISTS (SELECT 1 FROM metricas_pieza m WHERE m.publicacion_id = pu.id AND m.ventana = v.ventana)
+       AND ($5::uuid IS NULL OR pu.cliente_id = $5) AND ($6::uuid IS NULL OR pu.pieza_id = $6)
      ORDER BY r.creado_en + make_interval(hours => v.horas), pu.id LIMIT $4`,
-    [ahora, [...VENTANAS], horas, limite],
+    [ahora, [...VENTANAS], horas, limite, opciones.clienteId ?? null, opciones.piezaId ?? null],
   );
   return rows;
 }

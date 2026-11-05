@@ -9,7 +9,7 @@ import type { Recordatorios } from '../aprobaciones/recordatoriosPort.js';
 import { getSecretForUse } from '../conexionesRedes/conexionesRedesRepository.js';
 import { getPieza } from '../piezas/piezasRepository.js';
 import { lockPlanYPieza, transitionPieza } from '../piezas/piezasService.js';
-import { asClienteId } from '../shared/clienteId.js';
+import { asClienteId, type ClienteId } from '../shared/clienteId.js';
 import {
   ArchivoAlteradoAlEnviarError,
   ConexionNoDisponibleError,
@@ -164,10 +164,15 @@ export interface SalidaMetricas {
  * and the 28-day one to `cerrada`. A provider failure leaves the window pending for the next run; an auth failure
  * also raises `conexion_red_vencida`.
  */
-export async function ejecutarRecoleccionMetricas(deps: PublicacionesJobDeps, ahora: Date = new Date()): Promise<SalidaMetricas> {
+export async function ejecutarRecoleccionMetricas(
+  deps: PublicacionesJobDeps,
+  ahora: Date = new Date(),
+  /** Restrict the run to one piece / the next window (development scripts). The job itself passes none. */
+  opciones: { clienteId?: ClienteId; piezaId?: string; limite?: number; recogidaEn?: Date } = {},
+): Promise<SalidaMetricas> {
   const log = deps.logger ?? defaultLogger;
   const salida: SalidaMetricas = { recogidas: 0, fallidas: 0 };
-  for (const m of await listMedicionesPendientes(deps.db, ahora)) {
+  for (const m of await listMedicionesPendientes(deps.db, ahora, opciones)) {
     const clienteId = asClienteId(m.cliente_id);
     try {
       const conexion = await getConexionActiva(deps.db, clienteId, m.red);
@@ -179,7 +184,7 @@ export async function ejecutarRecoleccionMetricas(deps: PublicacionesJobDeps, ah
       await runInTransaction(deps.db, async (tx) => {
         const pieza = await lockPlanYPieza(tx, clienteId, m.pieza_id);
         if (!pieza) return;
-        const nueva = await insertMetricas(tx, clienteId, m.publicacion_id, m.ventana, metricas, ahora);
+        const nueva = await insertMetricas(tx, clienteId, m.publicacion_id, m.ventana, metricas, opciones.recogidaEn ?? ahora);
         if (!nueva) return;
         if (pieza.estado === 'publicada') await transitionPieza(tx, clienteId, m.pieza_id, 'en_medicion', { tipo: 'sistema' }, { motivo: 'primera medicion' });
         if (m.ventana === '28d') {

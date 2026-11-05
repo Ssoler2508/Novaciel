@@ -131,7 +131,8 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
 - **Done when:** a piece cannot move to scheduled without both approvals of the current piece hash.
 - Built on branch `step-09` (checkpoints A to E), merged; design and decisions in `docs/ADR-05_APROBACION_DOS_NIVELES.md`.
 
-### Step 10 — Publishing
+### Step 10 — Publishing ✅ (fake provider; real adapter pending, checkpoint F)
+- **Built on branch `step-10`** (checkpoints A to E): `PublishProvider` port with `FakePublishProvider`, `programarPieza`/`reprogramarPieza`/`cancelarProgramacion`, `publicarPieza` (three phases, no transaction during the call, idempotent by key), pg-boss jobs (scheduled send, minute sweep, metrics collection), routes (schedule, reschedule, cancel, attempt history, results of a piece and of a week), development scripts `piece:schedule`, `piece:publish`, `publish:metrics`, `PUBLISH_PROVIDER` config. Design and decisions: `docs/ADR-10_PUBLICACION.md`; routes: `docs/API_PANEL.md` §7b. Checkpoint F (real adapter, `publish:smoke`, price unit `publicaciones`) waits for NovaCiel to choose the intermediary.
 - Publishing adapter (intermediary chosen after Phase 0), with fake.
 - Publishes only approved pieces; recomputes and verifies the piece-level hash before sending.
 - When it changes a piece's `fecha_hora` (rescheduling), it must schedule the approval reminders again (Step 9 jobs carry the old deadline and become no-ops; ADR-05, known debt).
@@ -146,7 +147,7 @@ Detailed checkpoints (A to G) live in `docs/prompts/step-02b.md`; this section o
   - **No approval at the scheduled time (spec 11.3):** applies to pieces still in `revision_novaciel` or `esperando_aprobacion` when `fecha_hora` arrives: move `fecha_hora` to the next allowed slot at least 24 h ahead (VERIFY), queue the reminders and `vencimiento` again, raise `publicacion_sin_aprobacion`. After 3 consecutive automatic reschedules, stop and raise a critical alert. A `programada` piece that fails the gate for another reason (file altered, fact expired, QC) goes to `fallo_publicacion` with a critical alert.
   - **Retries:** 2 retries with growing waits for rate limit, server and timeout (spec 11.4; VERIFY the waits); auth, quota and bad request are not retried. An unknown outcome is never resent blindly.
   - **AI label:** `etiqueta_ia` when the QC report has `voz_etiqueta_ia_pendiente`; if the provider or network cannot set it, the send is blocked (`etiqueta_ia_no_soportada`) until NovaCiel decides.
-  - **Alerts to add in checkpoint C or D:** `publicacion_fallida`, `publicacion_resultado_desconocido`, `publicacion_sin_aprobacion`, `conexion_red_vencida`, `etiqueta_ia_no_soportada`, plus the critical one for the cap of automatic reschedules.
+  - **Alerts (added in checkpoint C):** `publicacion_fallida`, `publicacion_resultado_desconocido`, `publicacion_sin_aprobacion`, `conexion_red_vencida`, `etiqueta_ia_no_soportada`, plus the critical one for the cap of automatic reschedules.
   - **Price unit `publicaciones`:** waits for checkpoint F.
 
 ### Step 11 — Basic dashboard and alerts ✅

@@ -9,6 +9,7 @@ import {
   getClienteById,
   updateClienteEstado,
 } from '../modules/clientes/clientesRepository.js';
+import { createConexion, listConexiones } from '../modules/conexionesRedes/conexionesRedesRepository.js';
 import { createHecho, listHechos, type NewHecho } from '../modules/hechos/hechosRepository.js';
 import type { CompletenessResult } from '../modules/perfilMarca/completeness.js';
 import { createNewVersion, getCurrentPerfilMarca } from '../modules/perfilMarca/perfilMarcaRepository.js';
@@ -283,6 +284,15 @@ export async function seedDevelopment(db: Db, now: Date = new Date(), options: S
         note(false, label);
       }
     }
+  }
+
+  // A fictional Instagram connection (Step 10) so the fake publisher has credentials to decrypt in development.
+  // The secret is an obviously fake placeholder; a real one is entered by a person, never by the seed.
+  const conexiones = await listConexiones(db, clienteId);
+  const hayConexion = conexiones.some((c) => c.red === 'instagram' && c.revocada_en === null);
+  note(!hayConexion, 'conexion instagram ficticia');
+  if (!hayConexion) {
+    await createConexion(db, clienteId, { red: 'instagram', etiqueta: '@aurora_ficticia', secreto: 'seed-fake-instagram-profile-key' }, { tipo: 'usuario', usuarioId: admin.id });
   }
 
   // Completeness. Once the client can be planned it is activated, but only from en_onboarding, so a
