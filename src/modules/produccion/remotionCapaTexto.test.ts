@@ -403,9 +403,12 @@ describe('the adapter: failures leave nothing behind', () => {
 
   it('a timeout: typed, cancels, closes the browser and removes what was written', async () => {
     renderer.modo = 'cuelga';
+    const TIMEOUT = 300;
+    const TOLERANCIA_MS = 1000; // scheduler and machine-load slack on top of the documented bound
     const inicio = Date.now();
-    await expect(adaptador().renderizar(entradaDe(propsDe()), opciones(300))).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
-    expect(Date.now() - inicio).toBeLessThan(3000);
+    await expect(adaptador({ limpieza: LIMPIEZA_CORTA }).renderizar(entradaDe(propsDe()), opciones(TIMEOUT))).rejects.toMatchObject({ name: 'CapaTextoError', razon: 'tiempo_agotado' });
+    // Bound: the time limit plus the injected cleanup margin, not a fixed number of seconds.
+    expect(Date.now() - inicio).toBeLessThan(TIMEOUT + margenDeLimpieza(LIMPIEZA_CORTA) + TOLERANCIA_MS);
     expect(renderer.cancelado).toBe(true);
     expect(renderer.cierres).toBeGreaterThanOrEqual(1);
     expect(await nombresEnCarpeta()).toEqual([]);
