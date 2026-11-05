@@ -1,29 +1,21 @@
-import { NovaCielShell } from './components/NovaCielShell.js';
 import { es } from './i18n/index.js';
 import { useHashRoute, type Route } from './router.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NoAccessScreen } from './screens/NoAccessScreen.js';
+import { PiezaScreen } from './screens/PiezaScreen.js';
 import { PlanDetailScreen } from './screens/PlanDetailScreen.js';
 import { PlanesScreen } from './screens/PlanesScreen.js';
 import { PlanRevisionScreen } from './screens/PlanRevisionScreen.js';
 import { hasNovaCielAccess } from './session/roles.js';
 import { SessionProvider, useSession } from './session/SessionContext.js';
 
-function PendingNovaCielScreen({ title }: { title: string }) {
-  return (
-    <NovaCielShell title={title}>
-      <p className="muted">{es.interna.pending}</p>
-    </NovaCielShell>
-  );
-}
-
 function NovaCielScreen({ route }: { route: Exclude<Route, { name: 'home' }> }) {
   switch (route.name) {
     case 'planes':
       return <PlanesScreen clienteId={route.clienteId} semana={route.semana} />;
     case 'pieza':
-      return <PendingNovaCielScreen title={es.interna.piece} />;
+      return <PiezaScreen clienteId={route.clienteId} piezaId={route.piezaId} />;
     case 'plan':
       return <PlanDetailScreen clienteId={route.clienteId} planId={route.planId} />;
     case 'planRevision':

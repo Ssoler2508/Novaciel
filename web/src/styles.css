@@ -297,6 +297,97 @@ a.button {
   border-radius: 8px;
 }
 
+.piece {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.piece-sections {
+  display: grid;
+  gap: 1rem;
+}
+
+.piece-section {
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.piece-subsection {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.piece-subsection h3,
+.history-item h3,
+.scene-card h3,
+.shot-card h3,
+.check-card h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.piece-label {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.piece-text {
+  margin: 0.125rem 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.history-list,
+.scene-list,
+.shot-list,
+.file-list,
+.check-list,
+.source-list,
+.code-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item,
+.scene-card,
+.shot-card,
+.file-card,
+.check-card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.piece-media {
+  display: block;
+  width: 100%;
+  max-height: 32rem;
+  background: #000;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.hashtag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 @media (min-width: 40rem) {
   .card {
     padding: 2rem;

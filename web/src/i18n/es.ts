@@ -95,6 +95,111 @@ export const es = {
     datetime: 'Fecha y hora',
   },
 
+  pieza: {
+    title: 'Pieza',
+    subtitle: 'Vista interna de solo lectura.',
+    backToPlans: 'Volver a planes',
+
+    revision: {
+      title: 'Revisión',
+      empty: 'No hay revisión disponible para esta pieza.',
+      estado: 'Estado de la pieza',
+      datetime: 'Fecha y hora',
+      approval: 'Estado de aprobación',
+      round: 'ronda',
+      history: 'Historial de aprobaciones',
+      noHistory: 'Sin historial de aprobaciones.',
+      level: 'Nivel',
+      decision: 'Decisión',
+      reason: 'Motivo',
+      second: 'Segundo',
+      version: 'Versión',
+      createdAt: 'Creado el',
+      comment: 'Comentario',
+    },
+
+    production: {
+      title: 'Producción',
+      empty: 'No hay producción disponible para esta pieza.',
+      noFiles: 'La producción no tiene archivos.',
+      file: 'Archivo',
+      order: 'Orden',
+      mime: 'Tipo',
+      width: 'Ancho',
+      height: 'Alto',
+      size: 'Tamaño',
+      duration: 'Duración',
+      fps: 'FPS',
+      videoCodec: 'Códec de vídeo',
+      audioCodec: 'Códec de audio',
+      template: 'Plantilla',
+      sources: 'Fuentes',
+      scene: 'Escena',
+      fileUnavailable: 'Archivo no disponible',
+      imageAlt: 'Imagen de la pieza',
+      videoLabel: 'Vídeo de la pieza',
+    },
+
+    brief: {
+      title: 'Guion',
+      empty: 'No hay guion disponible para esta pieza.',
+      format: 'Formato',
+      hook: 'Gancho',
+      facts: 'Hechos verificados',
+      factOne: 'hecho verificado',
+      factMany: 'hechos verificados',
+      scenes: 'Escenas',
+      scene: 'Escena',
+      screenText: 'Texto en pantalla',
+      altText: 'Texto alternativo',
+      voiceOver: 'Voz en off',
+      sceneDuration: 'Duración',
+      noScenes: 'Sin escenas.',
+      shots: 'Tomas',
+      shot: 'Toma',
+      source: 'Fuente',
+      sourceReal: 'Media real',
+      sourceMissing: 'Faltante',
+      missingReason: 'Motivo de faltante',
+      range: 'Intervalo',
+      noShots: 'Sin tomas.',
+      publication: 'Publicación',
+      publicationText: 'Texto',
+      hashtags: 'Hashtags',
+      location: 'Ubicación',
+      cta: 'Llamado a la acción',
+      music: 'Música',
+      cover: 'Portada',
+      productionNotes: 'Notas de producción',
+      formats: {
+        reel: 'Reel',
+        carrusel: 'Carrusel',
+        post: 'Post',
+        historia: 'Historia',
+      },
+    },
+
+    qc: {
+      title: 'Control de calidad',
+      empty: 'No hay control de calidad disponible para esta pieza.',
+      result: 'Resultado',
+      current: 'Vigente',
+      version: 'Versión',
+      createdAt: 'Creado el',
+      report: 'Informe',
+      failureCodes: 'Códigos de fallo',
+      warningCodes: 'Códigos de advertencia',
+      checks: 'Comprobaciones',
+      severity: 'Severidad',
+      reason: 'Motivo',
+      yes: 'Sí',
+      no: 'No',
+      noReport: 'Sin informe.',
+      noCodes: 'Sin códigos.',
+      noChecks: 'Sin comprobaciones.',
+    },
+  },
+
   // Labels for the 16 piece states of spec section 15. The codes are the exact values the backend
   // stores (estado_pieza); they must never be translated or renamed.
   estados: {
@@ -123,6 +228,51 @@ export const es = {
       propuesto: 'Propuesto',
       aprobado: 'Aprobado',
       descartado: 'Descartado',
+    },
+
+    // Approval state of the current production (aprobaciones/estadoAprobacion.ts).
+    aprobacion: {
+      pendiente_interno: 'Pendiente de revisión interna',
+      pendiente_cliente: 'Pendiente de aprobación del cliente',
+      cambios_pedidos: 'Cambios pedidos',
+      rechazada: 'Rechazada',
+      aprobada: 'Aprobada',
+    },
+
+    nivelAprobacion: {
+      interno: 'Interno',
+      cliente: 'Cliente',
+    },
+
+    decisionPieza: {
+      aprobada: 'Aprobada',
+      cambios: 'Cambios',
+      rechazada: 'Rechazada',
+    },
+
+    motivoPieza: {
+      texto: 'Texto',
+      musica: 'Música',
+      toma: 'Toma',
+      gancho: 'Gancho',
+      dato_equivocado: 'Dato equivocado',
+      otro: 'Otro',
+    },
+
+    qcResultado: {
+      aprobado: 'Aprobado',
+      rechazado: 'Rechazado',
+    },
+
+    qcCheck: {
+      pasa: 'Pasa',
+      no_pasa: 'No pasa',
+      advertencia: 'Advertencia',
+    },
+
+    qcSeveridad: {
+      bloqueante: 'Bloqueante',
+      advertencia: 'Advertencia',
     },
   },
 } as const;

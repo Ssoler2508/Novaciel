@@ -55,3 +55,43 @@ export function etiquetaEstadoPlan(estado: EstadoPlan): string {
 export function etiquetaEstado(estado: EstadoSistema): string {
   return estado.tipo === 'pieza' ? etiquetaEstadoPieza(estado.estado) : etiquetaEstadoPlan(estado.estado);
 }
+
+// Approval, quality-control and reason codes: known values are translated, unknown ones are shown
+// exactly as the backend sent them (never invent a meaning for a code we do not know).
+type LabelMap = Readonly<Record<string, string>>;
+
+function etiqueta(map: LabelMap, value: string | null | undefined): string {
+  if (value === null || value === undefined) return es.common.notAvailable;
+  const label = map[value];
+  if (label !== undefined) return label;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : es.common.notAvailable;
+}
+
+export function etiquetaEstadoAprobacion(value: string | null | undefined): string {
+  return etiqueta(es.estados.aprobacion, value);
+}
+
+export function etiquetaNivelAprobacion(value: string | null | undefined): string {
+  return etiqueta(es.estados.nivelAprobacion, value);
+}
+
+export function etiquetaDecisionPieza(value: string | null | undefined): string {
+  return etiqueta(es.estados.decisionPieza, value);
+}
+
+export function etiquetaMotivoPieza(value: string | null | undefined): string {
+  return etiqueta(es.estados.motivoPieza, value);
+}
+
+export function etiquetaResultadoQc(value: string | null | undefined): string {
+  return etiqueta(es.estados.qcResultado, value);
+}
+
+export function etiquetaCheckQc(value: string | null | undefined): string {
+  return etiqueta(es.estados.qcCheck, value);
+}
+
+export function etiquetaSeveridadQc(value: string | null | undefined): string {
+  return etiqueta(es.estados.qcSeveridad, value);
+}
