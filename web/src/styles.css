@@ -173,6 +173,84 @@ a.button {
   padding: 1.5rem 1rem;
 }
 
+.plans {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.filter {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 24rem;
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.page-actions .button {
+  width: auto;
+}
+
+.section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.plan-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-card {
+  display: block;
+  padding: 1rem;
+  color: inherit;
+  text-decoration: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.plan-card:hover,
+.plan-card:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.plan-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.meta-grid dt {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.meta-grid dd {
+  margin: 0.125rem 0 0;
+  overflow-wrap: anywhere;
+}
+
 .error {
   margin: 0;
   color: var(--color-error);

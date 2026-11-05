@@ -45,7 +45,10 @@ export function parseRoute(hash: string): Route {
   const planes = /^\/clientes\/([^/]+)\/planes\/?$/.exec(path);
   if (planes) {
     const clienteId = decode(planes[1]!);
-    if (clienteId !== null) return { name: 'planes', clienteId, semana: params.get('semana') };
+    const semana = params.get('semana');
+    if (clienteId !== null) {
+      return { name: 'planes', clienteId, semana: semana === '' ? null : semana };
+    }
     return { name: 'home' };
   }
 

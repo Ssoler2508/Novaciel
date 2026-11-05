@@ -4,6 +4,7 @@ import { useHashRoute, type Route } from './router.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NoAccessScreen } from './screens/NoAccessScreen.js';
+import { PlanesScreen } from './screens/PlanesScreen.js';
 import { hasNovaCielAccess } from './session/roles.js';
 import { SessionProvider, useSession } from './session/SessionContext.js';
 
@@ -17,9 +18,10 @@ function PendingNovaCielScreen({ title }: { title: string }) {
 
 function NovaCielScreen({ route }: { route: Exclude<Route, { name: 'home' }> }) {
   switch (route.name) {
+    case 'planes':
+      return <PlanesScreen clienteId={route.clienteId} semana={route.semana} />;
     case 'pieza':
       return <PendingNovaCielScreen title={es.interna.piece} />;
-    case 'planes':
     case 'plan':
     case 'planRevision':
       return <PendingNovaCielScreen title={es.nav.planner} />;

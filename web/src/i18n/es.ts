@@ -25,6 +25,7 @@ export const es = {
     invalidRequest: 'La solicitud no es válida.',
     loadError: 'No se pudo cargar la información. Inténtalo de nuevo.',
     networkError: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
+    notAvailable: '—',
   },
 
   auth: {
@@ -63,6 +64,23 @@ export const es = {
     navigation: 'Navegación interna',
     piece: 'Pieza',
     pending: 'Sección en preparación.',
+  },
+
+  planes: {
+    title: 'Planes semanales',
+    subtitle: 'Consulta de solo lectura.',
+    listTitle: 'Planes',
+    weekFilter: 'Semana',
+    apply: 'Filtrar',
+    clear: 'Limpiar filtro',
+    invalidWeek: 'La fecha debe tener el formato AAAA-MM-DD y ser válida.',
+    empty: 'No hay planes.',
+    week: 'Semana',
+    estado: 'Estado',
+    zone: 'Zona horaria',
+    pieces: 'Piezas',
+    createdBy: 'Creado por',
+    createdAt: 'Creado el',
   },
 
   // Labels for the 16 piece states of spec section 15. The codes are the exact values the backend
