@@ -2,6 +2,8 @@
 // and, in checkpoint F, the real adapter. Everything sent is CLIENT CONTENT and the credentials are secrets:
 // nothing in this layer logs them, puts them in an error or keeps them beyond the call.
 
+import type { MetricasNormalizadas } from '../../modules/publicaciones/normalizarMetricas.js';
+
 export type PublishNetwork = 'instagram' | 'facebook' | 'tiktok' | 'youtube';
 
 /** A file of the exact production, already read back from storage and re-hashed by the caller. */
@@ -61,6 +63,8 @@ export interface PublishProvider {
   findByKey(claveIdempotencia: string, ctx: PublishContext): Promise<PublishResult | null>;
   /** The provider's raw metrics of a published post (normalized by the caller). */
   getMetrics(idExterno: string, ctx: PublishContext): Promise<unknown>;
+  /** Maps the provider's raw metrics to the fixed set (NULL for what the network does not report). Pure. */
+  normalizarMetricas(raw: unknown): MetricasNormalizadas;
 }
 
 export type PublishErrorKind = 'auth' | 'quota' | 'rate_limit' | 'bad_request' | 'server' | 'timeout';

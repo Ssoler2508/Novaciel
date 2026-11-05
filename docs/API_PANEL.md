@@ -49,6 +49,7 @@ Roles: **A** `administrador_novaciel`, **O** `operador_novaciel`, **D** `dueno_c
 | `read_client_data` | client | A, O, D, P | Reading plans, pieces, briefs, productions, media, dashboard. **C cannot read.** |
 | `upload_material` | client | A, O, D, P, C | Upload and remove media. |
 | `manage_plans` | client | A, O | Generate plans, briefs, productions; pause pieces; QC; propose a plan. |
+| `schedule_pieces` | client | A, O | Schedule, reschedule and cancel the publication time of an approved piece (Step 10). |
 | `approve_internal` | client | A, O | Internal level of the approval. |
 | `approve_as_client` | client | D, P | Client level of the approval. NovaCiel can never decide in the client's name. |
 | `view_spend` | client | A, O | Budget summary, ledger, spend history. |
@@ -167,8 +168,8 @@ Permission `view_overview` (A, O). NovaCiel overview across clients, paginated b
 - `presupuesto.usado` = settled spend + active reservations of the current month; `porcentaje` follows the same rule as `/panel/gasto` (`null` without a ceiling).
 - `estado` is the client's state: `en_onboarding`, `activo`, `en_pausa`.
 
-### Results: not available until Step 10
-The results of published pieces (metrics, monthly report) have **no route and no reserved response shape**. They depend on publishing and measuring (Step 10). When they exist they will be added as new routes; none of the routes above will change. The panel should show an empty "Results" section until then.
+### Results
+The results of published pieces now have routes: see §7b (`GET /clientes/:clienteId/resultados?semana=` for the dashboard and `GET /clientes/:clienteId/piezas/:piezaId/resultados`). The monthly report still has no route. None of the routes above changed.
 
 ## 5. Plans and pieces
 
@@ -229,6 +230,21 @@ Two levels per piece (internal by NovaCiel, then the client) and one decision on
 
 Decision errors: `403 forbidden` (the role may not decide at that level), `404 not_found`, `409`: `hash_desactualizado`, `huella_desactualizada`, `estado_invalido` (`estado`), `plan_no_aprobado`, `plan_descartado`, `sin_produccion`, `plan_sin_piezas`, `plan_con_piezas_pausadas`, `piezas_en_otro_estado`, `transicion_invalida`. Nothing is published without the registered approval of the exact file.
 
+## 7b. Publishing and results (Step 10, additive) ★
+
+All routes below are **new**; no existing route changed. Nothing here sends anything to a social network: scheduling queues a job, and the send re-checks the central rule (both approvals of the exact files, QC, valid facts, files re-hashed) right before it goes out. A body with an unknown key answers `400`. `POST`/`PUT` need `Content-Type: application/json`.
+
+| Route | Permission | Notes |
+|---|---|---|
+| `POST /clientes/:clienteId/piezas/:piezaId/programacion` | `schedule_pieces` | Body `{fecha_hora}` (ISO 8601). Schedules an `aprobada` piece, or retries a piece in `fallo_publicacion` with the same rules. `200 {pieza_id, estado: "programada", fecha_hora}`. `400`: `invalid_request` (`fields`), `programacion_invalida` (`motivos`: `fecha_pasada`, `horario_vetado`). `404`. `409`: `estado_invalido` (`estado`), `sin_aprobacion_vigente` (`estado_aprobacion`), `control_calidad_no_aprobado` (`estado_qc`), `archivo_alterado` (`orden`, `motivo`), `hash_pieza_no_coincide`, `hecho_vencido`, `media_no_usable`, `plan_descartado`. |
+| `PUT /clientes/:clienteId/piezas/:piezaId/programacion` | `schedule_pieces` | Same body. Moves the time of a `programada` piece; the approvals stay (the time is not part of the approved hash). Same errors, plus `409 publicacion_en_curso` while an attempt is open. |
+| `POST /clientes/:clienteId/piezas/:piezaId/programacion/cancelar` | `schedule_pieces` | Body `{motivo}` (1 to 500 characters). `programada → con_cambios`. `200` as above. `409`: `estado_invalido`, `publicacion_en_curso`. |
+| `GET /clientes/:clienteId/piezas/:piezaId/publicaciones` | `read_client_data` | `{pieza_id, pieza_estado, fecha_hora, intentos: [{numero_intento, proveedor, red, estado, categoria_error, id_externo, enlace, etiqueta_ia, creado_en, resultado_en}]}`. `estado`: `enviando` (no result yet), `publicada`, `fallida`, `desconocida` (outcome unknown, never resent blindly). `categoria_error`: `auth`, `quota`, `rate_limit`, `bad_request`, `server`, `timeout`, `resultado_desconocido`, `etiqueta_ia_no_soportada` — never the provider's message. |
+| `GET /clientes/:clienteId/piezas/:piezaId/resultados` | `read_client_data` | `{pieza_id, pieza_estado, publicada, publicada_en, enlace, snapshots: [{ventana, recogida_en, metricas}]}`. `ventana`: `24h`, `72h`, `7d`, `28d` after publishing. `metricas`: `impresiones`, `alcance`, `reproducciones`, `me_gusta`, `comentarios`, `compartidos`, `guardados`, `tiempo_reproduccion_promedio_seg`, `retencion_pct`, `visitas_perfil`, `clics_enlace`, `seguidores_ganados`; **`null` = the network does not report it** (never 0 for "unknown"). |
+| `GET /clientes/:clienteId/resultados?semana=YYYY-MM-DD` | `read_client_data` | For the dashboard. `semana` is the Monday of the plan. `{semana, piezas: [{pieza_id, red, formato, publicada_en, enlace, ventana, recogida_en, metricas}], totales}`. `metricas` is the latest snapshot or `null` while none exists. `totales`: `piezas_publicadas`, `piezas_con_metricas` and, per additive metric, the sum over the pieces that report it, `null` when none does. `400` for a missing or invalid `semana`. |
+
+The piece states after `programada` are the existing ones: `publicada` → `en_medicion` (first snapshot) → `cerrada` (28-day snapshot); a definitive failure is `fallo_publicacion`. Failures, unknown outcomes, a piece that reached its time without approval (it is rescheduled, never published) and expired connections raise the alerts `publicacion_fallida`, `publicacion_resultado_desconocido`, `publicacion_sin_aprobacion`, `publicacion_reprogramaciones_agotadas`, `conexion_red_vencida` and `etiqueta_ia_no_soportada` (§9).
+
 ## 8. Budget and prices
 
 Money rules: only A changes ceilings, switches and prices; every change is audited; a ceiling below what is already spent is allowed (new authorizations are then refused); the ceiling of a past month is refused (`400 periodo_pasado`); a retroactive price is refused (`400 precio_retroactivo`).
@@ -245,7 +261,7 @@ Money rules: only A changes ceilings, switches and prices; every change is audit
 
 ## 9. Alerts ★
 
-Alerts are persistent and append-only; they clear only by acknowledgement. They hold ids, codes and numbers, never client text. Codes (severity): `presupuesto_umbral_50` (info), `presupuesto_umbral_80` (aviso), `presupuesto_umbral_100` (critica), `interruptor_global_apagado` (critica, global), `interruptor_cliente_apagado` (aviso), `trabajo_fallido` (aviso, global), `llm_schema_invalid` and `vision_schema_invalid` (aviso), `aprobacion_vencida` (aviso), `aprobacion_escalada` (critica, NovaCiel only), `qc_rechazada` (info), `voz_fallo` (critica), `capa_texto_fallo` (critica). `severidad` is `info`, `aviso` or `critica`.
+Alerts are persistent and append-only; they clear only by acknowledgement. They hold ids, codes and numbers, never client text. Codes (severity): `presupuesto_umbral_50` (info), `presupuesto_umbral_80` (aviso), `presupuesto_umbral_100` (critica), `interruptor_global_apagado` (critica, global), `interruptor_cliente_apagado` (aviso), `trabajo_fallido` (aviso, global), `llm_schema_invalid` and `vision_schema_invalid` (aviso), `aprobacion_vencida` (aviso), `aprobacion_escalada` (critica, NovaCiel only), `qc_rechazada` (info), `voz_fallo` (critica), `capa_texto_fallo` (critica), and from Step 10: `publicacion_fallida` (critica), `publicacion_resultado_desconocido` (critica), `publicacion_sin_aprobacion` (aviso), `publicacion_reprogramaciones_agotadas` (critica), `conexion_red_vencida` (critica), `etiqueta_ia_no_soportada` (aviso). `severidad` is `info`, `aviso` or `critica`.
 
 **Alert item:** `{id, cliente_id (null for a global alert), codigo, severidad, parametros, creado_en, reconocida, reconocida_por, reconocida_en}`. A client role always gets `reconocida_por: null`.
 
@@ -271,7 +287,7 @@ In development, with local file storage, signed URLs point to `GET /files/<key>?
 
 ## 11. Known limits of this API
 
-- No results/metrics routes (Step 10).
+- No monthly report route (the per-piece and per-week results exist, §7b).
 - Pending approvals are not paginated.
 - Spend views have no breakdown by provider, model or piece type, and no export (technical debt, spec 13.4).
 - No routes yet for brand profile, verified facts, users, approvers or network connections.

@@ -104,7 +104,7 @@ type YaPublicada = { tipo: 'ya_publicada'; resultado: ResultadoPublicar };
 type EnCurso = { tipo: 'en_curso' };
 
 /** Gate failures: the piece is `programada` but not publishable any more. Anything else is a bug and propagates. */
-function esFalloDeCompuerta(error: unknown): error is Error {
+export function esFalloDeCompuerta(error: unknown): error is Error {
   return (
     error instanceof ArchivoAlteradoError ||
     error instanceof ControlCalidadNoAprobadoError ||

@@ -12,6 +12,7 @@ import { parseHorariosVetados } from '../planificador/context.js';
 import { getPlan } from '../planificador/planesRepository.js';
 import type { ClienteId } from '../shared/clienteId.js';
 import { PiezaEstadoProgramacionError, ProgramacionInvalidaError, PublicacionAbiertaError } from './errors.js';
+import type { PublicacionQueue } from './publicacionQueue.js';
 import { getUltimoIntento } from './publicacionesRepository.js';
 import { validarProgramacion } from './reglasProgramacion.js';
 
@@ -27,6 +28,8 @@ export interface ProgramacionDeps {
   db: Db;
   storage: Storage;
   recordatorios?: Recordatorios;
+  /** Queues the scheduled send inside the transaction. Absent: none is queued (tests, scripts). */
+  publicaciones?: PublicacionQueue;
   /** The clock. Default: the real one. */
   now?: () => Date;
 }
@@ -91,7 +94,42 @@ async function programarInterno(
         ahora,
       );
     }
+    // The scheduled send, in the same transaction: it exists if and only if the schedule committed.
+    if (deps.publicaciones) {
+      await deps.publicaciones.programar(
+        tx,
+        { clienteId, piezaId, produccionId: publicable.produccionId, fechaHora: fechaHora.toISOString(), ronda: 0 },
+        fechaHora,
+      );
+    }
     return (await getPieza(tx, clienteId, piezaId))!;
+  });
+}
+
+/**
+ * Cancels a schedule: `programada -> con_cambios` (the existing transition; NovaCiel only, the caller checks
+ * `schedule_pieces`). Refused while an attempt is open. The queued send finds the piece no longer `programada`
+ * and does nothing.
+ */
+export async function cancelarProgramacion(deps: Pick<ProgramacionDeps, 'db'>, clienteId: ClienteId, piezaId: string, actor: AuditActor, motivo: string): Promise<PiezaRow> {
+  return runInTransaction(deps.db, async (tx) => {
+    const pieza = await lockPlanYPieza(tx, clienteId, piezaId);
+    if (!pieza) throw new PiezaNotFoundError();
+    if (pieza.estado !== 'programada') throw new PiezaEstadoProgramacionError(pieza.estado, 'reprogramar');
+    const actual = await tx.query<{ id: string }>('SELECT id FROM producciones WHERE pieza_id = $1 AND cliente_id = $2 AND es_actual', [piezaId, clienteId]);
+    const intento = actual.rows[0] ? await getUltimoIntento(tx, clienteId, actual.rows[0].id) : null;
+    if (intento && intento.resultado === null) throw new PublicacionAbiertaError();
+    const despues = await transitionPieza(tx, clienteId, piezaId, 'con_cambios', actor, { motivo });
+    await recordAudit(tx, {
+      actor,
+      accion: 'cancelar_programacion',
+      tabla: 'piezas',
+      filaId: piezaId,
+      clienteId,
+      antes: { fecha_hora: pieza.fecha_hora.toISOString(), estado: pieza.estado },
+      despues: { estado: despues.estado },
+    });
+    return despues;
   });
 }
 

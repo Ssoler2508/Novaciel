@@ -36,6 +36,7 @@ export type Action =
   | 'manage_connections'
   | 'manage_users'
   | 'manage_plans'
+  | 'schedule_pieces'
   | 'view_spend'
   | 'manage_budget'
   | 'view_prices'
@@ -79,6 +80,8 @@ export const PERMISSIONS: Record<Action, ActionRule> = {
   // Generate a client's weekly plan (a paid model call) and pause or resume its pieces. NovaCiel
   // staff only: the client's approver receives the plan and approves it (spec 7, 14).
   manage_plans: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
+  // Schedule, reschedule and cancel the publication time of an approved piece (Step 10). NovaCiel staff only.
+  schedule_pieces: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   view_spend: { scope: 'client', roles: ['administrador_novaciel', 'operador_novaciel'] },
   // Monthly ceilings and spend switches (the client's and the global one). Prices are NOT covered: see manage_prices.
   manage_budget: { scope: 'global', roles: ['administrador_novaciel'] },

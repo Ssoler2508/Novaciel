@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CLAVES_FAKE } from '../../modules/publicaciones/normalizarMetricas.js';
+import { CLAVES_FAKE, normalizarMetricasFake, type MetricasNormalizadas } from '../../modules/publicaciones/normalizarMetricas.js';
 import {
   PublishProviderError,
   type PublishContext,
@@ -135,6 +135,10 @@ export class FakePublishProvider implements PublishProvider {
     const reply = this.lookupScript.shift();
     if (reply) throw new PublishProviderError(reply.fail);
     return this.published.get(claveIdempotencia) ?? null;
+  }
+
+  normalizarMetricas(raw: unknown): MetricasNormalizadas {
+    return normalizarMetricasFake(raw);
   }
 
   async getMetrics(idExterno: string, _ctx: PublishContext): Promise<unknown> {

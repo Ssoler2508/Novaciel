@@ -17,18 +17,21 @@ export interface IntentoView {
   conexion_id: string;
   etiqueta_ia: boolean;
   creado_en: Date;
+  proveedor: string;
+  red: Red;
   /** The latest result of the attempt; null while it has none ("enviando"). */
   resultado: EstadoResultado | null;
+  resultado_en: Date | null;
   id_externo: string | null;
   enlace: string | null;
   categoria_error: CategoriaError | null;
 }
 
 const INTENTO_COLUMNS = `p.id, p.seq::text AS seq, p.produccion_id, p.numero_intento, p.clave_idempotencia, p.conexion_id, p.etiqueta_ia, p.creado_en,
-  r.estado AS resultado, r.id_externo, r.enlace, r.categoria_error`;
+  p.proveedor, p.red, r.estado AS resultado, r.creado_en AS resultado_en, r.id_externo, r.enlace, r.categoria_error`;
 const INTENTO_FROM = `FROM publicaciones p
   LEFT JOIN LATERAL (
-    SELECT r.estado, r.id_externo, r.enlace, r.categoria_error FROM publicaciones_resultados r
+    SELECT r.estado, r.creado_en, r.id_externo, r.enlace, r.categoria_error FROM publicaciones_resultados r
     WHERE r.publicacion_id = p.id AND r.cliente_id = p.cliente_id ORDER BY r.seq DESC LIMIT 1
   ) r ON true`;
 
