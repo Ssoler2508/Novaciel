@@ -64,15 +64,20 @@ versión exacta que está viendo. Es una tarea de `web/` y `docs/`: el backend n
 - **Errores:** 401 cierra la sesión; 400 muestra los campos inválidos; 403 y 404 no se reintentan;
   409 `hash_desactualizado` descarta la decisión pendiente, refresca y pide revisar de nuevo sin
   reenviar; otros 409 se muestran en español y refrescan. Un error de red no se reintenta solo.
+  Estos caminos están implementados, pero no se probaron manualmente.
 
-## Verificación ejecutada
+## Verificación
+
+### Automática
 
 En `web/`:
 
 - `npm run typecheck`: sin errores.
 - `npm run build`: correcto, 30 módulos, sin errores.
 
-Comprobaciones HTTP reales contra el backend en `127.0.0.1:3001`:
+### HTTP real
+
+Comprobaciones contra el backend en `127.0.0.1:3001`:
 
 | Petición | Resultado observado |
 | --- | --- |
@@ -97,18 +102,36 @@ pantalla tampoco puede distinguirlas.
 
 En este equipo Vite escucha en `::1`: usa `http://localhost:5173`, no `http://127.0.0.1:5173`.
 
-## Pendiente de verificación manual
+### Manual en navegador
 
-- No se ejecutó en navegador una decisión real: hace falta iniciar sesión con la contraseña de
-  desarrollo y una pieza en `esperando_aprobacion`. El contrato se verificó con el código del
-  backend y sus pruebas, y el frontend con `typecheck`/`build`.
-- No hay pruebas automatizadas de la web; la verificación de esta tarea es `typecheck`, `build` y
-  las comprobaciones HTTP de arriba.
+Resultados de la prueba manual del checkpoint C.
+
+**VERIFICADO (confirmado por el usuario):**
+
+- Aprobar: la decisión se completó correctamente.
+- Pedir cambios: la decisión se completó correctamente.
+- Un solo POST por decisión: no se observó un envío duplicado.
+- Tras el 200 no quedan botones de decisión visibles.
+- Un usuario de NovaCiel no ve los botones de decisión.
+
+**NO VERIFICADO (no probado):**
+
+- `409 hash_desactualizado`: descartar la decisión, refrescar y no reenviar automáticamente.
+- Refresco de URLs firmadas al expirar un archivo, y fallback a “archivo no disponible” si vuelve a
+  fallar.
+- `401` al expirar la sesión, `400` con errores de campo, `403`, `404`, otros `409` y error de red.
+- Texto y versión del paso de confirmación, y deshabilitado visual de los controles durante el POST.
+- Cancelar en la confirmación.
+- Validación local de `motivo` obligatorio y de `segundo_ms` (entero mayor o igual que 0; vacío no
+  se envía).
+- Texto del mensaje de éxito y actualización visible de `pieza_estado`/`estado_aprobacion` tras el
+  200.
 
 ## Limitaciones conocidas
 
-- El detalle refresca una vez las URLs firmadas cuando un archivo falla; si vuelve a fallar, muestra
-  “archivo no disponible”. No hay reintento manual por archivo.
+- Está implementado que el detalle refresque una vez las URLs firmadas cuando un archivo falla y
+  que, si vuelve a fallar, muestre “archivo no disponible”. No se verificó manualmente. No hay
+  reintento manual por archivo.
 - Los errores 400 se traducen para `motivo`, `segundo_ms`/`segundoMs`, `hash_visto`, `decision`,
   `nivel` y `comentario`; cualquier otro campo cae en un mensaje genérico.
 - `rondas_de_cambios`, `escalada` y el estado interno de la pieza no se muestran en esta vista.
