@@ -4,6 +4,7 @@ import { ApiError } from '../api/http.js';
 import { es } from '../i18n/index.js';
 import { esEstadoPieza, etiquetaEstadoPieza } from '../i18n/estados.js';
 import { formatDateOnly, formatDateTime } from '../lib/dates.js';
+import { hrefRevision } from '../router.js';
 import { useSession } from '../session/SessionContext.js';
 
 type LoadState =
@@ -133,7 +134,9 @@ export function AprobacionesScreen({ clienteId }: { clienteId: string }) {
                 <ul className="approval-list">
                   {state.data.piezas.map((pieza) => (
                     <li key={pieza.id}>
-                      <PiezaCard pieza={pieza} />
+                      <a className="card-link" href={hrefRevision(clienteId, pieza.id)}>
+                        <PiezaCard pieza={pieza} />
+                      </a>
                     </li>
                   ))}
                 </ul>
