@@ -79,7 +79,9 @@ label {
   font-weight: 500;
 }
 
-input {
+input,
+textarea,
+select {
   min-height: 44px;
   width: 100%;
   padding: 0.625rem 0.75rem;
@@ -90,13 +92,22 @@ input {
   font: inherit;
 }
 
+textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
 input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
-input:disabled {
+input:disabled,
+textarea:disabled,
+select:disabled {
   opacity: 0.6;
 }
 
@@ -389,6 +400,58 @@ a.button {
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: space-between;
+}
+
+.decision {
+  padding-top: 0.5rem;
+}
+
+.changes-fieldset {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.changes-fieldset legend {
+  padding: 0 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.changes-fieldset .button {
+  width: auto;
+}
+
+.field-errors {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-error);
+}
+
+.confirmation {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.confirmation h3,
+.confirmation p {
+  margin: 0;
+}
+
+.confirmation h3 {
+  font-size: 1rem;
+}
+
+.confirmation-comment {
+  display: grid;
+  gap: 0.25rem;
 }
 
 @media (min-width: 40rem) {

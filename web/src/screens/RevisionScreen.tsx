@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getRevision,
+  postDecision,
   type ArchivoRevision,
+  type DecisionInput,
   type EntradaHistorial,
   type EstadoAprobacion,
+  type MotivoPieza,
   type Revision,
 } from '../api/aprobaciones.js';
 import { ApiError } from '../api/http.js';
@@ -11,6 +14,7 @@ import { es } from '../i18n/index.js';
 import { esEstadoPieza, etiquetaEstadoPieza } from '../i18n/estados.js';
 import { formatDateTime } from '../lib/dates.js';
 import { hrefAprobaciones } from '../router.js';
+import { nivelAprobacion } from '../session/roles.js';
 import { useSession } from '../session/SessionContext.js';
 
 type LoadState =
@@ -54,6 +58,62 @@ function formatDuration(ms: number): string {
 
 function formatFps(fps: number): string {
   return String(Math.round(fps * 100) / 100);
+}
+
+const MOTIVOS: readonly MotivoPieza[] = [
+  'texto',
+  'musica',
+  'toma',
+  'gancho',
+  'dato_equivocado',
+  'otro',
+];
+
+type PendingDecision =
+  | { decision: 'aprobada'; comentario?: string }
+  | {
+      decision: 'cambios';
+      motivo: MotivoPieza;
+      segundoMs?: number;
+      comentario?: string;
+    };
+
+const CONFLICT_MESSAGES: Record<string, string> = {
+  estado_invalido: es.decision.errors.estado_invalido,
+  plan_no_aprobado: es.decision.errors.plan_no_aprobado,
+  plan_descartado: es.decision.errors.plan_descartado,
+  sin_produccion: es.decision.errors.sin_produccion,
+  transicion_invalida: es.decision.errors.transicion_invalida,
+};
+
+function fieldErrorMessages(fields: readonly string[]): string[] {
+  const messages = fields.map((field) => {
+    switch (field) {
+      case 'motivo':
+        return es.decision.fieldMotivo;
+      case 'segundo_ms':
+      case 'segundoMs':
+        return es.decision.fieldSegundo;
+      case 'hash_visto':
+        return es.decision.fieldHash;
+      case 'decision':
+        return es.decision.fieldDecision;
+      case 'nivel':
+        return es.decision.fieldNivel;
+      case 'comentario':
+        return es.decision.fieldComentario;
+      default:
+        return es.decision.fieldGeneric;
+    }
+  });
+  return [...new Set(messages)];
+}
+
+function conflictMessage(code: string | null): string {
+  if (code === null || !Object.prototype.hasOwnProperty.call(CONFLICT_MESSAGES, code)) {
+    return es.decision.errors.other;
+  }
+  return CONFLICT_MESSAGES[code]!;
 }
 
 function Meta({ label, value }: { label: string; value: string | number }) {
@@ -124,12 +184,21 @@ function HistoryItem({ entry }: { entry: EntradaHistorial }) {
 }
 
 export function RevisionScreen({ clienteId, piezaId }: { clienteId: string; piezaId: string }) {
-  const { expire } = useSession();
+  const { state: session, expire } = useSession();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [refreshToken, setRefreshToken] = useState(0);
   const [unavailable, setUnavailable] = useState<ReadonlySet<number>>(() => new Set());
   const refreshUsed = useRef(false);
   const refreshPending = useRef(false);
+  const [motivo, setMotivo] = useState<MotivoPieza | ''>('');
+  const [segundo, setSegundo] = useState('');
+  const [comentario, setComentario] = useState('');
+  const [pendingDecision, setPendingDecision] = useState<PendingDecision | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<string[]>([]);
 
   const load = useCallback(
     async (quiet: boolean): Promise<void> => {
@@ -202,6 +271,142 @@ export function RevisionScreen({ clienteId, piezaId }: { clienteId: string; piez
     void load(false);
   }, [load]);
 
+  const canDecide =
+    session.status === 'authenticated' && nivelAprobacion(session.user.roles, clienteId) === 'cliente';
+  const showDecision =
+    canDecide &&
+    state.status === 'ready' &&
+    state.revision.pieza_estado === 'esperando_aprobacion' &&
+    success === null;
+
+  function onApprove() {
+    if (submitting || state.status !== 'ready') return;
+    setDecisionError(null);
+    setFieldErrors([]);
+    const cleaned = comentario.trim() === '' ? undefined : comentario;
+    setPendingDecision({
+      decision: 'aprobada',
+      ...(cleaned !== undefined ? { comentario: cleaned } : {}),
+    });
+  }
+
+  function onRequestChanges() {
+    if (submitting || state.status !== 'ready') return;
+    setDecisionError(null);
+    setFieldErrors([]);
+    if (motivo === '') {
+      setFieldErrors([es.decision.motivoRequired]);
+      return;
+    }
+    const trimmedSecond = segundo.trim();
+    let segundoMs: number | undefined;
+    if (trimmedSecond !== '') {
+      const value = Number(trimmedSecond);
+      if (!Number.isInteger(value) || value < 0) {
+        setFieldErrors([es.decision.segundoInvalid]);
+        return;
+      }
+      segundoMs = value;
+    }
+    const cleaned = comentario.trim() === '' ? undefined : comentario;
+    setPendingDecision({
+      decision: 'cambios',
+      motivo,
+      ...(segundoMs !== undefined ? { segundoMs } : {}),
+      ...(cleaned !== undefined ? { comentario: cleaned } : {}),
+    });
+  }
+
+  async function onConfirm() {
+    if (submittingRef.current || pendingDecision === null || state.status !== 'ready') return;
+    submittingRef.current = true;
+    const revision = state.revision;
+    const pending = pendingDecision;
+    const body: DecisionInput =
+      pending.decision === 'aprobada'
+        ? {
+            nivel: 'cliente',
+            decision: 'aprobada',
+            hash_visto: revision.hash_pieza,
+            ...(pending.comentario !== undefined ? { comentario: pending.comentario } : {}),
+          }
+        : {
+            nivel: 'cliente',
+            decision: 'cambios',
+            hash_visto: revision.hash_pieza,
+            motivo: pending.motivo,
+            ...(pending.segundoMs !== undefined ? { segundo_ms: pending.segundoMs } : {}),
+            ...(pending.comentario !== undefined ? { comentario: pending.comentario } : {}),
+          };
+
+    setSubmitting(true);
+    setDecisionError(null);
+    setFieldErrors([]);
+    try {
+      const result = await postDecision(clienteId, piezaId, body);
+      setPendingDecision(null);
+      setSuccess(
+        pending.decision === 'aprobada'
+          ? es.decision.successApproved(revision.version)
+          : es.decision.successChanges(revision.version),
+      );
+      setMotivo('');
+      setSegundo('');
+      setComentario('');
+      // Show the state the backend confirmed right away; the refetch brings the full revision.
+      setState((current): LoadState =>
+        current.status === 'ready'
+          ? {
+              status: 'ready',
+              revision: {
+                ...current.revision,
+                pieza_estado: result.pieza_estado,
+                estado_aprobacion: result.estado_aprobacion,
+              },
+            }
+          : current,
+      );
+      void load(true);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          expire();
+          return;
+        }
+        setPendingDecision(null);
+        if (error.status === 400) {
+          setFieldErrors(
+            error.fields.length > 0
+              ? fieldErrorMessages(error.fields)
+              : [es.decision.invalidRequest],
+          );
+        } else if (error.status === 403) {
+          setDecisionError(es.decision.forbidden);
+        } else if (error.status === 404) {
+          setDecisionError(es.decision.notFound);
+        } else if (error.status === 409) {
+          setDecisionError(
+            error.code === 'hash_desactualizado'
+              ? es.decision.errors.hash
+              : conflictMessage(error.code),
+          );
+          setMotivo('');
+          setSegundo('');
+          setComentario('');
+          void load(true);
+        } else {
+          setDecisionError(es.decision.generic);
+        }
+      } else {
+        setPendingDecision(null);
+        setDecisionError(es.decision.network);
+      }
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="screen screen--wide">
       <div className="approvals">
@@ -214,6 +419,18 @@ export function RevisionScreen({ clienteId, piezaId }: { clienteId: string; piez
             {es.revision.backToApprovals}
           </a>
         </header>
+
+        {success !== null && (
+          <p className="notice" role="status">
+            {success}
+          </p>
+        )}
+
+        {decisionError !== null && (
+          <p className="error" role="alert">
+            {decisionError}
+          </p>
+        )}
 
         {state.status === 'loading' && (
           <p className="muted" role="status">
@@ -341,6 +558,148 @@ export function RevisionScreen({ clienteId, piezaId }: { clienteId: string; piez
                     value={formatDateTime(state.revision.control_calidad.creado_en)}
                   />
                 </dl>
+              </section>
+            )}
+
+            {showDecision && (
+              <section className="section decision" aria-labelledby="decision-title">
+                <h2 id="decision-title">{es.decision.title}</h2>
+
+                {pendingDecision === null ? (
+                  <>
+                    <p className="muted">{es.decision.intro}</p>
+
+                    {fieldErrors.length > 0 && (
+                      <ul className="field-errors" role="alert">
+                        {fieldErrors.map((message) => (
+                          <li key={message}>{message}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="field">
+                      <label htmlFor="decision-comment">{es.decision.comentario}</label>
+                      <textarea
+                        id="decision-comment"
+                        name="comentario"
+                        rows={3}
+                        value={comentario}
+                        disabled={submitting}
+                        onChange={(event) => setComentario(event.target.value)}
+                      />
+                    </div>
+
+                    <div className="page-actions">
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={onApprove}
+                        disabled={submitting}
+                      >
+                        {es.decision.approve}
+                      </button>
+                    </div>
+
+                    <fieldset className="changes-fieldset" disabled={submitting}>
+                      <legend>{es.decision.changesTitle}</legend>
+
+                      <div className="field">
+                        <label htmlFor="decision-motivo">{es.decision.motivo}</label>
+                        <select
+                          id="decision-motivo"
+                          name="motivo"
+                          value={motivo}
+                          disabled={submitting}
+                          onChange={(event) => setMotivo(event.target.value as MotivoPieza | '')}
+                        >
+                          <option value="">{es.decision.motivoPlaceholder}</option>
+                          {MOTIVOS.map((value) => (
+                            <option key={value} value={value}>
+                              {es.aprobacion.motivos[value]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor="decision-segundo">{es.decision.segundo}</label>
+                        <input
+                          id="decision-segundo"
+                          name="segundo"
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputMode="numeric"
+                          value={segundo}
+                          disabled={submitting}
+                          onChange={(event) => setSegundo(event.target.value)}
+                        />
+                      </div>
+
+                      <div className="page-actions">
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={onRequestChanges}
+                          disabled={submitting}
+                        >
+                          {es.decision.requestChanges}
+                        </button>
+                      </div>
+                    </fieldset>
+                  </>
+                ) : (
+                  <div className="confirmation">
+                    <h3>{es.decision.confirmTitle}</h3>
+                    <p>
+                      {pendingDecision.decision === 'aprobada'
+                        ? es.decision.confirmApprove(state.revision.version)
+                        : es.decision.confirmChanges(state.revision.version)}
+                    </p>
+
+                    {pendingDecision.decision === 'cambios' && (
+                      <dl className="meta-grid">
+                        <Meta
+                          label={es.decision.motivo}
+                          value={es.aprobacion.motivos[pendingDecision.motivo]}
+                        />
+                        {pendingDecision.segundoMs !== undefined && (
+                          <Meta label={es.decision.segundo} value={pendingDecision.segundoMs} />
+                        )}
+                      </dl>
+                    )}
+
+                    {pendingDecision.comentario !== undefined && (
+                      <div className="confirmation-comment">
+                        <p className="muted">{es.decision.comentario}</p>
+                        <p className="pre-wrap">{pendingDecision.comentario}</p>
+                      </div>
+                    )}
+
+                    <div className="page-actions">
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => void onConfirm()}
+                        disabled={submitting}
+                      >
+                        {submitting
+                          ? es.decision.sending
+                          : pendingDecision.decision === 'aprobada'
+                            ? es.decision.confirmApproveAction
+                            : es.decision.confirmChangesAction}
+                      </button>
+                      <button
+                        className="button button--secondary"
+                        type="button"
+                        onClick={() => setPendingDecision(null)}
+                        disabled={submitting}
+                      >
+                        {es.decision.cancel}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
           </>

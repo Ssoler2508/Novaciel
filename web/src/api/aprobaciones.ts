@@ -1,6 +1,6 @@
 // Shapes of the approval routes. They match the backend responses exactly; nothing is renamed or
 // defaulted here.
-import { getJson } from './http.js';
+import { getJson, postJson } from './http.js';
 
 export type NivelAprobacion = 'interno' | 'cliente';
 
@@ -99,5 +99,40 @@ export interface Revision {
 export function getRevision(clienteId: string, piezaId: string): Promise<Revision> {
   return getJson<Revision>(
     `/clientes/${encodeURIComponent(clienteId)}/piezas/${encodeURIComponent(piezaId)}/revision`,
+  );
+}
+
+export interface DecisionAprobadaInput {
+  nivel: 'cliente';
+  decision: 'aprobada';
+  hash_visto: string;
+  comentario?: string;
+}
+
+export interface DecisionCambiosInput {
+  nivel: 'cliente';
+  decision: 'cambios';
+  hash_visto: string;
+  motivo: MotivoPieza;
+  segundo_ms?: number;
+  comentario?: string;
+}
+
+export type DecisionInput = DecisionAprobadaInput | DecisionCambiosInput;
+
+/** Only the fields the screen reads after a successful decision. */
+export interface DecisionResult {
+  pieza_estado: string;
+  estado_aprobacion: EstadoAprobacion;
+}
+
+export function postDecision(
+  clienteId: string,
+  piezaId: string,
+  input: DecisionInput,
+): Promise<DecisionResult> {
+  return postJson<DecisionResult>(
+    `/clientes/${encodeURIComponent(clienteId)}/piezas/${encodeURIComponent(piezaId)}/decision`,
+    input,
   );
 }
